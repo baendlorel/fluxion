@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "esModuleInterop": true,
+    "composite": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["./scripts/**/*.ts", "*.config.ts"],
+  "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**"]
+}

@@ -1,0 +1,51 @@
+{
+  "name": "fluxion",
+  "version": "0.0.1",
+  "private": true,
+  "author": {
+    "name": "Kasukabe Tsumugi",
+    "email": "futami16237@gmail.com"
+  },
+  "purpose": "npm",
+  "description": "Fluxion is able to start a server that can dynamically load routers and js files. It is designed to be used to replace PHP",
+  "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
+  "type": "module",
+  "homepage": "https://github.com/baendlorel/fluxion#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/baendlorel/fluxion"
+  },
+  "keywords": [
+    "framework",
+    "server",
+    "typescript",
+    "javascript"
+  ],
+  "scripts": {
+    "dev": "tsx ./src/index.ts",
+    "lines": "tsx ./scripts/lines.ts",
+    "build": "vite build",
+    "test": "vitest",
+    "lint": "oxlint ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-replace": "^6.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "@types/node": "^25.3.2",
+    "oxlint": "^1.50.0",
+    "prettier": "^3.8.1",
+    "rimraf": "^6.1.3",
+    "rollup": "4.59.0",
+    "rollup-plugin-conditional-compilation": "^2.1.2",
+    "rollup-plugin-dts": "^6.3.0",
+    "rollup-plugin-func-macro": "^1.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}

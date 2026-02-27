@@ -1,0 +1,64 @@
+{
+  "extends": [
+    "oxlint:recommended",
+    "oxlint-plugin-prettier/recommended",
+    "oxlint-plugin-typescript/recommended"
+  ],
+  "ignorePatterns": [
+    "draft/",
+    "dist/",
+    "node_modules/",
+    "coverage/",
+    "**/tests/**/*.ts",
+    "**/tests/**/*.tsx",
+    "build/",
+    "example/",
+    "scripts/"
+  ],
+  "plugins": [
+    "typescript"
+  ],
+  "rules": {
+    "no-explicit-any": "off",
+    "no-inferrable-types": "off",
+    "prefer-for-of": "off",
+    "unified-signatures": "off",
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/no-extraneous-class": "off",
+    "@typescript-eslint/class-literal-property-style": [
+      "error",
+      "fields"
+    ],
+    "no-debugger": "error",
+    "no-console": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "eqeqeq": [
+      "error",
+      "always"
+    ],
+    "@typescript-eslint/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports"
+      }
+    ],
+    "@typescript-eslint/array-type": [
+      "error",
+      {
+        "default": "array-simple"
+      }
+    ],
+    "@typescript-eslint/consistent-type-definitions": [
+      "error",
+      "interface"
+    ]
+  }
+}
