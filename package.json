@@ -49,5 +49,8 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "find-my-way": "^9.5.0"
   }
 }

@@ -1,54 +1,75 @@
-// A simple HTTP server that listens on a specified host and port
-import http from 'http';
-import path from 'path';
+import http from 'node:http';
+import path from 'node:path';
+
+import { ensureDynamicDirectory, listModuleNames } from './dynamic-directory.js';
+import { getErrorMessage, logJsonLine } from '../common/logger.js';
+import { createModuleRouter, type ModuleSyncReason } from './router.js';
+import { sendJson } from './response.js';
+import { watchDirectoryDiff } from './watcher.js';
 
 export interface ServerOptions {
-  /**
-   * **Core feature of Fluxion**
-   *
-   * js, html, css, etc. files will be served from this directory
-   * - Working samely as **PHP**
-   */
   dynamicDirectory: string;
-
   host: string;
-
   port: number;
 }
 
-const defaultHandler: http.RequestListener = (req, res) => {
-  if (req.url === undefined) {
-    console.error('Received request with undefined URL');
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'text/plain');
-    res.end('Bad Request: URL is undefined\n');
-    return;
+/**
+ * Start a simple HTTP server and dynamically register routes under `dynamicDirectory`.
+ */
+export function startServer(options: ServerOptions): http.Server {
+  const dynamicDirectory = path.resolve(options.dynamicDirectory);
+  ensureDynamicDirectory(dynamicDirectory);
+  const moduleRouter = createModuleRouter();
+
+  const syncModules = (reason: ModuleSyncReason): void => {
+    moduleRouter.syncModules(listModuleNames(dynamicDirectory), reason);
+  };
+
+  try {
+    syncModules('startup');
+  } catch (error) {
+    logJsonLine('ERROR', 'module_sync_failed', {
+      reason: 'startup',
+      error: getErrorMessage(error),
+    });
+    throw error;
   }
 
-  console.log(`Received request: ${req.method} ${req.url}`);
-  const url = new URL(`http://${process.env.HOST ?? 'localhost'}${req.url}`);
-  console.log(`url: `, url);
-  const paths = path.join(...url.pathname.split('/').filter(Boolean));
-  console.log(`paths: `, paths);
-
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'text/plain');
-  res.end('Server is running!\n');
-};
-
-/**
- * Start an HTTP server on the given host and port.
- * @param options ServerOptions with host and port
- * @param requestHandler Optional custom request handler
- * @returns The created http.Server instance
- */
-export function startServer(
-  options: ServerOptions,
-  requestHandler: http.RequestListener = defaultHandler,
-): http.Server {
-  const server = http.createServer(requestHandler);
-  server.listen(options.port, options.host, () => {
-    console.log(`Server listening on http://${options.host}:${options.port}`);
+  const watcher = watchDirectoryDiff(dynamicDirectory, () => {
+    try {
+      syncModules('watch');
+    } catch (error) {
+      logJsonLine('ERROR', 'module_sync_failed', {
+        reason: 'watch',
+        error: getErrorMessage(error),
+      });
+    }
   });
+
+  const server = http.createServer((req, res) => {
+    if (req.url === undefined) {
+      sendJson(res, 400, { message: 'Bad Request: req.url is undefined' });
+      return;
+    }
+
+    moduleRouter.lookup(req, res);
+  });
+
+  server.on('close', () => {
+    watcher.close();
+    logJsonLine('INFO', 'server_closed', {
+      host: options.host,
+      port: options.port,
+    });
+  });
+
+  server.listen(options.port, options.host, () => {
+    logJsonLine('INFO', 'server_started', {
+      host: options.host,
+      port: options.port,
+      dynamicDirectory,
+    });
+  });
+
   return server;
 }
