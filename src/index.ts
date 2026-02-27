@@ -1,6 +1,7 @@
 import { startServer } from './core/server.js';
 
 startServer({
-  host: 'localhost',
-  port: 3000,
+  dynamicDirectory: 'dynamicDirectory',
+  host: process.env.HOST ?? 'localhost',
+  port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
 });

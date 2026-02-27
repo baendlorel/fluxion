@@ -22,7 +22,7 @@
     "javascript"
   ],
   "scripts": {
-    "dev": "tsx ./src/index.ts",
+    "dev": "tsx ./src/index.ts --watch",
     "lines": "tsx ./scripts/lines.ts",
     "build": "rollup -c",
     "test": "vitest",

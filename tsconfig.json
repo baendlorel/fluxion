@@ -4,13 +4,15 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
-    "composite": true,
     "strict": true,
+
+    "declaration": false,
+    "outDir": "dist",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["./scripts/**/*.ts", "*.config.ts", "vitest.config.ts", "rollup.config.ts"],
+  "include": ["./src/**/*.ts", "*.config.ts"],
   "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**"]
 }
