@@ -1,4 +1,4 @@
-import { startServer } from './core/server';
+import { startServer } from './core/server.js';
 
 startServer({
   host: 'localhost',

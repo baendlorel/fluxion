@@ -11,13 +11,8 @@ import replace from '@rollup/plugin-replace';
 import dts from 'rollup-plugin-dts';
 
 export default async (_commandLineArgs) => {
-  const libPath = process.env.CURRENT_PKG_PATH;
-  if (!libPath) {
-    console.error('Error: CURRENT_PKG_PATH environment variable is not set.');
-    process.exit(1);
-  }
+  const libPath = import.meta.dirname;
 
-  const tsconfig = getTSConfig(libPath);
   await rimraf(path.join(libPath, 'dist'));
   return [
     {
@@ -30,18 +25,11 @@ export default async (_commandLineArgs) => {
         },
       ],
       plugins: [
+        typescript({ tsconfig: './tsconfig.json' }),
         resolve(),
         json(),
         commonjs(),
         replace(replaceOpts(libPath)),
-        typescript({
-          tsconfig,
-          compilerOptions: {
-            composite: false,
-            incremental: false,
-            stripInternal: true,
-          },
-        }),
         void terser(),
       ].filter(Boolean),
       external: [/^@ktjs\//, /^@babel\//],
@@ -49,63 +37,17 @@ export default async (_commandLineArgs) => {
     {
       input: path.join(libPath, 'src', 'index.ts'),
       output: [{ file: path.join(libPath, 'dist', 'index.d.ts'), format: 'es' }],
-      plugins: [
-        dts({
-          tsconfig,
-          compilerOptions: {
-            composite: false,
-            incremental: false,
-            stripInternal: true,
-          },
-        }),
-      ],
+      plugins: [dts({ tsconfig: './tsconfig.json' })],
       external: [/^@ktjs/],
     },
   ];
 };
 
-const getTSConfig = (libPath) => {
-  const tsconfigBuildPath = path.join(libPath, 'tsconfig.build.json');
-  const tsconfigPath = path.join(libPath, 'tsconfig.json');
-  return fs.existsSync(tsconfigBuildPath) ? tsconfigBuildPath : tsconfigPath;
-};
-
-export const getAliases = () => {
-  const packagesDir = path.join(import.meta.dirname, '..', 'packages');
-  const packageDirs = fs.readdirSync(packagesDir);
-  const aliasMap = {};
-  for (const dir of packageDirs) {
-    const jsonPath = path.join(packagesDir, dir, 'package.json');
-    if (!fs.existsSync(jsonPath)) {
-      continue;
-    }
-    const json = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-    aliasMap[json.name] = path.join(packagesDir, dir, 'src', 'index.ts');
-    if (json.name === '@ktjs/core') {
-      aliasMap[json.name + '/jsx'] = path.join(packagesDir, dir, 'src', 'index.ts');
-      aliasMap[json.name + '/jsx-runtime'] = path.join(packagesDir, dir, 'src', 'jsx-runtime.ts');
-      aliasMap[json.name + '/jsx-dev-runtime'] = path.join(packagesDir, dir, 'src', 'jsx-runtime.ts');
-    } else if (json.name === 'kt.js') {
-      aliasMap[json.name + '/jsx'] = path.join(packagesDir, dir, 'src', 'jsx.ts');
-      aliasMap[json.name + '/jsx-runtime'] = path.join(packagesDir, dir, 'src', 'jsx-runtime.ts');
-      aliasMap[json.name + '/jsx-dev-runtime'] = path.join(packagesDir, dir, 'src', 'jsx-runtime.ts');
-    }
-  }
-
-  return Object.entries(aliasMap)
-    .sort(([a], [b]) => b.length - a.length)
-    .map(([find, replacement]) => ({ find, replacement }));
-};
-
 // #region replace options
 
-export const globalDefines = {
-  'process.env.BASE_URL': JSON.stringify('/'),
-  'flags.svg': JSON.stringify('__svg'),
-  'flags.mathml': JSON.stringify('__mathml'),
-};
+export const globalDefines = {};
 
-export function replaceOpts() {
+export function replaceOpts(packagePath) {
   const pkg = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json'), 'utf-8'));
   function formatDateFull(dt = new Date()) {
     const y = dt.getFullYear();
