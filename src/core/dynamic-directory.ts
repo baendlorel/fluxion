@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-import { logJsonLine } from '../common/logger.js';
+import { logJsonl } from '../common/logger.js';
 
 export function ensureDynamicDirectory(dynamicDirectory: string): void {
   if (fs.existsSync(dynamicDirectory)) {
@@ -8,7 +8,7 @@ export function ensureDynamicDirectory(dynamicDirectory: string): void {
   }
 
   fs.mkdirSync(dynamicDirectory, { recursive: true });
-  logJsonLine('INFO', 'dynamic_directory_created', {
+  logJsonl('INFO', 'dynamic_directory_created', {
     directory: dynamicDirectory,
   });
 }

@@ -8,7 +8,10 @@ export interface OneLineLogEntry {
   fields?: Record<string, unknown>;
 }
 
-export function logJsonLine(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
+/**
+ * Write a jsonl log entry to stdout. The log entry will include a timestamp, log level, event name, and any additional fields provided.
+ */
+export function logJsonl(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
   console.log(
     JSON.stringify({
       timestamp: dtm(),
@@ -19,7 +22,7 @@ export function logJsonLine(level: LogLevel, event: string, fields: Record<strin
   );
 }
 
-export function logOneLine(level: LogLevel, message: string): void {
+export function log(level: LogLevel, message: string): void {
   console.log(`[${dtm()}] ${level} - ${message}`);
 }
 

@@ -1,6 +1,6 @@
 import http from 'node:http';
 
-import { getErrorMessage, logJsonLine } from '../common/logger.js';
+import { getErrorMessage, logJsonl } from '../common/logger.js';
 import { installModuleArchive, ArchiveValidationError } from './archive-installer.js';
 import type { FileRouteSnapshot } from './file-runtime.js';
 import { sendJson } from './response.js';
@@ -153,7 +153,7 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
         const statusCode = errorMessage.includes('Payload too large') ? 413 : 500;
 
         if (statusCode === 500) {
-          logJsonLine('ERROR', 'meta_upload_failed', {
+          logJsonl('ERROR', 'meta_upload_failed', {
             filename: archiveFilename,
             error: errorMessage,
           });

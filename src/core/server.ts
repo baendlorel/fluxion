@@ -1,7 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 
-import { getErrorMessage, logJsonLine } from '../common/logger.js';
+import { getErrorMessage, log, logJsonl } from '../common/logger.js';
 import { ensureDynamicDirectory } from './dynamic-directory.js';
 import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
@@ -63,7 +63,7 @@ export function startServer(options: ServerOptions): http.Server {
         }
       })
       .catch((error) => {
-        logJsonLine('ERROR', 'request_failed', {
+        logJsonl('ERROR', 'request_failed', {
           method: req.method ?? 'GET',
           url: req.url ?? null,
           error: getErrorMessage(error),
@@ -74,18 +74,12 @@ export function startServer(options: ServerOptions): http.Server {
   });
 
   server.on('close', () => {
-    logJsonLine('INFO', 'server_closed', {
-      host: options.host,
-      port: options.port,
-    });
+    log('INFO', `Server closed at http://${options.host}:${options.port}`);
   });
 
   server.listen(options.port, options.host, () => {
-    logJsonLine('INFO', 'server_started', {
-      host: options.host,
-      port: options.port,
-      dynamicDirectory,
-    });
+    log('INFO', `Server started at http://${options.host}:${options.port}`);
+    log('INFO', `Dynamic directory: ${dynamicDirectory}`);
   });
 
   return server;
