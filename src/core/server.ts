@@ -9,7 +9,7 @@ import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
 
 import { safeSendJson } from './utils/send-json.js';
-import { getRealIp, isTextualContentType } from './utils/headers.js';
+import { getRealIp } from './utils/headers.js';
 import { createBodyPreviewCapture, parseRequestTarget } from './utils/request.js';
 
 export interface FluxionOptions {
@@ -36,19 +36,17 @@ export function ensureDynamicDirectory(dynamicDirectory: string): void {
 }
 
 export function startServer(options: FluxionOptions): http.Server {
-  const dynamicDirectory = path.resolve(options.dir);
-  if (!fs.existsSync(dynamicDirectory)) {
-    fs.mkdirSync(dynamicDirectory, { recursive: true });
-    logJsonl('INFO', 'dynamic_directory_created', { directory: dynamicDirectory });
+  const dir = path.resolve(options.dir);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    logJsonl('INFO', 'dynamic_directory_created', { directory: dir });
   }
 
-  const fileRuntime = createFileRuntime(dynamicDirectory);
+  const fileRuntime = createFileRuntime(dir);
   const metaApi = createMetaApi({
-    dynamicDirectory,
-    getRouteSnapshot: () => fileRuntime.getRouteSnapshot(),
-    onArchiveInstalled: () => {
-      fileRuntime.clearCache();
-    },
+    dir,
+    getRouteSnapshot: fileRuntime.getRouteSnapshot,
+    onArchiveInstalled: fileRuntime.clearCache,
   });
 
   void fileRuntime
@@ -58,7 +56,7 @@ export function startServer(options: FluxionOptions): http.Server {
       const staticFileCount = snapshot.staticFiles.length;
 
       logJsonl('INFO', 'dynamic_directory_loaded', {
-        dynamicDirectory,
+        dir,
         handlerCount,
         staticFileCount,
       });
@@ -75,7 +73,7 @@ export function startServer(options: FluxionOptions): http.Server {
     })
     .catch((error) => {
       logJsonl('ERROR', 'dynamic_directory_load_failed', {
-        dynamicDirectory,
+        dir,
         error: getErrorMessage(error),
       });
     });
@@ -133,7 +131,7 @@ export function startServer(options: FluxionOptions): http.Server {
         const runtimeResult = await fileRuntime.handleRequest(req, res);
 
         if (runtimeResult === 'not_found') {
-          safeSendJson(res, 404, {
+          safeSendJson(res, HttpCode.NOT_FOUND, {
             message: 'Route not found',
             method: req.method ?? 'GET',
             url: req.url ?? null,
@@ -147,7 +145,7 @@ export function startServer(options: FluxionOptions): http.Server {
           error: getErrorMessage(error),
         });
 
-        safeSendJson(res, 500, { message: 'Internal Server Error' });
+        safeSendJson(res, HttpCode.INTERNAL_SERVER_ERROR, { message: 'Internal Server Error' });
       });
   });
 
@@ -157,7 +155,7 @@ export function startServer(options: FluxionOptions): http.Server {
 
   server.listen(options.port, options.host, () => {
     log('INFO', `Server started at http://${options.host}:${options.port}`);
-    log('INFO', `Dynamic directory: ${dynamicDirectory}`);
+    log('INFO', `Dynamic directory: ${dir}`);
   });
 
   return server;

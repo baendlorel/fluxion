@@ -9,7 +9,10 @@ const ROUTES_PATH = META_PREFIX + '/routes';
 const HEALTHZ_PATH = META_PREFIX + '/healthz';
 
 interface CreateMetaApiOptions {
-  dynamicDirectory: string;
+  /**
+   * Same as `FluxionOptions.dir`.
+   */
+  dir: string;
   getRouteSnapshot: () => Promise<FileRouteSnapshot> | FileRouteSnapshot;
   onArchiveInstalled?: () => void;
 }
