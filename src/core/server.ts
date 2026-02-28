@@ -1,28 +1,23 @@
-import http from 'node:http';
+import http, { ServerOptions } from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs';
 
-import { getErrorMessage, log, logJsonl } from '../common/logger.js';
-import { ensureDynamicDirectory } from './dynamic-directory.js';
+import type { ParsedRequestTarget, BodyPreview } from '@/types/server.js';
+import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
+
 import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
 import { sendJson } from './response.js';
 
-export interface ServerOptions {
-  dynamicDirectory: string;
-  host: string;
-  port: number;
-}
+export function ensureDynamicDirectory(dynamicDirectory: string): void {
+  if (fs.existsSync(dynamicDirectory)) {
+    return;
+  }
 
-interface ParsedRequestTarget {
-  path: string;
-  query: Record<string, string | string[]>;
-}
-
-interface BodyPreview {
-  exists: boolean;
-  value?: string;
-  bytes: number;
-  truncated: boolean;
+  fs.mkdirSync(dynamicDirectory, { recursive: true });
+  logJsonl('INFO', 'dynamic_directory_created', {
+    directory: dynamicDirectory,
+  });
 }
 
 function readHeaderValue(header: string | string[] | undefined): string | undefined {

@@ -27,9 +27,6 @@ export function log(level: LogLevel, message: string): void {
 }
 
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
+  // ! Error.isError needs Node.js 24
+  return Error.isError(error) ? error.message : String(error);
 }

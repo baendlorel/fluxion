@@ -1,128 +1,178 @@
-# 动态加载 server(service/controller) 方案
+# Fluxion 下一阶段方案草案（隔离 + 统一开发体验）
 
-## 目标
-- 在 `dynamicDirectory/<module>/server` 下动态加载业务代码。
-- 将业务拆成 `service` 和 `controller` 两层。
-- 与现有 `find-my-way` 路由注册/卸载机制对接，支持热更新与回滚。
+## 1. 目标
+- 在保持「文件即路由」的同时，解决多模块上线后的核心问题：能力隔离、访问隔离、数据库连接、数据共享、统一认证。
+- 提供更舒适的 handler 编写方式：返回值驱动响应、`throw` 驱动错误响应，减少直接操作 `res` 的样板代码。
 
-## 目录约定（建议）
+---
 
-```text
-dynamicDirectory
-└─ somemodule
-   ├─ server
-   │  ├─ index.js            # 模块清单(manifest)
-   │  ├─ services
-   │  │  ├─ user.service.js
-   │  │  └─ ...
-   │  ├─ controllers
-   │  │  ├─ user.controller.js
-   │  │  └─ ...
-   │  └─ hooks.js            # 可选，生命周期钩子
-   └─ web
-      └─ ...
+## 2. 总体原则
+- **默认最小权限**：模块默认不能访问高风险能力，按需申请。
+- **显式共享**：跨模块数据/能力必须通过声明式接口，不允许隐式全局读写。
+- **统一入口**：认证、审计、错误格式统一走框架层。
+- **渐进升级**：兼容旧 `(req, res)`，新写法逐步迁移。
+
+---
+
+## 3. 能力隔离（Capability Isolation）
+
+### 3.1 运行单元
+建议两级模式：
+1. **基础模式（默认）**：同进程执行，性能高，适合内部可信模块。
+2. **隔离模式（可选）**：模块在 `worker_threads` 或子进程运行，通过 RPC 与主进程通信。
+
+### 3.2 能力声明
+模块根目录增加清单（如 `module.json`）：
+
+```json
+{
+  "name": "orders",
+  "capabilities": ["db:orders", "cache:shared", "http:outbound"],
+  "auth": { "required": true, "scopes": ["orders:read"] }
+}
 ```
 
-## server 模块导出协议（核心）
-`server/index.js` 默认导出一个对象，包含：
+### 3.3 能力注入
+运行时只把已授权能力注入到 `ctx.services`，例如：
+- `ctx.services.db`
+- `ctx.services.cache`
+- `ctx.services.http`
 
-```js
-export default {
-  services: {
-    userService: ({ moduleName, logger }) => ({
-      list: async () => [{ id: 1, name: 'Tom' }],
-    }),
-  },
-  controllers: {
-    userController: ({ services }) => ({
-      list: async (ctx) => {
-        const users = await services.userService.list();
-        return { status: 200, body: { users } };
-      },
-    }),
-  },
-  routes: [
-    { method: 'GET', path: '/users', controller: 'userController', action: 'list' },
-  ],
-  async onLoad(ctx) {},
-  async onUnload(ctx) {},
+未授权能力访问直接抛 `ForbiddenCapabilityError`（记录审计日志）。
+
+---
+
+## 4. 访问隔离（Access Isolation）
+
+### 4.1 路由隔离
+- 保持当前命名空间：每个模块只能处理其路径下请求（由文件路径决定）。
+- `_` 前缀目录继续不可路由。
+
+### 4.2 认证后鉴权
+- 统一认证中间件先解析身份（JWT/API Key/Session）。
+- 鉴权策略分两层：
+  1) 模块级 scope（如 `orders:*`）
+  2) 路由级 scope（如 `orders:write`）
+
+### 4.3 审计日志
+请求结束日志追加：
+- `subject`（用户/客户端标识）
+- `module`
+- `authResult`、`policy`、`denyReason`
+
+---
+
+## 5. 数据库连接方式
+
+### 5.1 连接管理
+- 框架侧维护 `DbManager`，按数据源名集中管理连接池。
+- 模块不能直接持有 DSN，只拿到已授权的数据源句柄。
+
+### 5.2 最小权限账号
+- 建议每模块独立数据库账号/Schema。
+- 共享数据走受控视图或只读账号，避免跨模块直接写表。
+
+### 5.3 事务边界
+- 以请求为单位提供可选事务上下文：`ctx.tx`。
+- 若跨模块操作，优先事件驱动补偿，不做跨库强一致分布式事务。
+
+---
+
+## 6. 数据共享方案
+
+建议分三类：
+1. **读多写少配置**：`ConfigStore`（只读快照 + 热更新）
+2. **短期共享状态**：`SharedCache`（Redis/内存，带 key 前缀）
+3. **业务事件**：`EventBus`（异步解耦，显式订阅）
+
+规则：
+- 禁止模块直接读取其他模块私有目录/私有 DB 表。
+- 跨模块协作只能走 `API` 或 `EventBus`。
+
+---
+
+## 7. 更舒适的 Handler 编程模型
+
+### 7.1 新签名（推荐）
+支持：
+```ts
+export default async function handler(ctx) {
+  return { data: { ok: true } };
+}
+```
+
+兼容旧签名：
+```ts
+export default function handler(req, res) {}
+```
+
+### 7.2 `ctx` 结构（建议）
+- `ctx.req` / `ctx.res`
+- `ctx.params`（仅在显式动态路由后引入）
+- `ctx.query`
+- `ctx.body`（已解析）
+- `ctx.user`（认证结果）
+- `ctx.services`（按能力注入）
+- `ctx.meta`（requestId、ip、method、path）
+
+### 7.3 返回值到响应的映射
+- `return { data }` => `200 + application/json`
+- `return { status, data, headers }` => 自定义状态/头
+- `return ResponseLike` => 直接透传
+- `return undefined` 且未写 `res` => `204`
+
+### 7.4 throw 到错误响应
+提供统一错误类：
+- `BadRequestError` -> 400
+- `UnauthorizedError` -> 401
+- `ForbiddenError` -> 403
+- `NotFoundError` -> 404
+- `ConflictError` -> 409
+
+示例：
+```ts
+import { badRequest } from 'fluxion/http';
+
+export default async function handler(ctx) {
+  if (!ctx.query.id) throw badRequest('missing id');
+  return { data: { id: ctx.query.id } };
+}
+```
+
+---
+
+## 8. 统一认证处理
+
+### 8.1 认证流水线
+`request -> parse token -> verify -> attach user -> authorize -> handler`
+
+### 8.2 策略声明
+支持在模块或文件级声明：
+
+```ts
+export const auth = {
+  required: true,
+  scopes: ['orders:read']
 };
 ```
 
-说明：
-- `services`：工厂函数集合，先创建。
-- `controllers`：依赖 `services`，后创建。
-- `routes`：声明式路由，仅描述 method/path/controller/action。
-- `onLoad/onUnload`：热更新和卸载时用于资源初始化/清理。
-
-## 运行时组件拆分
-建议在 `src/core` 增加：
-
-1. `module-loader.ts`
-- 负责 `import()` 动态加载 `server/index.js`。
-- 对每个模块维护 `moduleVersion`（mtime/hash）。
-- 支持 cache busting（`import(fileUrl + '?v=' + version)`）。
-
-2. `module-container.ts`
-- 根据 manifest 构建 DI 容器。
-- 顺序：`services -> controllers -> routes handler`。
-- 暴露 `dispose()`，用于调用 `onUnload`。
-
-3. `module-registry.ts`
-- 内存态注册表：`moduleName -> { container, routes, version }`。
-- 提供 `loadModule / reloadModule / unloadModule`。
-
-4. `router.ts`（你现在已有）
-- 保留命名空间注册：`/${module}/api/*`。
-- 新增 `registerControllerRoutes(moduleName, routeDefs, invoker)`。
-
-## 全流程（跑通链路）
-
-### 1) 启动阶段
-1. 扫描 `dynamicDirectory` 下模块目录。
-2. 对每个模块执行 `loadModule`：
-   - 读取并 import `server/index.js`。
-   - 构建 container（service/controller）。
-   - 注册 API 路由到 `/${module}/api/...`。
-   - 注册 web 路由到 `/${module}/...`（静态资源后续补）。
-3. 记录到 registry，打日志（jsonline + oneline）。
-
-### 2) 请求阶段
-1. `find-my-way` 命中 `/${module}/api/...`。
-2. route handler 找到 `controller[action]`。
-3. 构造 `RequestContext`（req/res/params/query/body/logger/moduleName）。
-4. 执行 controller，返回 `{status, body, headers}` 或直接写 `res`。
-5. 统一错误处理：500 + 错误日志。
-
-### 3) 文件变更阶段（热更新）
-1. `fs.watch` 触发后做 debounce + diff。
-2. 分类：
-   - 新增模块：`loadModule`。
-   - 删除模块：`unloadModule` + `router.off`。
-   - 已存在模块 server 代码变更：`reloadModule`。
-3. `reloadModule` 使用“先构建后切换”策略：
-   - 先加载新 container（不影响旧流量）。
-   - 成功后原子替换路由引用。
-   - 调用旧 container 的 `dispose`。
-   - 若失败则保留旧版本并打 ERROR。
-
-### 4) 模块删除阶段
-1. 先 `router.off` 移除 `/${module}/api` + web 路由。
-2. 调用 `onUnload` 做清理（DB/queue/timer）。
-3. 从 registry 删除。
-
-## 错误与稳定性策略
-- 模块加载失败不应导致主进程退出；只影响该模块。
-- 路由冲突（同 method/path）直接拒绝新模块并记录错误。
-- controller 执行超时可选（后续加 `AbortController`）。
-- 日志建议字段：`event/module/version/reason/durationMs/error`。
-
-## 最小可落地迭代（建议顺序）
-1. 定义 manifest 类型和校验（先手写校验即可）。
-2. 实现 `module-loader.ts` + `module-registry.ts`。
-3. 改造 `router.ts` 支持声明式 controller routes。
-4. 接入现有 `watchDirectoryDiff` 做 reload/unload。
-5. 补充一个示例模块 `dynamicDirectory/demo/server` 验证全链路。
+### 8.3 框架内置能力
+- Token 提取（`Authorization`, cookie, query 可配置）
+- 多策略验证器（JWT / API Key）
+- 统一 401/403 错误格式
 
 ---
-这个方案的关键点是：**server 只做声明（manifest），运行时负责装配（DI + 路由 + 生命周期）**。这样才能稳定地动态加载、热更新、回滚。
+
+## 9. 建议落地顺序（最小可行迭代）
+1. **v1.1**：引入 `ctx` + 返回值映射 + 错误类（兼容旧 `(req,res)`）
+2. **v1.2**：统一认证中间件 + 模块/路由 scope
+3. **v1.3**：能力声明与服务注入（db/cache/http）
+4. **v1.4**：DbManager + 多数据源权限模型
+5. **v1.5**：可选隔离执行（worker/process）+ 资源配额
+
+---
+
+## 10. 关键收益
+- 模块职责更清晰，跨模块风险显著降低。
+- 新写法代码量明显减少，接口行为更统一。
+- 鉴权、日志、错误处理全部收敛到框架层，便于审计与运维。
