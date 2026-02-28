@@ -2,12 +2,8 @@ import http from 'node:http';
 
 import type { FileRouteSnapshot } from './file-runtime.js';
 import { sendJson } from './utils/send-json.js';
-import { toURL } from './utils/request.js';
 import { NormalizedRequest } from './types.js';
-
-const META_PREFIX = '/_fluxion';
-const ROUTES_PATH = META_PREFIX + '/routes';
-const HEALTHZ_PATH = META_PREFIX + '/healthz';
+import { META_PREFIX } from '@/common/consts.js';
 
 interface CreateMetaApiOptions {
   /**
@@ -33,21 +29,19 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
       res: http.ServerResponse,
       normalized: NormalizedRequest,
     ): Promise<boolean> => {
-      const method = normalized.method;
       const pathname = normalized.url.pathname;
 
-      if (method === 'GET' && pathname === ROUTES_PATH) {
-        const routes = await options.getRouteSnapshot();
-        sendJson(res, 200, { routes });
-        return true;
-      }
+      if (normalized.method === 'GET') {
+        if (pathname === META_PREFIX + '/routes') {
+          const routes = await options.getRouteSnapshot();
+          sendJson(res, { routes });
+          return true;
+        }
 
-      if (method === 'GET' && pathname === HEALTHZ_PATH) {
-        sendJson(res, 200, {
-          ok: true,
-          now: Date.now(),
-        });
-        return true;
+        if (pathname === META_PREFIX + '/healthz') {
+          sendJson(res, { ok: true, now: Date.now() });
+          return true;
+        }
       }
 
       return false;

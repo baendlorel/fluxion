@@ -84,9 +84,8 @@ export function startServer(options: FluxionOptions): http.Server {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
     const url = toURL(req.url);
-    // todo 我发现到处都要解析一遍url，都要判定是否undefined，干脆这里处理完了了事
     if (url === undefined) {
-      safeSendJson(res, HttpCode.BadRequest, { message: 'Bad Request: req.url is undefined' });
+      safeSendJson(res, { message: 'Bad Request: req.url is undefined' }, HttpCode.BadRequest);
       return;
     }
 
@@ -141,11 +140,7 @@ export function startServer(options: FluxionOptions): http.Server {
 
         const runtimeResult = await fileRuntime.handleRequest(req, res, normalized);
         if (runtimeResult === HandlerResult.NotFound) {
-          safeSendJson(res, HttpCode.NotFound, {
-            message: 'Route not found',
-            method,
-            url,
-          });
+          safeSendJson(res, { message: 'Route not found', method, url }, HttpCode.NotFound);
         }
       })
       .catch((error) => {
@@ -156,7 +151,7 @@ export function startServer(options: FluxionOptions): http.Server {
           error: getErrorMessage(error),
         });
 
-        safeSendJson(res, HttpCode.InternalServerError, { message: 'Internal Server Error' });
+        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       });
   });
 

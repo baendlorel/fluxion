@@ -1,4 +1,5 @@
 export const DUMMY_BASE_URL = 'http://fluxion.local';
+export const META_PREFIX = '/_fluxion';
 
 export const STATIC_CONTENT_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
