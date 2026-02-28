@@ -11,6 +11,10 @@ export default defineConfig({
     outDir: path.join(rootDir, 'dist'),
     emptyOutDir: true,
   },
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: 'kt.js',
+  },
   plugins: [ktjsx()],
   server: {
     port: 4173,

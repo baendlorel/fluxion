@@ -96,6 +96,10 @@ describe('fluxion e2e', () => {
       },
     });
 
+    const healthzResponse = await client.get('/_fluxion/healthz');
+    expect(healthzResponse.status).toBe(200);
+    expect(healthzResponse.data?.ok).toBe(true);
+
     const missingModuleResponse = await client.get('/missing/path');
     expect(missingModuleResponse.status).toBe(404);
     expect(missingModuleResponse.data).toMatchObject({

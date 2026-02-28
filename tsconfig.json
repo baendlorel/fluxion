@@ -17,6 +17,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["./src/**/*.ts", "*.config.ts", "./tests/**/*.ts"],
+  "include": ["./src/**/*.ts", "*.config.ts", "./tests/**/*.ts", "./document/**/*.ts", "./document/**/*.tsx"],
   "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**"]
 }

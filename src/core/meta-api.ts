@@ -5,8 +5,10 @@ import { installModuleArchive, ArchiveValidationError } from './archive-installe
 import type { ModuleRouteSnapshot } from './router.js';
 import { sendJson } from './response.js';
 
-const ROUTES_PATH = '/_fluxion/routes';
-const UPLOAD_PATH = '/_fluxion/upload';
+const META_PREFIX = '/_fluxion';
+const ROUTES_PATH = META_PREFIX + '/routes';
+const UPLOAD_PATH = META_PREFIX + '/upload';
+const HEALTHZ_PATH = META_PREFIX + '/healthz';
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 interface CreateMetaApiOptions {
@@ -87,16 +89,23 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
       return true;
     }
 
+    if (method === 'GET' && pathname === HEALTHZ_PATH) {
+      sendJson(res, 200, {
+        ok: true,
+        now: Date.now(),
+      });
+      return true;
+    }
+
     if (method === 'POST' && pathname === UPLOAD_PATH) {
       const archiveFilename = getUploadFilename(req);
 
-        if (archiveFilename === undefined) {
-          sendJson(res, 400, {
-            message:
-              'Missing archive filename. Provide ?filename=... or x-fluxion-filename header (.tar, .tar.gz, .tgz)',
-          });
-          return true;
-        }
+      if (archiveFilename === undefined) {
+        sendJson(res, 400, {
+          message: 'Missing archive filename. Provide ?filename=... or x-fluxion-filename header (.tar, .tar.gz, .tgz)',
+        });
+        return true;
+      }
 
       try {
         const archiveBuffer = await readRequestBody(req, MAX_UPLOAD_BYTES);
