@@ -108,6 +108,17 @@ a {
   line-height: 1.62;
 }
 
+.inline-code {
+  display: inline-block;
+  padding: 0.04rem 0.34rem;
+  border-radius: 0.36rem;
+  border: 1px solid #d8dee4;
+  background: #f5f7fa;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.84em;
+  color: #294357;
+}
+
 .hero-actions {
   margin-top: 1.45rem;
   display: flex;
@@ -213,6 +224,10 @@ a {
   margin: 0.52rem 0 0;
   color: var(--text-soft);
   line-height: 1.55;
+}
+
+.panel-note-list {
+  margin-top: 0.74rem;
 }
 
 .panel-positive {
