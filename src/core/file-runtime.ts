@@ -195,8 +195,9 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
       return cached.handler;
     }
 
-    const fileUrl = pathToFileURL(filePath).href;
-    const loaded = await import(`${fileUrl}?v=${encodeURIComponent(version)}`);
+    const fileUrl = `${pathToFileURL(filePath).href}?v=${encodeURIComponent(version)}`;
+    console.log('fileUrl', fileUrl);
+    const loaded = await import(fileUrl);
     const defaultExport = loaded.default;
 
     if (typeof defaultExport !== 'function') {
@@ -385,7 +386,7 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
       if (req.url === undefined) {
         return 'not_found';
       }
-
+      // todo 重新加载的时候要有log
       const parsedPath = parseRequestPath(req.url);
 
       if (parsedPath === undefined) {
