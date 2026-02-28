@@ -1,6 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
+import { performance } from 'node:perf_hooks';
 
 import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
@@ -80,26 +81,33 @@ export function startServer(options: FluxionOptions): http.Server {
 
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
-    const realIp = getRealIp(req);
-    const requestUrl = req.url ?? undefined;
-    const requestTarget = parseRequestTarget(requestUrl);
+    const ip = getRealIp(req);
+    const url = req.url;
+    if (url === undefined) {
+      safeSendJson(res, HttpCode.BAD_REQUEST, { message: 'Bad Request: req.url is undefined' });
+      return;
+    }
+
+    const requestTarget = parseRequestTarget(url);
     const bodyCapture = createBodyPreviewCapture(req);
 
-    log('INFO', `Request ${method} ${requestTarget.path} from ${realIp}`);
+    log('INFO', `Request ${method} ${requestTarget.path} from ${ip}`);
     logJsonl('INFO', 'request_received', {
       method,
-      ip: realIp,
-      url: requestUrl ?? null,
+      ip,
+      url,
       path: requestTarget.path,
     });
 
+    const start = performance.now();
     res.once('finish', () => {
       const fields: Record<string, unknown> = {
         method,
-        ip: realIp,
-        url: requestUrl ?? null,
+        ip: ip,
+        url: url ?? null,
         path: requestTarget.path,
-        statusCode: res.statusCode,
+        status: res.statusCode,
+        duration: performance.now() - start,
       };
 
       if (Object.keys(requestTarget.query).length > 0) {
@@ -116,11 +124,6 @@ export function startServer(options: FluxionOptions): http.Server {
       logJsonl('INFO', 'request_completed', fields);
     });
 
-    if (req.url === undefined) {
-      safeSendJson(res, HttpCode.BAD_REQUEST, { message: 'Bad Request: req.url is undefined' });
-      return;
-    }
-
     void metaApi
       .handleRequest(req, res)
       .then(async (metaHandled) => {
@@ -133,15 +136,16 @@ export function startServer(options: FluxionOptions): http.Server {
         if (runtimeResult === 'not_found') {
           safeSendJson(res, HttpCode.NOT_FOUND, {
             message: 'Route not found',
-            method: req.method ?? 'GET',
-            url: req.url ?? null,
+            method,
+            url,
           });
         }
       })
       .catch((error) => {
         logJsonl('ERROR', 'request_failed', {
-          method: req.method ?? 'GET',
-          url: req.url ?? null,
+          method,
+          ip,
+          url,
           error: getErrorMessage(error),
         });
 
