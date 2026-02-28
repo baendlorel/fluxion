@@ -1,178 +1,106 @@
-# Fluxion 下一阶段方案草案（隔离 + 统一开发体验）
+# Fluxion Worker 隔离执行方案（内存 + 超时）
 
-## 1. 目标
-- 在保持「文件即路由」的同时，解决多模块上线后的核心问题：能力隔离、访问隔离、数据库连接、数据共享、统一认证。
-- 提供更舒适的 handler 编写方式：返回值驱动响应、`throw` 驱动错误响应，减少直接操作 `res` 的样板代码。
+## 1. 问题与目标
+- 问题：`await import(fileUrl?v=...)` 会让 ESM 缓存持续增长，热更新越久内存越大。
+- 目标：
+  1) 将业务 handler 与主进程隔离；
+  2) 限制单个执行单元的内存与响应时间；
+  3) 异常时快速熔断/重启，避免拖垮主进程。
 
----
+## 2. 总体架构
+- 主进程（HTTP 接入层）职责：
+  - 接收请求、基础校验、静态文件服务、路由解析；
+  - 将动态请求通过 RPC 发给 Worker；
+  - 负责超时控制、队列控制、降级响应。
+- Worker（执行层）职责：
+  - 加载并执行 handler 文件；
+  - 维护本 Worker 内的模块缓存；
+  - 仅返回可序列化结果（status/body/headers/error）。
+- 热更新策略：
+  - 发现文件版本变化时，不在同一 Worker 内“无限 import 新版本”；
+  - 直接重建 Worker（旧 Worker 退出即释放其模块缓存）。
 
-## 2. 总体原则
-- **默认最小权限**：模块默认不能访问高风险能力，按需申请。
-- **显式共享**：跨模块数据/能力必须通过声明式接口，不允许隐式全局读写。
-- **统一入口**：认证、审计、错误格式统一走框架层。
-- **渐进升级**：兼容旧 `(req, res)`，新写法逐步迁移。
+## 3. 隔离模型（基于 worker_threads）
+- 每个“模块目录”或“路由分片”绑定 1 个 Worker（可配置）。
+- 主进程与 Worker 仅通过消息通信（`postMessage`），不共享 handler 实例。
+- Worker 只接收瘦身后的请求数据：`method/url/headers/body/query/ip/requestId`。
+- Worker 不直接持有 `http.ServerResponse`，避免越权写响应。
 
----
+## 4. 内存限制方案
+- 启动 Worker 时设置 `resourceLimits`：
+  - `maxOldGenerationSizeMb`（如 128）；
+  - `maxYoungGenerationSizeMb`（如 32）；
+  - `stackSizeMb`（如 4）。
+- 运行时监控：
+  - Worker 定期上报 `process.memoryUsage()`（如每 5s）；
+  - 主进程维护 `softLimit`/`hardLimit`。
+- 触发策略：
+  - 软阈值（例如 80%）：暂停接收新请求，优先 drain；
+  - 硬阈值（例如 100% 或连续增长）：`terminate()` 并拉起新 Worker。
+- 队列保护：
+  - 每 Worker 限制 `maxInflight` 与 `maxQueue`；
+  - 超出立即返回 503，避免主进程堆积内存。
 
-## 3. 能力隔离（Capability Isolation）
+## 5. 响应时间限制方案
+- 每次转发到 Worker 时创建 deadline（例如 `requestTimeoutMs=3000`）。
+- 到时未返回：
+  1) 主进程立即回 504；
+  2) 将该 Worker 标记为不健康并 `terminate()`；
+  3) 自动重建 Worker。
+- 慢请求分级：
+  - `slowMs`（如 500）只打日志；
+  - `timeoutMs` 强制失败+重启。
 
-### 3.1 运行单元
-建议两级模式：
-1. **基础模式（默认）**：同进程执行，性能高，适合内部可信模块。
-2. **隔离模式（可选）**：模块在 `worker_threads` 或子进程运行，通过 RPC 与主进程通信。
+## 6. 让主进程不被拖累的关键点
+- 只在主进程做轻逻辑：路由、鉴权前置、静态文件、日志汇总。
+- 主进程不等待无上限队列：有上限、可拒绝、可熔断。
+- Worker 异常（OOM/死循环/未捕获异常）由 supervisor 重建，不影响监听 socket。
+- 对同一路由的连续失败启用短路（circuit breaker）：在冷却窗口直接 503。
 
-### 3.2 能力声明
-模块根目录增加清单（如 `module.json`）：
+## 7. 最小接口草案
+```ts
+// main -> worker
+interface WorkerRequest {
+  id: string;
+  routeKey: string;
+  filePath: string;
+  version: string;
+  method: string;
+  url: string;
+  headers: Record<string, string | string[]>;
+  body?: Uint8Array;
+  query: Record<string, string | string[]>;
+  ip: string;
+  timeoutMs: number;
+}
 
-```json
-{
-  "name": "orders",
-  "capabilities": ["db:orders", "cache:shared", "http:outbound"],
-  "auth": { "required": true, "scopes": ["orders:read"] }
+// worker -> main
+interface WorkerResponse {
+  id: string;
+  ok: boolean;
+  status?: number;
+  headers?: Record<string, string>;
+  body?: Uint8Array | string;
+  error?: { code: string; message: string; stack?: string };
+  metrics?: { elapsedMs: number; heapUsed: number };
 }
 ```
 
-### 3.3 能力注入
-运行时只把已授权能力注入到 `ctx.services`，例如：
-- `ctx.services.db`
-- `ctx.services.cache`
-- `ctx.services.http`
+## 8. 与现有 `file-runtime.ts` 的改造点
+- 保留现有“文件路由解析 + 静态文件处理”。
+- 将 `loadHandler()` 从主进程移到 Worker 内。
+- 主进程不再执行 `import(fileUrl?v=...)`；改为：
+  - `resolveHandlerFile()` 得到 `filePath + version`；
+  - 按 `routeKey` 选择 Worker；
+  - 若版本变化，重建对应 Worker 后再派发请求。
 
-未授权能力访问直接抛 `ForbiddenCapabilityError`（记录审计日志）。
+## 9. 迭代落地顺序
+1. v1：单 Worker 跑所有动态路由（先打通协议、超时、重建）。
+2. v2：按路由分片多个 Worker + 队列/并发上限。
+3. v3：内存阈值策略 + 熔断 + 监控指标（重启次数、超时率、拒绝率）。
+4. v4：可选升级到子进程池（更强故障隔离）。
 
----
-
-## 4. 访问隔离（Access Isolation）
-
-### 4.1 路由隔离
-- 保持当前命名空间：每个模块只能处理其路径下请求（由文件路径决定）。
-- `_` 前缀目录继续不可路由。
-
-### 4.2 认证后鉴权
-- 统一认证中间件先解析身份（JWT/API Key/Session）。
-- 鉴权策略分两层：
-  1) 模块级 scope（如 `orders:*`）
-  2) 路由级 scope（如 `orders:write`）
-
-### 4.3 审计日志
-请求结束日志追加：
-- `subject`（用户/客户端标识）
-- `module`
-- `authResult`、`policy`、`denyReason`
-
----
-
-## 5. 数据库连接方式
-
-### 5.1 连接管理
-- 框架侧维护 `DbManager`，按数据源名集中管理连接池。
-- 模块不能直接持有 DSN，只拿到已授权的数据源句柄。
-
-### 5.2 最小权限账号
-- 建议每模块独立数据库账号/Schema。
-- 共享数据走受控视图或只读账号，避免跨模块直接写表。
-
-### 5.3 事务边界
-- 以请求为单位提供可选事务上下文：`ctx.tx`。
-- 若跨模块操作，优先事件驱动补偿，不做跨库强一致分布式事务。
-
----
-
-## 6. 数据共享方案
-
-建议分三类：
-1. **读多写少配置**：`ConfigStore`（只读快照 + 热更新）
-2. **短期共享状态**：`SharedCache`（Redis/内存，带 key 前缀）
-3. **业务事件**：`EventBus`（异步解耦，显式订阅）
-
-规则：
-- 禁止模块直接读取其他模块私有目录/私有 DB 表。
-- 跨模块协作只能走 `API` 或 `EventBus`。
-
----
-
-## 7. 更舒适的 Handler 编程模型
-
-### 7.1 新签名（推荐）
-支持：
-```ts
-export default async function handler(ctx) {
-  return { data: { ok: true } };
-}
-```
-
-兼容旧签名：
-```ts
-export default function handler(req, res) {}
-```
-
-### 7.2 `ctx` 结构（建议）
-- `ctx.req` / `ctx.res`
-- `ctx.params`（仅在显式动态路由后引入）
-- `ctx.query`
-- `ctx.body`（已解析）
-- `ctx.user`（认证结果）
-- `ctx.services`（按能力注入）
-- `ctx.meta`（requestId、ip、method、path）
-
-### 7.3 返回值到响应的映射
-- `return { data }` => `200 + application/json`
-- `return { status, data, headers }` => 自定义状态/头
-- `return ResponseLike` => 直接透传
-- `return undefined` 且未写 `res` => `204`
-
-### 7.4 throw 到错误响应
-提供统一错误类：
-- `BadRequestError` -> 400
-- `UnauthorizedError` -> 401
-- `ForbiddenError` -> 403
-- `NotFoundError` -> 404
-- `ConflictError` -> 409
-
-示例：
-```ts
-import { badRequest } from 'fluxion/http';
-
-export default async function handler(ctx) {
-  if (!ctx.query.id) throw badRequest('missing id');
-  return { data: { id: ctx.query.id } };
-}
-```
-
----
-
-## 8. 统一认证处理
-
-### 8.1 认证流水线
-`request -> parse token -> verify -> attach user -> authorize -> handler`
-
-### 8.2 策略声明
-支持在模块或文件级声明：
-
-```ts
-export const auth = {
-  required: true,
-  scopes: ['orders:read']
-};
-```
-
-### 8.3 框架内置能力
-- Token 提取（`Authorization`, cookie, query 可配置）
-- 多策略验证器（JWT / API Key）
-- 统一 401/403 错误格式
-
----
-
-## 9. 建议落地顺序（最小可行迭代）
-1. **v1.1**：引入 `ctx` + 返回值映射 + 错误类（兼容旧 `(req,res)`）
-2. **v1.2**：统一认证中间件 + 模块/路由 scope
-3. **v1.3**：能力声明与服务注入（db/cache/http）
-4. **v1.4**：DbManager + 多数据源权限模型
-5. **v1.5**：可选隔离执行（worker/process）+ 资源配额
-
----
-
-## 10. 关键收益
-- 模块职责更清晰，跨模块风险显著降低。
-- 新写法代码量明显减少，接口行为更统一。
-- 鉴权、日志、错误处理全部收敛到框架层，便于审计与运维。
+## 10. 现实约束与建议
+- `worker_threads` 是“线程隔离 + V8 isolate”，但仍在同一进程；
+- 对“强隔离（尤其 native 内存、进程级崩溃）”要求高时，建议最终切到 `child_process` 池；
+- 当前阶段先用 Worker 可以快速解决 ESM 热更新缓存增长，并显著降低主进程被慢请求拖累的风险。
