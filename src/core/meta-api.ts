@@ -1,8 +1,8 @@
 import http from 'node:http';
 
-import { DUMMY_BASE_URL } from '@/common/consts.js';
 import type { FileRouteSnapshot } from './file-runtime.js';
 import { sendJson } from './utils/send-json.js';
+import { toURL } from './utils/request.js';
 
 const META_PREFIX = '/_fluxion';
 const ROUTES_PATH = META_PREFIX + '/routes';
@@ -18,14 +18,6 @@ interface MetaApi {
   handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean>;
 }
 
-function getPathname(rawUrl: string): string | undefined {
-  try {
-    return new URL(rawUrl, DUMMY_BASE_URL).pathname;
-  } catch {
-    return undefined;
-  }
-}
-
 export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
   const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> => {
     const rawUrl = req.url;
@@ -35,7 +27,7 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
     }
 
     const method = req.method ?? 'GET';
-    const pathname = getPathname(rawUrl);
+    const pathname = toURL(rawUrl)?.pathname;
 
     if (pathname === undefined) {
       return false;

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { toURL } from './utils/request.js';
 
 export type FileRuntimeHandleResult = 'handled' | 'not_found';
 
@@ -67,12 +68,9 @@ function isIgnoredSegment(segment: string): boolean {
 }
 
 function parseRequestPath(rawUrl: string): ParsedPath | undefined {
-  let pathname: string;
-
-  try {
-    pathname = new URL(rawUrl, DUMMY_BASE_URL).pathname;
-  } catch {
-    return undefined;
+  const pathname = toURL(rawUrl)?.pathname;
+  if (pathname === undefined) {
+    return pathname;
   }
 
   const rawSegments = pathname.split('/').filter(Boolean);

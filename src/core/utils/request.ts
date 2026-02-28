@@ -15,6 +15,18 @@ export interface BodyPreview {
   truncated: boolean;
 }
 
+export function toURL(rawUrl: string | undefined): URL | undefined {
+  if (rawUrl === undefined) {
+    return undefined;
+  }
+
+  try {
+    return new URL(rawUrl, DUMMY_BASE_URL);
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseQuery(searchParams: URLSearchParams): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {};
 
@@ -45,20 +57,18 @@ export function parseRequestTarget(rawUrl: string | undefined): ParsedRequestTar
     };
   }
 
-  try {
-    const parsedUrl = new URL(rawUrl, DUMMY_BASE_URL);
-    const pathname = parsedUrl.pathname;
-
-    return {
-      path: pathname,
-      query: parseQuery(parsedUrl.searchParams),
-    };
-  } catch {
+  const parsed = toURL(rawUrl);
+  if (parsed === undefined) {
     return {
       path: rawUrl,
       query: {},
     };
   }
+
+  return {
+    path: parsed.pathname,
+    query: parseQuery(parsed.searchParams),
+  };
 }
 
 export function createBodyPreviewCapture(
