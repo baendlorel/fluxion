@@ -19,7 +19,7 @@ export interface ServerOptions {
 export function startServer(options: ServerOptions): http.Server {
   const dynamicDirectory = path.resolve(options.dynamicDirectory);
   ensureDynamicDirectory(dynamicDirectory);
-  const moduleRouter = createModuleRouter();
+  const moduleRouter = createModuleRouter(dynamicDirectory);
 
   const syncModules = (reason: ModuleSyncReason): void => {
     moduleRouter.syncModules(listModuleNames(dynamicDirectory), reason);

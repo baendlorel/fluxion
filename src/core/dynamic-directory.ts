@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-import { logJsonLine } from '@/common/logger.js';
+import { logJsonLine } from '../common/logger.js';
 
 export function ensureDynamicDirectory(dynamicDirectory: string): void {
   if (fs.existsSync(dynamicDirectory)) {

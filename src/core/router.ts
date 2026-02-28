@@ -1,18 +1,18 @@
 import http from 'node:http';
-import createRouter from 'find-my-way';
-import { logJsonLine, logOneLine } from '@/common/logger.js';
-import { sendJson } from './response.js';
-import { API_METHODS } from '@/common/consts.js';
 
-// type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | (string & {});
+import createRouter from 'find-my-way';
+
+import { API_METHODS } from '../common/consts.js';
+import { getErrorMessage, logJsonLine, logOneLine } from '../common/logger.js';
+import { createModuleHandlerRuntime } from './module-handler-runtime.js';
+import { sendJson } from './response.js';
 
 export type ModuleSyncReason = 'startup' | 'watch';
 
 interface ModuleRoutes {
   moduleName: string;
-  webRootPath: string;
-  webWildcardPath: string;
-  apiPath: string;
+  rootPath: string;
+  wildcardPath: string;
 }
 
 interface ModuleRouter {
@@ -21,20 +21,30 @@ interface ModuleRouter {
 }
 
 function createModuleRoutes(moduleName: string): ModuleRoutes {
-  const webRootPath = `/${moduleName}`;
-
   return {
     moduleName,
-    webRootPath,
-    webWildcardPath: `${webRootPath}/*`,
-    apiPath: `${webRootPath}/api`,
+    rootPath: `/${moduleName}`,
+    wildcardPath: `/${moduleName}/*`,
   };
 }
 
-export function createModuleRouter(): ModuleRouter {
+function safeSendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+  if (res.writableEnded) {
+    return;
+  }
+
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+
+  sendJson(res, statusCode, payload);
+}
+
+export function createModuleRouter(dynamicDirectory: string): ModuleRouter {
   const router = createRouter({
     defaultRoute(req, res) {
-      sendJson(res, 404, {
+      safeSendJson(res, 404, {
         message: 'Route not found',
         method: req.method,
         url: req.url ?? null,
@@ -42,7 +52,45 @@ export function createModuleRouter(): ModuleRouter {
     },
   });
 
+  const handlerRuntime = createModuleHandlerRuntime(dynamicDirectory);
   const registeredModules = new Map<string, ModuleRoutes>();
+
+  const dispatchModuleRequest = async (
+    moduleName: string,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> => {
+    try {
+      const result = await handlerRuntime.handleRequest(moduleName, req, res);
+
+      if (result === 'not_found') {
+        safeSendJson(res, 404, {
+          message: 'Handler not found',
+          module: moduleName,
+          method: req.method,
+          url: req.url ?? null,
+        });
+      }
+    } catch (error) {
+      logJsonLine('ERROR', 'module_handler_failed', {
+        module: moduleName,
+        method: req.method,
+        url: req.url ?? null,
+        error: getErrorMessage(error),
+      });
+
+      safeSendJson(res, 500, {
+        message: 'Internal Server Error',
+        module: moduleName,
+      });
+    }
+  };
+
+  const createRequestHandler = (moduleName: string): http.RequestListener => {
+    return (req, res) => {
+      void dispatchModuleRequest(moduleName, req, res);
+    };
+  };
 
   const registerModule = (moduleName: string): void => {
     if (registeredModules.has(moduleName)) {
@@ -50,35 +98,22 @@ export function createModuleRouter(): ModuleRouter {
     }
 
     const routes = createModuleRoutes(moduleName);
-
-    const webHandler: http.RequestListener = (_req, res) => {
-      sendJson(res, 200, {
-        module: routes.moduleName,
-        routeType: 'web',
-        message: 'web route registered (static serving not implemented yet)',
-      });
-    };
-
-    const apiHandler: http.RequestListener = (_req, res) => {
-      sendJson(res, 200, {
-        module: routes.moduleName,
-        routeType: 'api',
-        message: 'api route registered',
-      });
-    };
-
-    router.on('GET', routes.webRootPath, webHandler);
-    router.on('HEAD', routes.webRootPath, webHandler);
-    router.on('GET', routes.webWildcardPath, webHandler);
-    router.on('HEAD', routes.webWildcardPath, webHandler);
+    const moduleRequestHandler = createRequestHandler(moduleName);
 
     for (const method of API_METHODS) {
-      router.on(method, routes.apiPath, apiHandler);
+      router.on(method, routes.rootPath, moduleRequestHandler);
+      router.on(method, routes.wildcardPath, moduleRequestHandler);
     }
 
     registeredModules.set(moduleName, routes);
 
-    logOneLine('INFO', `route registered  : ${routes.webRootPath}/`);
+    logOneLine('INFO', `Registered route: ${routes.rootPath}`);
+    logOneLine('INFO', `Registered route: ${routes.wildcardPath}`);
+    logJsonLine('INFO', 'module_registered', {
+      module: moduleName,
+      rootRoute: routes.rootPath,
+      wildcardRoute: routes.wildcardPath,
+    });
   };
 
   const unregisterModule = (moduleName: string): void => {
@@ -87,17 +122,21 @@ export function createModuleRouter(): ModuleRouter {
       return;
     }
 
-    router.off('GET', routes.webRootPath);
-    router.off('HEAD', routes.webRootPath);
-    router.off('GET', routes.webWildcardPath);
-    router.off('HEAD', routes.webWildcardPath);
-
     for (const method of API_METHODS) {
-      router.off(method, routes.apiPath);
+      router.off(method, routes.rootPath);
+      router.off(method, routes.wildcardPath);
     }
 
     registeredModules.delete(moduleName);
-    logOneLine('INFO', `route unregistered: ${routes.webRootPath}/`);
+    handlerRuntime.invalidateModule(moduleName);
+
+    logOneLine('INFO', `Unregistered route: ${routes.rootPath}`);
+    logOneLine('INFO', `Unregistered route: ${routes.wildcardPath}`);
+    logJsonLine('INFO', 'module_unregistered', {
+      module: moduleName,
+      rootRoute: routes.rootPath,
+      wildcardRoute: routes.wildcardPath,
+    });
   };
 
   const syncModules = (moduleNames: readonly string[], reason: ModuleSyncReason): void => {
