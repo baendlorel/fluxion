@@ -1,4 +1,5 @@
 import { STATIC_CONTENT_TYPES, DUMMY_BASE_URL } from '@/common/consts.js';
+import { log, logJsonl } from '@/common/logger.js';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -188,6 +189,29 @@ async function streamStaticFile(
 export function createFileRuntime(dynamicDirectory: string): FileRuntime {
   const handlerCache = new Map<string, HandlerCacheEntry>();
 
+  const logHandlerLoad = (filePath: string, version: string, previousVersion?: string): void => {
+    const relativeFilePath = normalizeRelativePath(path.relative(dynamicDirectory, filePath));
+    const route = getRouteFromHandlerFile(relativeFilePath);
+
+    if (previousVersion === undefined) {
+      log('INFO', `Loaded handler: ${route} (${relativeFilePath})`);
+      logJsonl('INFO', 'handler_loaded', {
+        route,
+        file: relativeFilePath,
+        version,
+      });
+      return;
+    }
+
+    log('INFO', `Reloaded handler: ${route} (${relativeFilePath})`);
+    logJsonl('INFO', 'handler_reloaded', {
+      route,
+      file: relativeFilePath,
+      previousVersion,
+      version,
+    });
+  };
+
   const loadHandler = async (filePath: string, version: string): Promise<ModuleDefaultHandler> => {
     const cached = handlerCache.get(filePath);
 
@@ -196,7 +220,6 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
     }
 
     const fileUrl = `${pathToFileURL(filePath).href}?v=${encodeURIComponent(version)}`;
-    console.log('fileUrl', fileUrl);
     const loaded = await import(fileUrl);
     const defaultExport = loaded.default;
 
@@ -206,6 +229,7 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
 
     const handler = defaultExport as ModuleDefaultHandler;
     handlerCache.set(filePath, { handler, version });
+    logHandlerLoad(filePath, version, cached?.version);
     return handler;
   };
 
@@ -386,7 +410,7 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
       if (req.url === undefined) {
         return 'not_found';
       }
-      // todo 重新加载的时候要有log
+
       const parsedPath = parseRequestPath(req.url);
 
       if (parsedPath === undefined) {
