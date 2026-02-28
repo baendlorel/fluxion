@@ -12,12 +12,3 @@ export function ensureDynamicDirectory(dynamicDirectory: string): void {
     directory: dynamicDirectory,
   });
 }
-
-export function listModuleNames(dynamicDirectory: string): string[] {
-  const entries = fs.readdirSync(dynamicDirectory, { withFileTypes: true });
-
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort((left, right) => left.localeCompare(right));
-}

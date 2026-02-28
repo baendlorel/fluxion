@@ -75,7 +75,15 @@ function stripArchiveExtension(filename: string): string {
 function normalizeModuleName(name: string): string {
   const trimmed = name.trim();
 
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(trimmed)) {
+  if (trimmed.length === 0 || trimmed === '.' || trimmed === '..') {
+    throw new ArchiveValidationError(`Invalid module name "${name}"`);
+  }
+
+  if (trimmed.includes('/') || trimmed.includes('\\')) {
+    throw new ArchiveValidationError(`Invalid module name "${name}". Path separators are not allowed`);
+  }
+
+  if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) {
     throw new ArchiveValidationError(
       `Invalid module name "${name}". Only letters, numbers, dot, underscore, and dash are allowed`,
     );
@@ -84,65 +92,37 @@ function normalizeModuleName(name: string): string {
   return trimmed;
 }
 
-async function pathIsDirectory(targetPath: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(targetPath);
-    return stat.isDirectory();
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') {
-      return false;
-    }
-
-    throw error;
-  }
-}
-
-async function hasServerAndWeb(targetDirectory: string): Promise<boolean> {
-  const [hasServer, hasWeb] = await Promise.all([
-    pathIsDirectory(path.join(targetDirectory, 'server')),
-    pathIsDirectory(path.join(targetDirectory, 'web')),
-  ]);
-
-  return hasServer && hasWeb;
-}
-
-function filterTopLevelEntries(entries: string[]): string[] {
-  return entries.filter((entry) => entry !== '__MACOSX' && entry !== '.DS_Store');
+function isIgnoredArchiveEntry(name: string): boolean {
+  return name === '__MACOSX' || name === '.DS_Store';
 }
 
 async function resolveArchiveLayout(
   extractDirectory: string,
   archiveFilename: string,
 ): Promise<ResolveLayoutResult> {
-  const topLevelEntries = filterTopLevelEntries(await fs.readdir(extractDirectory));
+  const topLevelEntries = (await fs.readdir(extractDirectory, { withFileTypes: true })).filter(
+    (entry) => !isIgnoredArchiveEntry(entry.name),
+  );
 
-  if (await hasServerAndWeb(extractDirectory)) {
+  if (topLevelEntries.length === 0) {
+    throw new ArchiveValidationError('Invalid archive structure. Archive is empty after extraction');
+  }
+
+  if (topLevelEntries.length === 1 && topLevelEntries[0]?.isDirectory() === true) {
+    const [onlyEntry] = topLevelEntries;
+
     return {
-      layout: 'flat',
-      moduleName: normalizeModuleName(stripArchiveExtension(archiveFilename)),
-      sourceDirectory: extractDirectory,
+      layout: 'nested',
+      moduleName: normalizeModuleName(onlyEntry.name),
+      sourceDirectory: path.join(extractDirectory, onlyEntry.name),
     };
   }
 
-  if (topLevelEntries.length === 1) {
-    const [onlyEntry] = topLevelEntries;
-    const nestedDirectory = path.join(extractDirectory, onlyEntry);
-
-    if (await pathIsDirectory(nestedDirectory)) {
-      if (await hasServerAndWeb(nestedDirectory)) {
-        return {
-          layout: 'nested',
-          moduleName: normalizeModuleName(onlyEntry),
-          sourceDirectory: nestedDirectory,
-        };
-      }
-    }
-  }
-
-  throw new ArchiveValidationError(
-    'Invalid archive structure. Expected either top-level server/ and web/, or a single top-level folder containing server/ and web/',
-  );
+  return {
+    layout: 'flat',
+    moduleName: normalizeModuleName(stripArchiveExtension(archiveFilename)),
+    sourceDirectory: extractDirectory,
+  };
 }
 
 async function extractArchive(archivePath: string, extractDirectory: string, archiveType: ArchiveType): Promise<void> {
@@ -161,20 +141,21 @@ async function installLayout(
 ): Promise<void> {
   await fs.rm(targetDirectory, { recursive: true, force: true });
 
-  if (layout === 'flat') {
-    await fs.mkdir(targetDirectory, { recursive: true });
-
-    await fs.cp(path.join(sourceDirectory, 'server'), path.join(targetDirectory, 'server'), {
-      recursive: true,
-    });
-    await fs.cp(path.join(sourceDirectory, 'web'), path.join(targetDirectory, 'web'), {
-      recursive: true,
-    });
-
+  if (layout === 'nested') {
+    await fs.cp(sourceDirectory, targetDirectory, { recursive: true });
     return;
   }
 
-  await fs.cp(sourceDirectory, targetDirectory, { recursive: true });
+  await fs.mkdir(targetDirectory, { recursive: true });
+  const entries = (await fs.readdir(sourceDirectory, { withFileTypes: true })).filter(
+    (entry) => !isIgnoredArchiveEntry(entry.name),
+  );
+
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDirectory, entry.name);
+    const destinationPath = path.join(targetDirectory, entry.name);
+    await fs.cp(sourcePath, destinationPath, { recursive: true });
+  }
 }
 
 interface InstallModuleArchiveOptions {

@@ -2,8 +2,9 @@ import http from 'node:http';
 
 import { getErrorMessage, logJsonLine } from '../common/logger.js';
 import { installModuleArchive, ArchiveValidationError } from './archive-installer.js';
-import type { ModuleRouteSnapshot } from './router.js';
+import type { FileRouteSnapshot } from './file-runtime.js';
 import { sendJson } from './response.js';
+import { DUMMY_BASE_URL } from '@/common/consts.js';
 
 const META_PREFIX = '/_fluxion';
 const ROUTES_PATH = META_PREFIX + '/routes';
@@ -13,23 +14,27 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 interface CreateMetaApiOptions {
   dynamicDirectory: string;
-  getRouteSnapshot: () => ModuleRouteSnapshot;
-  syncModules: () => void;
+  getRouteSnapshot: () => Promise<FileRouteSnapshot> | FileRouteSnapshot;
+  onArchiveInstalled?: () => void;
 }
 
 interface MetaApi {
   handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<boolean>;
 }
 
-function getPathname(rawUrl: string): string {
-  return new URL(rawUrl, 'http://fluxion.local').pathname;
+function getPathname(rawUrl: string): string | undefined {
+  try {
+    return new URL(rawUrl, DUMMY_BASE_URL).pathname;
+  } catch {
+    return undefined;
+  }
 }
 
 function getUploadFilename(req: http.IncomingMessage): string | undefined {
   const url = req.url;
 
   if (url !== undefined) {
-    const parsed = new URL(url, 'http://fluxion.local');
+    const parsed = new URL(url, DUMMY_BASE_URL);
     const fromQuery = parsed.searchParams.get('filename');
 
     if (fromQuery !== null && fromQuery.trim().length > 0) {
@@ -82,10 +87,13 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
     const method = req.method ?? 'GET';
     const pathname = getPathname(rawUrl);
 
+    if (pathname === undefined) {
+      return false;
+    }
+
     if (method === 'GET' && pathname === ROUTES_PATH) {
-      sendJson(res, 200, {
-        routes: options.getRouteSnapshot(),
-      });
+      const routes = await options.getRouteSnapshot();
+      sendJson(res, 200, { routes });
       return true;
     }
 
@@ -123,7 +131,7 @@ export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
           dynamicDirectory: options.dynamicDirectory,
         });
 
-        options.syncModules();
+        options.onArchiveInstalled?.();
 
         sendJson(res, 200, {
           message: 'Module uploaded',

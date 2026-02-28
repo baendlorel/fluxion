@@ -9,14 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startServer } from '@/core/server.js';
 
 import { createTarBuffer } from '../helpers/archive-utils.js';
-import {
-  closeServer,
-  createTempDirectory,
-  removeDirectory,
-  sleep,
-  waitFor,
-  writeFile,
-} from '../helpers/test-utils.js';
+import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writeFile } from '../helpers/test-utils.js';
 
 async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Server; client: AxiosInstance }> {
   const server = startServer({
@@ -66,14 +59,15 @@ describe('fluxion e2e', () => {
     vi.restoreAllMocks();
   });
 
-  it('loads startup module and resolves nested handler path', async () => {
+  it('loads startup routes, serves static files, and exposes meta apis', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-e2e-startup-');
     tempDirectories.push(dynamicDirectory);
 
     await writeFile(
-      path.join(dynamicDirectory, 'aaa', 'server', 'bb', 'cc', 'index.js'),
+      path.join(dynamicDirectory, 'aaa', 'bb', 'cc', 'index.mjs'),
       "export default function handler(_req, res) { res.end('startup-ok'); }",
     );
+    await writeFile(path.join(dynamicDirectory, 'aaa', 'public', 'app.js'), "console.log('startup');");
 
     const { server, client } = await startFluxion(dynamicDirectory);
     servers.push(server);
@@ -82,40 +76,48 @@ describe('fluxion e2e', () => {
     expect(nestedResponse.status).toBe(200);
     expect(nestedResponse.data).toBe('startup-ok');
 
+    const staticResponse = await client.get('/aaa/public/app.js');
+    expect(staticResponse.status).toBe(200);
+    expect(staticResponse.data).toContain("console.log('startup')");
+
     const routesResponse = await client.get('/_fluxion/routes');
     expect(routesResponse.status).toBe(200);
     expect(routesResponse.data).toMatchObject({
       routes: {
-        modules: [
+        handlers: [
           {
-            moduleName: 'aaa',
-            rootPath: '/aaa',
-            wildcardPath: '/aaa/*',
+            route: '/aaa/bb/cc',
+            file: 'aaa/bb/cc/index.mjs',
           },
         ],
       },
     });
+    expect(
+      routesResponse.data.routes.staticFiles.some(
+        (item: { route: string; file: string }) => item.route === '/aaa/public/app.js' && item.file === 'aaa/public/app.js',
+      ),
+    ).toBe(true);
 
     const healthzResponse = await client.get('/_fluxion/healthz');
     expect(healthzResponse.status).toBe(200);
     expect(healthzResponse.data?.ok).toBe(true);
 
-    const missingModuleResponse = await client.get('/missing/path');
-    expect(missingModuleResponse.status).toBe(404);
-    expect(missingModuleResponse.data).toMatchObject({
+    const missingRouteResponse = await client.get('/missing/path');
+    expect(missingRouteResponse.status).toBe(404);
+    expect(missingRouteResponse.data).toMatchObject({
       message: 'Route not found',
     });
   });
 
-  it('mounts added module and unmounts removed module via directory watcher', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-watch-');
+  it('reflects route add and remove by file changes', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-add-remove-');
     tempDirectories.push(dynamicDirectory);
 
     const { server, client } = await startFluxion(dynamicDirectory);
     servers.push(server);
 
     await writeFile(
-      path.join(dynamicDirectory, 'bbb', 'server', 'hello.js'),
+      path.join(dynamicDirectory, 'bbb', 'hello.mjs'),
       "export default function handler(_req, res) { res.end('watch-mounted'); }",
     );
 
@@ -124,19 +126,31 @@ describe('fluxion e2e', () => {
       return response.status === 200 && response.data === 'watch-mounted';
     });
 
-    await fs.rm(path.join(dynamicDirectory, 'bbb'), { recursive: true, force: true });
+    const routesAfterAdd = await client.get('/_fluxion/routes');
+    expect(
+      routesAfterAdd.data.routes.handlers.some(
+        (item: { route: string; file: string }) => item.route === '/bbb/hello' && item.file === 'bbb/hello.mjs',
+      ),
+    ).toBe(true);
+
+    await fs.rm(path.join(dynamicDirectory, 'bbb', 'hello.mjs'), { force: true });
 
     await waitFor(async () => {
       const response = await client.get('/bbb/hello');
       return response.status === 404 && response.data?.message === 'Route not found';
     });
+
+    const routesAfterRemove = await client.get('/_fluxion/routes');
+    expect(routesAfterRemove.data.routes.handlers.some((item: { route: string }) => item.route === '/bbb/hello')).toBe(
+      false,
+    );
   });
 
-  it('hot reloads handler by mtime+size and returns 500 for invalid default export', async () => {
+  it('hot reloads mjs handler by mtime+size and returns 500 for invalid default export', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-e2e-reload-');
     tempDirectories.push(dynamicDirectory);
 
-    const handlerFile = path.join(dynamicDirectory, 'ccc', 'server', 'task.js');
+    const handlerFile = path.join(dynamicDirectory, 'ccc', 'task.mjs');
 
     await writeFile(handlerFile, "export default function handler(_req, res) { res.end('v1'); }");
 
@@ -164,45 +178,71 @@ describe('fluxion e2e', () => {
     });
   });
 
-  it('uploads flat tar archive and mounts it as archive-name module', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-flat-');
+  it('blocks routing for underscore-prefixed directories', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-underscore-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, '_lib', 'secret.mjs'),
+      "export default function handler(_req, res) { res.end('hidden'); }",
+    );
+    await writeFile(path.join(dynamicDirectory, '_lib', 'tool.js'), "console.log('hidden-tool');");
+    await writeFile(
+      path.join(dynamicDirectory, 'public', 'ping.mjs'),
+      "export default function handler(_req, res) { res.end('public-ok'); }",
+    );
+
+    const { server, client } = await startFluxion(dynamicDirectory);
+    servers.push(server);
+
+    const publicResponse = await client.get('/public/ping');
+    expect(publicResponse.status).toBe(200);
+    expect(publicResponse.data).toBe('public-ok');
+
+    const hiddenHandlerResponse = await client.get('/_lib/secret');
+    expect(hiddenHandlerResponse.status).toBe(404);
+
+    const hiddenStaticResponse = await client.get('/_lib/tool.js');
+    expect(hiddenStaticResponse.status).toBe(404);
+
+    const routesResponse = await client.get('/_fluxion/routes');
+    const hasHiddenRoute =
+      routesResponse.data.routes.handlers.some((item: { file: string }) => item.file.startsWith('_lib/')) ||
+      routesResponse.data.routes.staticFiles.some((item: { file: string }) => item.file.startsWith('_lib/'));
+
+    expect(hasHiddenRoute).toBe(false);
+  });
+
+  it('uploads tar archives and handles invalid upload payloads', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-');
     tempDirectories.push(dynamicDirectory);
 
     const { server, client } = await startFluxion(dynamicDirectory);
     servers.push(server);
 
-    const archiveBuffer = await createTarBuffer({
-      'web/index.html': '<h1>tar</h1>',
-      'server/hello.js': "export default function handler(_req, res) { res.end('tar-upload-ok'); }",
+    const flatArchive = await createTarBuffer({
+      'ping.mjs': "export default function handler(_req, res) { res.end('flat-upload-ok'); }",
+      'public/app.js': "console.log('flat');",
     });
 
-    const uploadResponse = await client.post('/_fluxion/upload?filename=tar-demo.tar', archiveBuffer, {
+    const flatUploadResponse = await client.post('/_fluxion/upload?filename=tar-demo.tar', flatArchive, {
       headers: {
         'content-type': 'application/octet-stream',
       },
     });
 
-    expect(uploadResponse.status).toBe(200);
-    expect(uploadResponse.data).toMatchObject({
+    expect(flatUploadResponse.status).toBe(200);
+    expect(flatUploadResponse.data).toMatchObject({
       module: 'tar-demo',
       layout: 'flat',
     });
 
-    const routeResponse = await client.get('/tar-demo/hello');
-    expect(routeResponse.status).toBe(200);
-    expect(routeResponse.data).toBe('tar-upload-ok');
-  });
-
-  it('uploads nested tar archive, mounts folder module, and rejects invalid archive', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-nested-');
-    tempDirectories.push(dynamicDirectory);
-
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
+    const flatRouteResponse = await client.get('/tar-demo/ping');
+    expect(flatRouteResponse.status).toBe(200);
+    expect(flatRouteResponse.data).toBe('flat-upload-ok');
 
     const nestedArchive = await createTarBuffer({
-      'tar-module/web/index.html': '<h1>tar</h1>',
-      'tar-module/server/ping.js': "export default function handler(_req, res) { res.end('tar-upload-ok'); }",
+      'tar-module/ping.mjs': "export default function handler(_req, res) { res.end('nested-upload-ok'); }",
     });
 
     const nestedUploadResponse = await client.post('/_fluxion/upload?filename=anything.tar', nestedArchive, {
@@ -217,12 +257,12 @@ describe('fluxion e2e', () => {
       layout: 'nested',
     });
 
-    const routeResponse = await client.get('/tar-module/ping');
-    expect(routeResponse.status).toBe(200);
-    expect(routeResponse.data).toBe('tar-upload-ok');
+    const nestedRouteResponse = await client.get('/tar-module/ping');
+    expect(nestedRouteResponse.status).toBe(200);
+    expect(nestedRouteResponse.data).toBe('nested-upload-ok');
 
     const invalidArchive = await createTarBuffer({
-      'foo.txt': 'broken',
+      '__MACOSX/.DS_Store': 'broken',
     });
 
     const invalidUploadResponse = await client.post('/_fluxion/upload?filename=broken.tar', invalidArchive, {

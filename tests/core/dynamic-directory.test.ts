@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ensureDynamicDirectory, listModuleNames } from '@/core/dynamic-directory.js';
+import { ensureDynamicDirectory } from '@/core/dynamic-directory.js';
 
-import { createTempDirectory, removeDirectory, writeFile } from '../helpers/test-utils.js';
+import { createTempDirectory, removeDirectory } from '../helpers/test-utils.js';
 
 describe('dynamic-directory', () => {
   const tempDirectories: string[] = [];
@@ -40,14 +40,13 @@ describe('dynamic-directory', () => {
     expect(stat.isDirectory()).toBe(true);
   });
 
-  it('lists only first-level module directories in sorted order', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-module-list-');
+  it('does nothing when dynamic directory already exists', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-dynamic-existing-');
     tempDirectories.push(dynamicDirectory);
 
-    await fs.mkdir(path.join(dynamicDirectory, 'zeta'), { recursive: true });
-    await fs.mkdir(path.join(dynamicDirectory, 'alpha', 'nested'), { recursive: true });
-    await writeFile(path.join(dynamicDirectory, 'README.md'), 'file should be ignored');
+    ensureDynamicDirectory(dynamicDirectory);
 
-    expect(listModuleNames(dynamicDirectory)).toEqual(['alpha', 'zeta']);
+    const stat = await fs.stat(dynamicDirectory);
+    expect(stat.isDirectory()).toBe(true);
   });
 });

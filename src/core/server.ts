@@ -1,12 +1,11 @@
 import http from 'node:http';
 import path from 'node:path';
 
-import { ensureDynamicDirectory, listModuleNames } from './dynamic-directory.js';
 import { getErrorMessage, logJsonLine } from '../common/logger.js';
+import { ensureDynamicDirectory } from './dynamic-directory.js';
+import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
-import { createModuleRouter, type ModuleSyncReason } from './router.js';
 import { sendJson } from './response.js';
-import { watchDirectoryDiff } from './watcher.js';
 
 export interface ServerOptions {
   dynamicDirectory: string;
@@ -14,74 +13,67 @@ export interface ServerOptions {
   port: number;
 }
 
-/**
- * Start a simple HTTP server and dynamically register routes under `dynamicDirectory`.
- */
+function safeSendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+  if (res.writableEnded) {
+    return;
+  }
+
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+
+  sendJson(res, statusCode, payload);
+}
+
 export function startServer(options: ServerOptions): http.Server {
   const dynamicDirectory = path.resolve(options.dynamicDirectory);
   ensureDynamicDirectory(dynamicDirectory);
-  const moduleRouter = createModuleRouter(dynamicDirectory);
 
-  const syncModules = (reason: ModuleSyncReason): void => {
-    moduleRouter.syncModules(listModuleNames(dynamicDirectory), reason);
-  };
+  const fileRuntime = createFileRuntime(dynamicDirectory);
   const metaApi = createMetaApi({
     dynamicDirectory,
-    getRouteSnapshot: () => moduleRouter.getSnapshot(),
-    syncModules: () => {
-      syncModules('watch');
+    getRouteSnapshot: () => fileRuntime.getRouteSnapshot(),
+    onArchiveInstalled: () => {
+      fileRuntime.clearCache();
     },
-  });
-
-  try {
-    syncModules('startup');
-  } catch (error) {
-    logJsonLine('ERROR', 'module_sync_failed', {
-      reason: 'startup',
-      error: getErrorMessage(error),
-    });
-    throw error;
-  }
-
-  const watcher = watchDirectoryDiff(dynamicDirectory, () => {
-    try {
-      syncModules('watch');
-    } catch (error) {
-      logJsonLine('ERROR', 'module_sync_failed', {
-        reason: 'watch',
-        error: getErrorMessage(error),
-      });
-    }
   });
 
   const server = http.createServer((req, res) => {
     if (req.url === undefined) {
-      sendJson(res, 400, { message: 'Bad Request: req.url is undefined' });
+      safeSendJson(res, 400, { message: 'Bad Request: req.url is undefined' });
       return;
     }
 
     void metaApi
       .handleRequest(req, res)
-      .then((handled) => {
-        if (!handled) {
-          moduleRouter.lookup(req, res);
+      .then(async (metaHandled) => {
+        if (metaHandled) {
+          return;
+        }
+
+        const runtimeResult = await fileRuntime.handleRequest(req, res);
+
+        if (runtimeResult === 'not_found') {
+          safeSendJson(res, 404, {
+            message: 'Route not found',
+            method: req.method ?? 'GET',
+            url: req.url ?? null,
+          });
         }
       })
       .catch((error) => {
-        logJsonLine('ERROR', 'meta_api_failed', {
-          url: req.url ?? null,
+        logJsonLine('ERROR', 'request_failed', {
           method: req.method ?? 'GET',
+          url: req.url ?? null,
           error: getErrorMessage(error),
         });
 
-        if (!res.headersSent && !res.writableEnded) {
-          sendJson(res, 500, { message: 'Internal Server Error' });
-        }
+        safeSendJson(res, 500, { message: 'Internal Server Error' });
       });
   });
 
   server.on('close', () => {
-    watcher.close();
     logJsonLine('INFO', 'server_closed', {
       host: options.host,
       port: options.port,

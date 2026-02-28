@@ -17,13 +17,13 @@ describe('archive-installer', () => {
     }
   });
 
-  it('installs flat server/web tar archive using archive name as module name', async () => {
+  it('installs flat archive using archive name as module name', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-archive-flat-');
     tempDirectories.push(dynamicDirectory);
 
     const archiveBuffer = await createTarBuffer({
-      'server/index.js': "export default function handler(_req, res) { res.end('ok'); }",
-      'web/index.html': '<h1>hello</h1>',
+      'hello.mjs': "export default function handler(_req, res) { res.end('ok'); }",
+      'public/app.js': "console.log('hello');",
     });
 
     const result = await installModuleArchive({
@@ -35,11 +35,11 @@ describe('archive-installer', () => {
     expect(result.moduleName).toBe('demo-module');
     expect(result.layout).toBe('flat');
 
-    const serverStat = await fs.stat(path.join(dynamicDirectory, 'demo-module', 'server'));
-    const webStat = await fs.stat(path.join(dynamicDirectory, 'demo-module', 'web'));
+    const handler = await fs.readFile(path.join(dynamicDirectory, 'demo-module', 'hello.mjs'), 'utf8');
+    const staticFile = await fs.readFile(path.join(dynamicDirectory, 'demo-module', 'public', 'app.js'), 'utf8');
 
-    expect(serverStat.isDirectory()).toBe(true);
-    expect(webStat.isDirectory()).toBe(true);
+    expect(handler).toContain('export default function handler');
+    expect(staticFile).toContain("console.log('hello')");
   });
 
   it('installs nested folder archive using inner folder name as module name', async () => {
@@ -47,9 +47,9 @@ describe('archive-installer', () => {
     tempDirectories.push(dynamicDirectory);
 
     const archiveBuffer = await createTarBuffer({
-      'cool-app/server/index.js': "export default function handler(_req, res) { res.end('ok'); }",
-      'cool-app/web/index.html': '<h1>cool</h1>',
-      'cool-app/README.md': 'extra files should be kept in nested mode',
+      'cool-app/index.mjs': "export default function handler(_req, res) { res.end('ok'); }",
+      'cool-app/assets/app.js': "console.log('cool');",
+      'cool-app/README.md': 'extra files should be kept',
     });
 
     const result = await installModuleArchive({
@@ -65,12 +65,31 @@ describe('archive-installer', () => {
     expect(readme).toContain('extra files');
   });
 
-  it('rejects invalid archive structure', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-archive-invalid-');
+  it('supports underscore-prefixed module name', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-archive-underscore-');
     tempDirectories.push(dynamicDirectory);
 
     const archiveBuffer = await createTarBuffer({
-      'foo.txt': 'missing server and web folders',
+      '_lib/util.mjs': 'export default function handler() {}',
+    });
+
+    const result = await installModuleArchive({
+      archiveBuffer,
+      archiveFilename: 'ignored.tar',
+      dynamicDirectory,
+    });
+
+    expect(result.moduleName).toBe('_lib');
+    const stat = await fs.stat(path.join(dynamicDirectory, '_lib'));
+    expect(stat.isDirectory()).toBe(true);
+  });
+
+  it('rejects archive with no usable top-level entries', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-archive-empty-');
+    tempDirectories.push(dynamicDirectory);
+
+    const archiveBuffer = await createTarBuffer({
+      '__MACOSX/.DS_Store': 'ignored',
     });
 
     await expect(
@@ -88,8 +107,7 @@ describe('archive-installer', () => {
 
     const archiveBuffer = await createTarBuffer(
       {
-        'gzip-app/server/index.js': "export default function handler(_req, res) { res.end('ok'); }",
-        'gzip-app/web/index.html': '<h1>gzip</h1>',
+        'gzip-app/index.mjs': "export default function handler(_req, res) { res.end('ok'); }",
       },
       { gzip: true },
     );
@@ -109,8 +127,7 @@ describe('archive-installer', () => {
     tempDirectories.push(dynamicDirectory);
 
     const archiveBuffer = await createTarBuffer({
-      'server/index.js': "export default function handler(_req, res) { res.end('ok'); }",
-      'web/index.html': '<h1>hello</h1>',
+      'hello.mjs': "export default function handler(_req, res) { res.end('ok'); }",
     });
 
     await expect(
