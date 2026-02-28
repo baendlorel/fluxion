@@ -26,18 +26,7 @@ export interface FluxionOptions {
   port: number;
 }
 
-export function ensureDynamicDirectory(dynamicDirectory: string): void {
-  if (fs.existsSync(dynamicDirectory)) {
-    return;
-  }
-
-  fs.mkdirSync(dynamicDirectory, { recursive: true });
-  logJsonl('INFO', 'dynamic_directory_created', {
-    directory: dynamicDirectory,
-  });
-}
-
-export function startServer(options: FluxionOptions): http.Server {
+export function fluxion(options: FluxionOptions): http.Server {
   const dir = path.resolve(options.dir);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -94,23 +83,16 @@ export function startServer(options: FluxionOptions): http.Server {
 
     const bodyCapture = createBodyPreviewCapture(req);
 
-    log('INFO', `Request ${method} ${normalized.url.pathname} from ${ip}`);
-    logJsonl('INFO', 'request_received', {
-      method,
-      ip,
-      url,
-      path: normalized.url.pathname,
-    });
+    logJsonl('INFO', 'request_received', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
       const fields: Record<string, unknown> = {
         method,
         ip,
-        url,
-        path: normalized.url.pathname,
+        path: url.pathname,
         status: res.statusCode,
-        duration: performance.now() - start,
+        duration: (performance.now() - start).toFixed(4),
       };
 
       if (Object.keys(normalized.query).length > 0) {
@@ -134,18 +116,13 @@ export function startServer(options: FluxionOptions): http.Server {
           return;
         }
 
-        const runtimeResult = await fileRuntime.handleRequest(req, res, normalized);
-        if (runtimeResult === HandlerResult.NotFound) {
+        const result = await fileRuntime.handleRequest(req, res, normalized);
+        if (result === HandlerResult.NotFound) {
           safeSendJson(res, { message: 'Route not found', method, url }, HttpCode.NotFound);
         }
       })
       .catch((error) => {
-        logJsonl('ERROR', 'request_failed', {
-          method,
-          ip,
-          url,
-          error: getErrorMessage(error),
-        });
+        logJsonl('ERROR', 'request_failed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
 
         safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       });

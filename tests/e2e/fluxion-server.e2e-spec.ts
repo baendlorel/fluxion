@@ -6,13 +6,13 @@ import path from 'node:path';
 import axios, { type AxiosInstance } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { startServer } from '@/core/server.js';
+import { fluxion } from '@/core/server.js';
 
 import { createTarBuffer } from '../helpers/archive-utils.js';
 import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writeFile } from '../helpers/test-utils.js';
 
 async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Server; client: AxiosInstance }> {
-  const server = startServer({
+  const server = fluxion({
     dir: dynamicDirectory,
     host: '127.0.0.1',
     port: 0,

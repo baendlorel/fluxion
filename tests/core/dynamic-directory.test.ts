@@ -1,11 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { ensureDynamicDirectory } from '@/core/dynamic-directory.js';
-
-import { createTempDirectory, removeDirectory } from '../helpers/test-utils.js';
+import { createTempDirectory, ensureDir, removeDirectory } from '../helpers/test-utils.js';
 
 describe('dynamic-directory', () => {
   const tempDirectories: string[] = [];
@@ -34,7 +30,7 @@ describe('dynamic-directory', () => {
 
     expect(existsBefore).toBe(false);
 
-    ensureDynamicDirectory(dynamicDirectory);
+    ensureDir(dynamicDirectory);
 
     const stat = await fs.stat(dynamicDirectory);
     expect(stat.isDirectory()).toBe(true);
@@ -44,7 +40,7 @@ describe('dynamic-directory', () => {
     const dynamicDirectory = await createTempDirectory('fluxion-dynamic-existing-');
     tempDirectories.push(dynamicDirectory);
 
-    ensureDynamicDirectory(dynamicDirectory);
+    ensureDir(dynamicDirectory);
 
     const stat = await fs.stat(dynamicDirectory);
     expect(stat.isDirectory()).toBe(true);
