@@ -16,3 +16,19 @@ export function getRealIp(req: IncomingMessage): string {
 
   return req.socket.remoteAddress ?? 'unknown';
 }
+
+export function isTextualContentType(contentType: string | undefined): boolean {
+  if (contentType === undefined) {
+    return false;
+  }
+
+  const normalized = contentType.toLowerCase();
+
+  return (
+    normalized.startsWith('text/') ||
+    normalized.includes('json') ||
+    normalized.includes('xml') ||
+    normalized.includes('x-www-form-urlencoded') ||
+    normalized.includes('javascript')
+  );
+}

@@ -13,7 +13,7 @@ import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writ
 
 async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Server; client: AxiosInstance }> {
   const server = startServer({
-    dynamicDirectory,
+    dir: dynamicDirectory,
     host: '127.0.0.1',
     port: 0,
   });
@@ -94,7 +94,8 @@ describe('fluxion e2e', () => {
     });
     expect(
       routesResponse.data.routes.staticFiles.some(
-        (item: { route: string; file: string }) => item.route === '/aaa/public/app.js' && item.file === 'aaa/public/app.js',
+        (item: { route: string; file: string }) =>
+          item.route === '/aaa/public/app.js' && item.file === 'aaa/public/app.js',
       ),
     ).toBe(true);
 

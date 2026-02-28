@@ -2,15 +2,16 @@ import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 
-import type { ParsedRequestTarget, BodyPreview, FluxionOptions } from '@/types/server.js';
-import { DUMMY_BASE_URL } from '@/common/consts.js';
+import type { BodyPreview, FluxionOptions } from '@/types/server.js';
+import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
 
 import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
 
-import { sendJson } from './utils/send-json.js';
-import { getRealIp } from './utils/real-ip.js';
+import { safeSendJson } from './utils/send-json.js';
+import { getRealIp, isTextualContentType } from './utils/headers.js';
+import { parseRequestTarget } from './utils/request.js';
 
 export function ensureDynamicDirectory(dynamicDirectory: string): void {
   if (fs.existsSync(dynamicDirectory)) {
@@ -21,68 +22,6 @@ export function ensureDynamicDirectory(dynamicDirectory: string): void {
   logJsonl('INFO', 'dynamic_directory_created', {
     directory: dynamicDirectory,
   });
-}
-
-function parseQuery(searchParams: URLSearchParams): Record<string, string | string[]> {
-  const query: Record<string, string | string[]> = {};
-
-  for (const [key, value] of searchParams.entries()) {
-    const existing = query[key];
-
-    if (existing === undefined) {
-      query[key] = value;
-      continue;
-    }
-
-    if (Array.isArray(existing)) {
-      existing.push(value);
-      continue;
-    }
-
-    query[key] = [existing, value];
-  }
-
-  return query;
-}
-
-function parseRequestTarget(rawUrl: string | undefined): ParsedRequestTarget {
-  if (rawUrl === undefined) {
-    return {
-      path: '(unknown)',
-      query: {},
-    };
-  }
-
-  try {
-    const parsedUrl = new URL(rawUrl, DUMMY_BASE_URL);
-    const pathname = parsedUrl.pathname;
-
-    return {
-      path: pathname,
-      query: parseQuery(parsedUrl.searchParams),
-    };
-  } catch {
-    return {
-      path: rawUrl,
-      query: {},
-    };
-  }
-}
-
-function isTextualContentType(contentType: string | undefined): boolean {
-  if (contentType === undefined) {
-    return false;
-  }
-
-  const normalized = contentType.toLowerCase();
-
-  return (
-    normalized.startsWith('text/') ||
-    normalized.includes('json') ||
-    normalized.includes('xml') ||
-    normalized.includes('x-www-form-urlencoded') ||
-    normalized.includes('javascript')
-  );
 }
 
 function createBodyPreviewCapture(req: http.IncomingMessage, maxBytes = 8192): { getPreview: () => BodyPreview } {
@@ -139,8 +78,8 @@ function createBodyPreviewCapture(req: http.IncomingMessage, maxBytes = 8192): {
   req.once('close', restorePush);
 
   const getPreview = (): BodyPreview => {
-    const contentLength = readHeaderValue(req.headers['content-length']);
-    const declaredBytes = contentLength === undefined ? NaN : Number.parseInt(contentLength, 10);
+    const contentLength = req.headers['content-length'];
+    const declaredBytes = contentLength ? Number.parseInt(contentLength, 10) : NaN;
     const hasDeclaredBody = Number.isFinite(declaredBytes) && declaredBytes > 0;
     const hasCapturedBody = totalBytes > 0;
     const hasBody = hasDeclaredBody || hasCapturedBody;
@@ -154,7 +93,7 @@ function createBodyPreviewCapture(req: http.IncomingMessage, maxBytes = 8192): {
       };
     }
 
-    const contentType = readHeaderValue(req.headers['content-type']);
+    const contentType = req.headers['content-type'];
     const bodyBuffer = Buffer.concat(chunks);
 
     if (isTextualContentType(contentType)) {
@@ -177,22 +116,12 @@ function createBodyPreviewCapture(req: http.IncomingMessage, maxBytes = 8192): {
   return { getPreview };
 }
 
-function safeSendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
-  if (res.writableEnded) {
-    return;
-  }
-
-  if (res.headersSent) {
-    res.end();
-    return;
-  }
-
-  sendJson(res, statusCode, payload);
-}
-
 export function startServer(options: FluxionOptions): http.Server {
-  const dynamicDirectory = path.resolve(options.dynamicDirectory);
-  ensureDynamicDirectory(dynamicDirectory);
+  const dynamicDirectory = path.resolve(options.dir);
+  if (!fs.existsSync(dynamicDirectory)) {
+    fs.mkdirSync(dynamicDirectory, { recursive: true });
+    logJsonl('INFO', 'dynamic_directory_created', { directory: dynamicDirectory });
+  }
 
   const fileRuntime = createFileRuntime(dynamicDirectory);
   const metaApi = createMetaApi({
@@ -271,7 +200,7 @@ export function startServer(options: FluxionOptions): http.Server {
     });
 
     if (req.url === undefined) {
-      safeSendJson(res, 400, { message: 'Bad Request: req.url is undefined' });
+      safeSendJson(res, HttpCode.BAD_REQUEST, { message: 'Bad Request: req.url is undefined' });
       return;
     }
 
