@@ -1,4 +1,4 @@
-export interface ServerOptions {
+export interface FluxionOptions {
   dynamicDirectory: string;
   host: string;
   port: number;

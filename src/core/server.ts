@@ -1,13 +1,16 @@
-import http, { ServerOptions } from 'node:http';
+import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 
-import type { ParsedRequestTarget, BodyPreview } from '@/types/server.js';
+import type { ParsedRequestTarget, BodyPreview, FluxionOptions } from '@/types/server.js';
+import { DUMMY_BASE_URL } from '@/common/consts.js';
 import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
 
 import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
-import { sendJson } from './response.js';
+
+import { sendJson } from './utils/send-json.js';
+import { getRealIp } from './utils/real-ip.js';
 
 export function ensureDynamicDirectory(dynamicDirectory: string): void {
   if (fs.existsSync(dynamicDirectory)) {
@@ -18,24 +21,6 @@ export function ensureDynamicDirectory(dynamicDirectory: string): void {
   logJsonl('INFO', 'dynamic_directory_created', {
     directory: dynamicDirectory,
   });
-}
-
-function readHeaderValue(header: string | string[] | undefined): string | undefined {
-  if (typeof header === 'string') {
-    const trimmed = header.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  if (Array.isArray(header)) {
-    for (let i = 0; i < header.length; i++) {
-      const value = header[i]?.trim();
-      if (value !== undefined && value.length > 0) {
-        return value;
-      }
-    }
-  }
-
-  return undefined;
 }
 
 function parseQuery(searchParams: URLSearchParams): Record<string, string | string[]> {
@@ -69,7 +54,7 @@ function parseRequestTarget(rawUrl: string | undefined): ParsedRequestTarget {
   }
 
   try {
-    const parsedUrl = new URL(rawUrl, 'http://fluxion.local');
+    const parsedUrl = new URL(rawUrl, DUMMY_BASE_URL);
     const pathname = parsedUrl.pathname;
 
     return {
@@ -192,23 +177,6 @@ function createBodyPreviewCapture(req: http.IncomingMessage, maxBytes = 8192): {
   return { getPreview };
 }
 
-function getSourceIp(req: http.IncomingMessage): string {
-  const forwardedFor = readHeaderValue(req.headers['x-forwarded-for']);
-  if (forwardedFor !== undefined) {
-    const firstForwarded = forwardedFor.split(',')[0]?.trim();
-    if (firstForwarded !== undefined && firstForwarded.length > 0) {
-      return firstForwarded;
-    }
-  }
-
-  const realIp = readHeaderValue(req.headers['x-real-ip']);
-  if (realIp !== undefined) {
-    return realIp;
-  }
-
-  return req.socket.remoteAddress ?? 'unknown';
-}
-
 function safeSendJson(res: http.ServerResponse, statusCode: number, payload: unknown): void {
   if (res.writableEnded) {
     return;
@@ -222,7 +190,7 @@ function safeSendJson(res: http.ServerResponse, statusCode: number, payload: unk
   sendJson(res, statusCode, payload);
 }
 
-export function startServer(options: ServerOptions): http.Server {
+export function startServer(options: FluxionOptions): http.Server {
   const dynamicDirectory = path.resolve(options.dynamicDirectory);
   ensureDynamicDirectory(dynamicDirectory);
 
@@ -266,15 +234,15 @@ export function startServer(options: ServerOptions): http.Server {
 
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
-    const sourceIp = getSourceIp(req);
+    const realIp = getRealIp(req);
     const requestUrl = req.url ?? undefined;
     const requestTarget = parseRequestTarget(requestUrl);
     const bodyCapture = createBodyPreviewCapture(req);
 
-    log('INFO', `Request ${method} ${requestTarget.path} from ${sourceIp}`);
+    log('INFO', `Request ${method} ${requestTarget.path} from ${realIp}`);
     logJsonl('INFO', 'request_received', {
       method,
-      ip: sourceIp,
+      ip: realIp,
       url: requestUrl ?? null,
       path: requestTarget.path,
     });
@@ -282,7 +250,7 @@ export function startServer(options: ServerOptions): http.Server {
     res.once('finish', () => {
       const fields: Record<string, unknown> = {
         method,
-        ip: sourceIp,
+        ip: realIp,
         url: requestUrl ?? null,
         path: requestTarget.path,
         statusCode: res.statusCode,
