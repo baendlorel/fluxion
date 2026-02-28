@@ -45,11 +45,7 @@ export function startServer(options: FluxionOptions): http.Server {
   }
 
   const fileRuntime = createFileRuntime(dir);
-  const metaApi = createMetaApi({
-    dir,
-    getRouteSnapshot: fileRuntime.getRouteSnapshot,
-    onArchiveInstalled: fileRuntime.clearCache,
-  });
+  const metaApi = createMetaApi({ dir, getRouteSnapshot: fileRuntime.getRouteSnapshot });
 
   void fileRuntime
     .getRouteSnapshot()
@@ -164,5 +160,10 @@ export function startServer(options: FluxionOptions): http.Server {
     log('INFO', `Dynamic directory: ${dir}`);
   });
 
+  server.on('error', (error) => {
+    logJsonl('ERROR', 'server_error', {
+      error: getErrorMessage(error),
+    });
+  });
   return server;
 }

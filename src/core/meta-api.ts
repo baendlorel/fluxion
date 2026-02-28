@@ -11,18 +11,9 @@ interface CreateMetaApiOptions {
    */
   dir: string;
   getRouteSnapshot: () => Promise<FileRouteSnapshot> | FileRouteSnapshot;
-  onArchiveInstalled?: () => void;
 }
 
-interface MetaApi {
-  handleRequest: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    normalized: NormalizedRequest,
-  ) => Promise<boolean>;
-}
-
-export function createMetaApi(options: CreateMetaApiOptions): MetaApi {
+export function createMetaApi(options: CreateMetaApiOptions) {
   return {
     handleRequest: async (
       _req: http.IncomingMessage,

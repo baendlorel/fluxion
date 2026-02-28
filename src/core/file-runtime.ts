@@ -1,10 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import http from 'node:http';
+import { pathToFileURL } from 'node:url';
+
 import { HandlerResult, STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import { log, logJsonl } from '@/common/logger.js';
-import fs from 'node:fs';
-import http from 'node:http';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { NormalizedRequest } from './types.js';
+import type { NormalizedRequest } from './types.js';
 
 type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
 
@@ -262,7 +263,7 @@ export function createFileRuntime(dir: string) {
 
   const tryHandleStatic = async (
     parsedPath: ParsedPath,
-    req: http.IncomingMessage,
+    _req: http.IncomingMessage,
     res: http.ServerResponse,
     normalized: NormalizedRequest,
   ): Promise<HandlerResult> => {
@@ -396,7 +397,11 @@ export function createFileRuntime(dir: string) {
       handlerCache.clear();
     },
     getRouteSnapshot,
-    async handleRequest(req, res, normalized) {
+    async handleRequest(
+      req: http.IncomingMessage,
+      res: http.ServerResponse,
+      normalized: NormalizedRequest,
+    ): Promise<HandlerResult> {
       const parsedPath = parseRequestPath(normalized.url);
       if (parsedPath === undefined) {
         return HandlerResult.NotFound;
@@ -409,13 +414,5 @@ export function createFileRuntime(dir: string) {
 
       return tryHandleStatic(parsedPath, req, res, normalized);
     },
-  } satisfies {
-    clearCache: () => void;
-    getRouteSnapshot: () => Promise<FileRouteSnapshot>;
-    handleRequest: (
-      req: http.IncomingMessage,
-      res: http.ServerResponse,
-      normalized: NormalizedRequest,
-    ) => Promise<HandlerResult>;
   };
 }
