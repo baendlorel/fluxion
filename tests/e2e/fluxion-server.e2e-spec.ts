@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { startServer } from '@/core/server.js';
 
+import { createTarBuffer } from '../helpers/archive-utils.js';
 import {
   closeServer,
   createTempDirectory,
@@ -81,6 +82,20 @@ describe('fluxion e2e', () => {
     expect(nestedResponse.status).toBe(200);
     expect(nestedResponse.data).toBe('startup-ok');
 
+    const routesResponse = await client.get('/_fluxion/routes');
+    expect(routesResponse.status).toBe(200);
+    expect(routesResponse.data).toMatchObject({
+      routes: {
+        modules: [
+          {
+            moduleName: 'aaa',
+            rootPath: '/aaa',
+            wildcardPath: '/aaa/*',
+          },
+        ],
+      },
+    });
+
     const missingModuleResponse = await client.get('/missing/path');
     expect(missingModuleResponse.status).toBe(404);
     expect(missingModuleResponse.data).toMatchObject({
@@ -143,5 +158,85 @@ describe('fluxion e2e', () => {
       const response = await client.get('/ccc/task');
       return response.status === 500 && response.data?.message === 'Internal Server Error';
     });
+  });
+
+  it('uploads flat tar archive and mounts it as archive-name module', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-flat-');
+    tempDirectories.push(dynamicDirectory);
+
+    const { server, client } = await startFluxion(dynamicDirectory);
+    servers.push(server);
+
+    const archiveBuffer = await createTarBuffer({
+      'web/index.html': '<h1>tar</h1>',
+      'server/hello.js': "export default function handler(_req, res) { res.end('tar-upload-ok'); }",
+    });
+
+    const uploadResponse = await client.post('/_fluxion/upload?filename=tar-demo.tar', archiveBuffer, {
+      headers: {
+        'content-type': 'application/octet-stream',
+      },
+    });
+
+    expect(uploadResponse.status).toBe(200);
+    expect(uploadResponse.data).toMatchObject({
+      module: 'tar-demo',
+      layout: 'flat',
+    });
+
+    const routeResponse = await client.get('/tar-demo/hello');
+    expect(routeResponse.status).toBe(200);
+    expect(routeResponse.data).toBe('tar-upload-ok');
+  });
+
+  it('uploads nested tar archive, mounts folder module, and rejects invalid archive', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-nested-');
+    tempDirectories.push(dynamicDirectory);
+
+    const { server, client } = await startFluxion(dynamicDirectory);
+    servers.push(server);
+
+    const nestedArchive = await createTarBuffer({
+      'tar-module/web/index.html': '<h1>tar</h1>',
+      'tar-module/server/ping.js': "export default function handler(_req, res) { res.end('tar-upload-ok'); }",
+    });
+
+    const nestedUploadResponse = await client.post('/_fluxion/upload?filename=anything.tar', nestedArchive, {
+      headers: {
+        'content-type': 'application/octet-stream',
+      },
+    });
+
+    expect(nestedUploadResponse.status).toBe(200);
+    expect(nestedUploadResponse.data).toMatchObject({
+      module: 'tar-module',
+      layout: 'nested',
+    });
+
+    const routeResponse = await client.get('/tar-module/ping');
+    expect(routeResponse.status).toBe(200);
+    expect(routeResponse.data).toBe('tar-upload-ok');
+
+    const invalidArchive = await createTarBuffer({
+      'foo.txt': 'broken',
+    });
+
+    const invalidUploadResponse = await client.post('/_fluxion/upload?filename=broken.tar', invalidArchive, {
+      headers: {
+        'content-type': 'application/octet-stream',
+      },
+    });
+
+    expect(invalidUploadResponse.status).toBe(400);
+    expect(invalidUploadResponse.data?.message).toContain('Invalid archive structure');
+
+    const unsupportedUploadResponse = await client.post('/_fluxion/upload?filename=broken.zip', invalidArchive, {
+      headers: {
+        'content-type': 'application/octet-stream',
+      },
+    });
+
+    expect(unsupportedUploadResponse.status).toBe(400);
+    expect(unsupportedUploadResponse.data?.message).toContain('Unsupported archive format');
   });
 });

@@ -15,9 +15,20 @@ interface ModuleRoutes {
   wildcardPath: string;
 }
 
+export interface ModuleRouteSnapshotItem {
+  moduleName: string;
+  rootPath: string;
+  wildcardPath: string;
+}
+
+export interface ModuleRouteSnapshot {
+  modules: ModuleRouteSnapshotItem[];
+}
+
 interface ModuleRouter {
   lookup: http.RequestListener;
   syncModules: (moduleNames: readonly string[], reason: ModuleSyncReason) => void;
+  getSnapshot: () => ModuleRouteSnapshot;
 }
 
 function createModuleRoutes(moduleName: string): ModuleRoutes {
@@ -174,5 +185,16 @@ export function createModuleRouter(dynamicDirectory: string): ModuleRouter {
       router.lookup(req, res);
     },
     syncModules,
+    getSnapshot() {
+      const modules: ModuleRouteSnapshotItem[] = Array.from(registeredModules.values())
+        .map((routes) => ({
+          moduleName: routes.moduleName,
+          rootPath: routes.rootPath,
+          wildcardPath: routes.wildcardPath,
+        }))
+        .sort((left, right) => left.moduleName.localeCompare(right.moduleName));
+
+      return { modules };
+    },
   };
 }

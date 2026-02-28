@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { ensureDynamicDirectory, listModuleNames } from './dynamic-directory.js';
 import { getErrorMessage, logJsonLine } from '../common/logger.js';
+import { createMetaApi } from './meta-api.js';
 import { createModuleRouter, type ModuleSyncReason } from './router.js';
 import { sendJson } from './response.js';
 import { watchDirectoryDiff } from './watcher.js';
@@ -24,6 +25,13 @@ export function startServer(options: ServerOptions): http.Server {
   const syncModules = (reason: ModuleSyncReason): void => {
     moduleRouter.syncModules(listModuleNames(dynamicDirectory), reason);
   };
+  const metaApi = createMetaApi({
+    dynamicDirectory,
+    getRouteSnapshot: () => moduleRouter.getSnapshot(),
+    syncModules: () => {
+      syncModules('watch');
+    },
+  });
 
   try {
     syncModules('startup');
@@ -52,7 +60,24 @@ export function startServer(options: ServerOptions): http.Server {
       return;
     }
 
-    moduleRouter.lookup(req, res);
+    void metaApi
+      .handleRequest(req, res)
+      .then((handled) => {
+        if (!handled) {
+          moduleRouter.lookup(req, res);
+        }
+      })
+      .catch((error) => {
+        logJsonLine('ERROR', 'meta_api_failed', {
+          url: req.url ?? null,
+          method: req.method ?? 'GET',
+          error: getErrorMessage(error),
+        });
+
+        if (!res.headersSent && !res.writableEnded) {
+          sendJson(res, 500, { message: 'Internal Server Error' });
+        }
+      });
   });
 
   server.on('close', () => {
