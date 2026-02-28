@@ -49,28 +49,6 @@ export function parseQuery(searchParams: URLSearchParams): Record<string, string
   return query;
 }
 
-export function parseRequestTarget(rawUrl: string | undefined): ParsedRequestTarget {
-  if (rawUrl === undefined) {
-    return {
-      path: '(unknown)',
-      query: {},
-    };
-  }
-
-  const parsed = toURL(rawUrl);
-  if (parsed === undefined) {
-    return {
-      path: rawUrl,
-      query: {},
-    };
-  }
-
-  return {
-    path: parsed.pathname,
-    query: parseQuery(parsed.searchParams),
-  };
-}
-
 export function createBodyPreviewCapture(
   req: http.IncomingMessage,
   maxBytes = 8192,

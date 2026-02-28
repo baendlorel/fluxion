@@ -1,12 +1,10 @@
-import { STATIC_CONTENT_TYPES, DUMMY_BASE_URL } from '@/common/consts.js';
+import { HandlerResult, STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import { log, logJsonl } from '@/common/logger.js';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { toURL } from './utils/request.js';
-
-export type FileRuntimeHandleResult = 'handled' | 'not_found';
+import { NormalizedRequest } from './types.js';
 
 type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
 
@@ -43,12 +41,6 @@ export interface FileRouteSnapshot {
   staticFiles: StaticRouteEntry[];
 }
 
-export interface FileRuntime {
-  clearCache: () => void;
-  getRouteSnapshot: () => Promise<FileRouteSnapshot>;
-  handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<FileRuntimeHandleResult>;
-}
-
 function getContentType(filePath: string): string {
   const extension = path.extname(filePath).toLowerCase();
   return STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
@@ -67,12 +59,8 @@ function isIgnoredSegment(segment: string): boolean {
   return segment.startsWith('_');
 }
 
-function parseRequestPath(rawUrl: string): ParsedPath | undefined {
-  const pathname = toURL(rawUrl)?.pathname;
-  if (pathname === undefined) {
-    return pathname;
-  }
-
+function parseRequestPath(url: URL): ParsedPath | undefined {
+  const pathname = url.pathname;
   const rawSegments = pathname.split('/').filter(Boolean);
   const segments: string[] = [];
 
@@ -184,11 +172,14 @@ async function streamStaticFile(
   });
 }
 
-export function createFileRuntime(dynamicDirectory: string): FileRuntime {
+/**
+ * @param dir Dynamic directory set in `FluxionOptions`
+ */
+export function createFileRuntime(dir: string) {
   const handlerCache = new Map<string, HandlerCacheEntry>();
 
   const logHandlerLoad = (filePath: string, version: string, previousVersion?: string): void => {
-    const relativeFilePath = normalizeRelativePath(path.relative(dynamicDirectory, filePath));
+    const relativeFilePath = normalizeRelativePath(path.relative(dir, filePath));
     const route = getRouteFromHandlerFile(relativeFilePath);
 
     if (previousVersion === undefined) {
@@ -232,10 +223,10 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
   };
 
   const resolveHandlerFile = async (segments: readonly string[]): Promise<ResolvedHandlerFile | undefined> => {
-    const candidates = buildHandlerCandidates(dynamicDirectory, segments);
+    const candidates = buildHandlerCandidates(dir, segments);
 
     for (const filePath of candidates) {
-      if (!isUnderDirectory(filePath, dynamicDirectory)) {
+      if (!isUnderDirectory(filePath, dir)) {
         continue;
       }
 
@@ -253,61 +244,62 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
     parsedPath: ParsedPath,
     req: http.IncomingMessage,
     res: http.ServerResponse,
-  ): Promise<FileRuntimeHandleResult> => {
+  ): Promise<HandlerResult> => {
     if (parsedPath.pathname.endsWith('.mjs')) {
-      return 'not_found';
+      return HandlerResult.NotFound;
     }
 
     const resolved = await resolveHandlerFile(parsedPath.segments);
 
     if (resolved === undefined) {
-      return 'not_found';
+      return HandlerResult.NotFound;
     }
 
     const handler = await loadHandler(resolved.filePath, resolved.version);
     await Promise.resolve(handler(req, res));
-    return 'handled';
+    return HandlerResult.Handled;
   };
 
   const tryHandleStatic = async (
     parsedPath: ParsedPath,
     req: http.IncomingMessage,
     res: http.ServerResponse,
-  ): Promise<FileRuntimeHandleResult> => {
-    const method = req.method ?? 'GET';
+    normalized: NormalizedRequest,
+  ): Promise<HandlerResult> => {
+    const method = normalized.method;
 
     if (method !== 'GET' && method !== 'HEAD') {
-      return 'not_found';
+      return HandlerResult.NotFound;
     }
 
     if (parsedPath.segments.length === 0) {
-      return 'not_found';
+      return HandlerResult.NotFound;
     }
 
-    const filePath = path.resolve(dynamicDirectory, ...parsedPath.segments);
+    const filePath = path.resolve(dir, ...parsedPath.segments);
 
-    if (!isUnderDirectory(filePath, dynamicDirectory)) {
-      return 'not_found';
+    if (!isUnderDirectory(filePath, dir)) {
+      return HandlerResult.NotFound;
     }
 
     if (path.extname(filePath).toLowerCase() === '.mjs') {
-      return 'not_found';
+      return HandlerResult.NotFound;
     }
 
     try {
       const stat = await fs.promises.stat(filePath);
 
       if (!stat.isFile()) {
-        return 'not_found';
+        return HandlerResult.NotFound;
       }
 
       await streamStaticFile(filePath, stat, method, res);
-      return 'handled';
+      return HandlerResult.Handled;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
 
       if (code === 'ENOENT' || code === 'ENOTDIR') {
-        return 'not_found';
+        return HandlerResult.NotFound;
       }
 
       throw error;
@@ -385,7 +377,7 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
       }
     };
 
-    await walk(dynamicDirectory, '');
+    await walk(dir, '');
 
     const handlers = Array.from(handlerByRoute.values())
       .map((item) => item.entry)
@@ -404,24 +396,26 @@ export function createFileRuntime(dynamicDirectory: string): FileRuntime {
       handlerCache.clear();
     },
     getRouteSnapshot,
-    async handleRequest(req, res) {
-      if (req.url === undefined) {
-        return 'not_found';
-      }
-
-      const parsedPath = parseRequestPath(req.url);
-
+    async handleRequest(req, res, normalized) {
+      const parsedPath = parseRequestPath(normalized.url);
       if (parsedPath === undefined) {
-        return 'not_found';
+        return HandlerResult.NotFound;
       }
 
       const handlerResult = await tryHandleHandler(parsedPath, req, res);
-
-      if (handlerResult === 'handled') {
-        return 'handled';
+      if (handlerResult === HandlerResult.Handled) {
+        return HandlerResult.Handled;
       }
 
-      return tryHandleStatic(parsedPath, req, res);
+      return tryHandleStatic(parsedPath, req, res, normalized);
     },
+  } satisfies {
+    clearCache: () => void;
+    getRouteSnapshot: () => Promise<FileRouteSnapshot>;
+    handleRequest: (
+      req: http.IncomingMessage,
+      res: http.ServerResponse,
+      normalized: NormalizedRequest,
+    ) => Promise<HandlerResult>;
   };
 }
