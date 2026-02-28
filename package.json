@@ -23,13 +23,18 @@
   ],
   "scripts": {
     "dev": "tsx ./src/index.ts --watch",
+    "exp": "vite dev --config document/vite.config.ts",
     "lines": "tsx ./scripts/lines.ts",
+    "doc:dev": "vite --config document/vite.config.ts",
+    "doc:build": "vite build --config document/vite.config.ts",
     "build": "rollup -c",
     "test": "vitest",
     "lint": "oxlint ."
   },
   "license": "MIT",
   "devDependencies": {
+    "@ktjs/ts-plugin": "^0.1.13",
+    "@ktjs/vite-plugin-ktjsx": "^0.4.3",
     "@rollup/plugin-commonjs": "^29.0.0",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.3",
@@ -38,6 +43,7 @@
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/node": "^25.3.2",
     "axios": "^1.13.6",
+    "kt.js": "^0.31.4",
     "oxlint": "^1.50.0",
     "prettier": "^3.8.1",
     "rimraf": "^6.1.3",

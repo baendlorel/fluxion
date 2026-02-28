@@ -6,6 +6,10 @@
     "esModuleInterop": true,
     "strict": true,
 
+    "jsx": "react-jsx",
+    "jsxImportSource": "kt.js",
+    "plugins": [{ "name": "@ktjs/ts-plugin" }],
+
     "declaration": false,
     "outDir": "dist",
     "baseUrl": ".",
