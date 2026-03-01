@@ -11,44 +11,119 @@ import { createHandlerWorkerPool } from './handler-worker-pool.js';
 import type { HandlerWorkerSnapshot } from './handler-worker-pool.js';
 import type { protocol } from './protocol.js';
 
+/**
+ * Parsed and validated request path.
+ */
 interface ParsedPath {
+  /**
+   * Original pathname.
+   */
   pathname: string;
+  /**
+   * Safe decoded path segments.
+   */
   segments: string[];
 }
 
+/**
+ * Resolved dynamic handler file.
+ */
 interface ResolvedHandlerFile {
+  /**
+   * Absolute handler path.
+   */
   filePath: string;
+  /**
+   * Current handler version token.
+   */
   version: string;
 }
 
+/**
+ * Common route snapshot fields.
+ */
 interface RouteEntryBase {
+  /**
+   * Relative file path.
+   */
   file: string;
+  /**
+   * Version token derived from file metadata.
+   */
   version: string;
 }
 
+/**
+ * Dynamic route snapshot row.
+ */
 export interface HandlerRouteEntry extends RouteEntryBase {
+  /**
+   * Public route path.
+   */
   route: string;
 }
 
+/**
+ * Static route snapshot row.
+ */
 export interface StaticRouteEntry extends RouteEntryBase {
+  /**
+   * Public route path.
+   */
   route: string;
 }
 
+/**
+ * Full route snapshot used by meta api.
+ */
 export interface FileRouteSnapshot {
+  /**
+   * Dynamic handler routes.
+   */
   handlers: HandlerRouteEntry[];
+  /**
+   * Static file routes.
+   */
   staticFiles: StaticRouteEntry[];
 }
 
+/**
+ * Worker runtime snapshot used by meta api.
+ */
 export interface FileWorkerSnapshot {
+  /**
+   * Dynamic directory absolute path.
+   */
   dir: string;
+  /**
+   * Worker supervisor snapshots.
+   */
   workers: HandlerWorkerSnapshot[];
 }
 
+/**
+ * File runtime public contract.
+ */
 export interface FileRuntime {
+  /**
+   * Clears runtime caches.
+   */
   clearCache(): void;
+  /**
+   * Closes runtime resources.
+   */
   close(): Promise<void>;
+  /**
+   * Builds route snapshot from filesystem.
+   */
   getRouteSnapshot(): Promise<FileRouteSnapshot>;
+  /**
+   * Returns worker diagnostics snapshot.
+   */
   getWorkerSnapshot(): FileWorkerSnapshot;
+  /**
+   * Handles request by dynamic handler or static file fallback.
+   */
   handleRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -56,24 +131,40 @@ export interface FileRuntime {
   ): Promise<HandlerResult>;
 }
 
+/**
+ * Returns static content-type by file extension.
+ */
 function getContentType(filePath: string): string {
   const extension = path.extname(filePath).toLowerCase();
   return STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
 }
 
+/**
+ * Normalizes file separators to `/` for route output.
+ */
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join('/');
 }
 
+/**
+ * Verifies target path is still under root directory.
+ * ! Prevents directory traversal when resolving dynamic files.
+ */
 function isUnderDirectory(targetPath: string, rootDirectory: string): boolean {
   const relativePath = path.relative(rootDirectory, targetPath);
   return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 }
 
+/**
+ * Private segments are not routable.
+ */
 function isIgnoredSegment(segment: string): boolean {
   return segment.startsWith('_');
 }
 
+/**
+ * Parses and validates pathname into safe segments.
+ */
 function parseRequestPath(url: URL): ParsedPath | undefined {
   const pathname = url.pathname;
   const rawSegments = pathname.split('/').filter(Boolean);
@@ -105,6 +196,9 @@ function parseRequestPath(url: URL): ParsedPath | undefined {
   return { pathname, segments };
 }
 
+/**
+ * Generates file version token from mtime and size.
+ */
 async function getFileVersion(filePath: string): Promise<string | undefined> {
   try {
     const stat = await fs.promises.stat(filePath);
@@ -125,6 +219,9 @@ async function getFileVersion(filePath: string): Promise<string | undefined> {
   }
 }
 
+/**
+ * Converts relative path into public route.
+ */
 function toPublicRoute(relativePath: string): string {
   if (relativePath.length === 0) {
     return '/';
@@ -133,6 +230,9 @@ function toPublicRoute(relativePath: string): string {
   return `/${normalizeRelativePath(relativePath)}`;
 }
 
+/**
+ * Maps handler file path to route path.
+ */
 function getRouteFromHandlerFile(relativePath: string): string {
   const normalizedRelativePath = normalizeRelativePath(relativePath);
 
@@ -153,6 +253,9 @@ function getRouteFromHandlerFile(relativePath: string): string {
   return toPublicRoute(normalizedRelativePath);
 }
 
+/**
+ * Builds ordered handler candidates for a route.
+ */
 function buildHandlerCandidates(dynamicDirectory: string, segments: readonly string[]): string[] {
   if (segments.length === 0) {
     return [path.resolve(dynamicDirectory, 'index.mjs')];
@@ -163,6 +266,9 @@ function buildHandlerCandidates(dynamicDirectory: string, segments: readonly str
   return [path.resolve(routePath, 'index.mjs'), `${routePath}.mjs`];
 }
 
+/**
+ * Streams static file to response.
+ */
 async function streamStaticFile(
   filePath: string,
   stat: fs.Stats,
@@ -187,6 +293,9 @@ async function streamStaticFile(
   });
 }
 
+/**
+ * Normalizes request data when caller didn't pre-normalize.
+ */
 function normalizeRequest(req: http.IncomingMessage, normalized?: NormalizedRequest): NormalizedRequest | undefined {
   if (normalized !== undefined) {
     return normalized;
@@ -207,6 +316,9 @@ function normalizeRequest(req: http.IncomingMessage, normalized?: NormalizedRequ
   };
 }
 
+/**
+ * Serializes IncomingHttpHeaders for worker protocol.
+ */
 function normalizeHeaders(headers: http.IncomingHttpHeaders): protocol.Headers {
   const serializedHeaders: protocol.Headers = {};
 
@@ -230,6 +342,10 @@ function normalizeHeaders(headers: http.IncomingHttpHeaders): protocol.Headers {
   return serializedHeaders;
 }
 
+/**
+ * Reads request body once before worker execution.
+ * ! Body stream is consumable; do not read it elsewhere first.
+ */
 async function readRequestBody(req: http.IncomingMessage, method: string): Promise<Uint8Array | undefined> {
   if (method === 'GET' || method === 'HEAD') {
     return undefined;
@@ -281,6 +397,9 @@ async function readRequestBody(req: http.IncomingMessage, method: string): Promi
   });
 }
 
+/**
+ * Applies serialized worker response back onto ServerResponse.
+ */
 function applyWorkerResponse(res: http.ServerResponse, response: protocol.SerializedResponse): void {
   res.statusCode = response.statusCode;
 
@@ -302,10 +421,19 @@ function applyWorkerResponse(res: http.ServerResponse, response: protocol.Serial
  * @param dir Dynamic directory set in `FluxionOptions`
  */
 export function createFileRuntime(dir: string): FileRuntime {
+  /**
+   * Main-thread view of loaded handler versions.
+   */
   const handlerVersions = new Map<string, string>();
 
+  /**
+   * Worker-backed handler executor.
+   */
   const handlerWorkerPool = createHandlerWorkerPool();
 
+  /**
+   * Writes load/reload logs for handlers.
+   */
   const logHandlerLoad = (filePath: string, version: string, previousVersion?: string): void => {
     const relativeFilePath = normalizeRelativePath(path.relative(dir, filePath));
     const route = getRouteFromHandlerFile(relativeFilePath);
@@ -329,6 +457,9 @@ export function createFileRuntime(dir: string): FileRuntime {
     });
   };
 
+  /**
+   * Resolves the best matching handler for a route.
+   */
   const resolveHandlerFile = async (segments: readonly string[]): Promise<ResolvedHandlerFile | undefined> => {
     const candidates = buildHandlerCandidates(dir, segments);
 
@@ -347,6 +478,9 @@ export function createFileRuntime(dir: string): FileRuntime {
     return undefined;
   };
 
+  /**
+   * Executes matched handler inside worker.
+   */
   const tryHandleHandler = async (
     parsedPath: ParsedPath,
     req: http.IncomingMessage,
@@ -384,6 +518,9 @@ export function createFileRuntime(dir: string): FileRuntime {
     return HandlerResult.Handled;
   };
 
+  /**
+   * Serves static files when no dynamic handler is matched.
+   */
   const tryHandleStatic = async (
     parsedPath: ParsedPath,
     _req: http.IncomingMessage,
@@ -430,6 +567,9 @@ export function createFileRuntime(dir: string): FileRuntime {
     }
   };
 
+  /**
+   * Scans dynamic directory and builds route snapshot.
+   */
   const getRouteSnapshot = async (): Promise<FileRouteSnapshot> => {
     const handlerByRoute = new Map<string, { entry: HandlerRouteEntry; priority: number }>();
     const staticFiles: StaticRouteEntry[] = [];
@@ -516,13 +656,22 @@ export function createFileRuntime(dir: string): FileRuntime {
   };
 
   return {
+    /**
+     * Clears version cache and asks worker pool to rotate.
+     */
     clearCache() {
       handlerVersions.clear();
       void handlerWorkerPool.clearCache();
     },
+    /**
+     * Closes worker pool.
+     */
     async close() {
       await handlerWorkerPool.close();
     },
+    /**
+     * Returns worker diagnostics for meta api.
+     */
     getWorkerSnapshot() {
       return {
         dir,
@@ -530,6 +679,9 @@ export function createFileRuntime(dir: string): FileRuntime {
       };
     },
     getRouteSnapshot,
+    /**
+     * Runtime entrypoint for request handling.
+     */
     async handleRequest(
       req: http.IncomingMessage,
       res: http.ServerResponse,

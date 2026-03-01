@@ -5,15 +5,33 @@ import { Readable, Writable } from 'node:stream';
 
 import type { protocol } from './protocol.js';
 
+/**
+ * Handler function signature exported by dynamic modules.
+ */
 type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
 
+/**
+ * Cached handler entry inside one worker lifecycle.
+ */
 interface HandlerCacheEntry {
+  /**
+   * Loaded handler function.
+   */
   handler: ModuleDefaultHandler;
+  /**
+   * Version token used by main thread.
+   */
   version: string;
 }
 
+/**
+ * Worker-local handler cache.
+ */
 const handlerCache = new Map<string, HandlerCacheEntry>();
 
+/**
+ * Converts unknown errors to protocol error payload.
+ */
 function toWorkerError(error: unknown): protocol.SerializedError {
   const err = error as NodeJS.ErrnoException;
 
@@ -25,15 +43,34 @@ function toWorkerError(error: unknown): protocol.SerializedError {
   };
 }
 
+/**
+ * In-memory ServerResponse used to run handlers without socket access.
+ * & This lets existing `(req, res)` handlers run unchanged inside worker.
+ */
 class MemoryServerResponse extends Writable {
+  /**
+   * HTTP status code.
+   */
   public statusCode = 200;
 
+  /**
+   * Optional status text.
+   */
   public statusMessage = '';
 
+  /**
+   * Response headers map (lowercased keys).
+   */
   private readonly headerMap = new Map<string, string>();
 
+  /**
+   * Buffered body chunks.
+   */
   private readonly bodyChunks: Buffer[] = [];
 
+  /**
+   * Sets response header.
+   */
   setHeader(name: string, value: string | number | readonly string[]): this {
     const normalizedName = name.toLowerCase();
 
@@ -46,18 +83,30 @@ class MemoryServerResponse extends Writable {
     return this;
   }
 
+  /**
+   * Gets response header.
+   */
   getHeader(name: string): string | undefined {
     return this.headerMap.get(name.toLowerCase());
   }
 
+  /**
+   * Returns all response headers.
+   */
   getHeaders(): Record<string, string> {
     return Object.fromEntries(this.headerMap.entries());
   }
 
+  /**
+   * Removes response header.
+   */
   removeHeader(name: string): void {
     this.headerMap.delete(name.toLowerCase());
   }
 
+  /**
+   * Sets status and optional headers.
+   */
   writeHead(
     statusCode: number,
     statusMessageOrHeaders?: string | http.OutgoingHttpHeaders,
@@ -75,6 +124,9 @@ class MemoryServerResponse extends Writable {
     return this;
   }
 
+  /**
+   * Ends response stream and stores optional final chunk.
+   */
   override end(chunk?: unknown, encoding?: BufferEncoding | (() => void), cb?: () => void): this {
     const resolvedCallback = typeof encoding === 'function' ? encoding : cb;
     const resolvedEncoding = typeof encoding === 'string' ? encoding : undefined;
@@ -87,6 +139,9 @@ class MemoryServerResponse extends Writable {
     return super.end(resolvedCallback);
   }
 
+  /**
+   * Serializes buffered response back to main thread.
+   */
   toSerializedResponse(): protocol.SerializedResponse {
     if (this.bodyChunks.length === 0) {
       return {
@@ -102,6 +157,9 @@ class MemoryServerResponse extends Writable {
     };
   }
 
+  /**
+   * Writable sink used by `res.write`.
+   */
   override _write(
     chunk: Buffer | string | Uint8Array,
     encoding: BufferEncoding,
@@ -111,6 +169,9 @@ class MemoryServerResponse extends Writable {
     callback();
   }
 
+  /**
+   * Applies OutgoingHttpHeaders into internal map.
+   */
   private applyHeaders(headers?: http.OutgoingHttpHeaders): void {
     if (headers === undefined) {
       return;
@@ -137,6 +198,9 @@ class MemoryServerResponse extends Writable {
   }
 }
 
+/**
+ * Normalizes write chunks into Buffer.
+ */
 function toBuffer(chunk: unknown, encoding?: BufferEncoding): Buffer {
   if (Buffer.isBuffer(chunk)) {
     return chunk;
@@ -153,6 +217,9 @@ function toBuffer(chunk: unknown, encoding?: BufferEncoding): Buffer {
   return Buffer.from(String(chunk));
 }
 
+/**
+ * Builds a synthetic IncomingMessage from protocol payload.
+ */
 function createIncomingRequest(payload: protocol.Payload): http.IncomingMessage {
   const bodyChunk = payload.body;
   const source = bodyChunk !== undefined && bodyChunk.byteLength > 0 ? [Buffer.from(bodyChunk)] : [];
@@ -191,6 +258,10 @@ function createIncomingRequest(payload: protocol.Payload): http.IncomingMessage 
   return request;
 }
 
+/**
+ * Loads handler module and validates default export.
+ * ! If version differs inside the same worker, supervisor must restart worker first.
+ */
 async function loadHandler(filePath: string, version: string): Promise<ModuleDefaultHandler> {
   const cached = handlerCache.get(filePath);
   if (cached !== undefined) {
@@ -215,6 +286,9 @@ async function loadHandler(filePath: string, version: string): Promise<ModuleDef
   return handler;
 }
 
+/**
+ * Executes one request and returns a protocol message.
+ */
 async function execute(message: protocol.ExecuteMessage): Promise<protocol.OutboundMessage> {
   const startedAt = Date.now();
   const payload = message.payload;
@@ -258,14 +332,23 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Outbo
   }
 }
 
+/**
+ * ! Worker must run under parentPort; standalone run is invalid.
+ */
 if (parentPort === null) {
   throw new Error('runtime worker missing parent port');
 }
 const port = parentPort;
 
+/**
+ * Memory report interval provided by main thread.
+ */
 const memorySampleIntervalMs =
   typeof workerData?.memorySampleIntervalMs === 'number' ? workerData.memorySampleIntervalMs : 5000;
 
+/**
+ * Periodically reports worker memory usage.
+ */
 const memoryReporter = setInterval(() => {
   const usage = process.memoryUsage();
 
@@ -282,6 +365,9 @@ const memoryReporter = setInterval(() => {
 
 memoryReporter.unref();
 
+/**
+ * Main worker message loop.
+ */
 port.on('message', (message: protocol.InboundMessage) => {
   if (message.type !== 'execute') {
     return;
