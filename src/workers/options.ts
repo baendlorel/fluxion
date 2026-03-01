@@ -34,7 +34,30 @@ export interface ExecutorOptions {
    * Worker stack size in MB.
    */
   stackSizeMb: number;
+  /**
+   * ! Maximum response payload bytes allowed from worker to main thread.
+   */
+  maxResponseBytes: number;
 }
+
+/**
+ * Custom worker item used by `workerStrategy`.
+ */
+export interface WorkerStrategyCustomItem extends Partial<ExecutorOptions> {
+  /**
+   * Stable worker id.
+   */
+  id: string;
+  /**
+   * Database names this worker can access.
+   */
+  db: string[];
+}
+
+/**
+ * Worker strategy selector.
+ */
+export type WorkerStrategy = 'all' | WorkerStrategyCustomItem[];
 
 /**
  * Resolves runtime options with framework defaults.
@@ -49,5 +72,6 @@ export function resolveExecutorOptions(overrides: Partial<ExecutorOptions> = {})
     maxOldGenerationSizeMb: overrides.maxOldGenerationSizeMb ?? 128,
     maxYoungGenerationSizeMb: overrides.maxYoungGenerationSizeMb ?? 32,
     stackSizeMb: overrides.stackSizeMb ?? 4,
+    maxResponseBytes: overrides.maxResponseBytes ?? 2 * 1024 * 1024,
   };
 }

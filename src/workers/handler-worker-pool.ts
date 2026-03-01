@@ -29,21 +29,49 @@ class WorkerRuntimeError extends Error {
 }
 
 /**
- * Pending request state.
+ * Worker pool static metadata.
  */
-interface InflightRequest {
+interface WorkerPoolMeta {
   /**
-   * Resolve pending execution with response payload.
+   * Stable worker id.
    */
-  resolve: (response: protocol.SerializedResponse) => void;
+  id: string;
   /**
-   * Reject pending execution with runtime/transport error.
+   * Database names available in this worker.
    */
-  reject: (error: Error) => void;
+  dbSet: string[];
   /**
-   * Timeout handle for request deadline.
+   * Marks the auto-added all-db fallback worker.
    */
-  timer: NodeJS.Timeout;
+  isFallbackAllDb: boolean;
+}
+
+/**
+ * Factory input for one worker pool.
+ */
+export interface CreateHandlerWorkerPoolOptions {
+  /**
+   * Worker pool metadata.
+   */
+  meta: WorkerPoolMeta;
+  /**
+   * Runtime option overrides for this worker.
+   */
+  overrides?: Partial<ExecutorOptions>;
+}
+
+/**
+ * Execute result payload returned by pool.
+ */
+export interface HandlerExecuteResult {
+  /**
+   * Serialized HTTP response.
+   */
+  response: protocol.SerializedResponse;
+  /**
+   * Resolved handler metadata.
+   */
+  meta: protocol.HandlerMeta;
 }
 
 /**
@@ -54,6 +82,18 @@ export interface HandlerWorkerSnapshot {
    * Worker lifecycle status.
    */
   status: 'running' | 'stopped' | 'restarting' | 'closed';
+  /**
+   * Worker id.
+   */
+  id: string;
+  /**
+   * Worker database capability set.
+   */
+  dbSet: string[];
+  /**
+   * Whether this worker is fallback all-db worker.
+   */
+  isFallbackAllDb: boolean;
   /**
    * Current worker thread id.
    */
@@ -114,6 +154,10 @@ export interface HandlerWorkerSnapshot {
      * V8 stack cap in MB.
      */
     stackSizeMb: number;
+    /**
+     * ! Maximum worker response payload bytes.
+     */
+    maxResponseBytes: number;
   };
   /**
    * Latest sampled memory data.
@@ -158,7 +202,11 @@ export interface HandlerWorkerPool {
   /**
    * Executes a handler request in worker.
    */
-  execute(payload: protocol.Payload): Promise<protocol.SerializedResponse>;
+  execute(payload: protocol.Payload): Promise<HandlerExecuteResult>;
+  /**
+   * Resolves handler metadata in worker.
+   */
+  inspect(filePath: string, version: string): Promise<protocol.HandlerMeta>;
   /**
    * Clears tracked state and rotates worker.
    */
@@ -174,13 +222,43 @@ export interface HandlerWorkerPool {
 }
 
 /**
+ * Pending execute request state.
+ */
+interface ExecuteInflightRequest {
+  kind: 'execute';
+  resolve: (result: HandlerExecuteResult) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+/**
+ * Pending inspect request state.
+ */
+interface InspectInflightRequest {
+  kind: 'inspect';
+  resolve: (meta: protocol.HandlerMeta) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+/**
+ * Union of pending request state.
+ */
+type InflightRequest = ExecuteInflightRequest | InspectInflightRequest;
+
+/**
  * Creates a worker pool using merged runtime defaults.
  */
-export function createHandlerWorkerPool(overrides?: Partial<ExecutorOptions>): HandlerWorkerPool {
-  return new HandlerWorkerPoolImpl(resolveExecutorOptions(overrides));
+export function createHandlerWorkerPool(options: CreateHandlerWorkerPoolOptions): HandlerWorkerPool {
+  return new HandlerWorkerPoolImpl(options.meta, resolveExecutorOptions(options.overrides));
 }
 
 class HandlerWorkerPoolImpl implements HandlerWorkerPool {
+  /**
+   * Worker pool metadata.
+   */
+  private readonly meta: WorkerPoolMeta;
+
   /**
    * Resolved runtime options.
    */
@@ -247,9 +325,15 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   private lastRestartAt: number | undefined;
 
   /**
+   * @param meta Worker metadata.
    * @param options Resolved runtime options.
    */
-  constructor(options: ExecutorOptions) {
+  constructor(meta: WorkerPoolMeta, options: ExecutorOptions) {
+    this.meta = {
+      id: meta.id,
+      dbSet: [...meta.dbSet],
+      isFallbackAllDb: meta.isFallbackAllDb,
+    };
     this.options = options;
     this.workerUrl = resolveWorkerEntryUrl();
   }
@@ -257,8 +341,15 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   /**
    * Executes request and retries once when version mismatch is detected.
    */
-  async execute(payload: protocol.Payload): Promise<protocol.SerializedResponse> {
+  async execute(payload: protocol.Payload): Promise<HandlerExecuteResult> {
     return this.executeWithRetry(payload, false);
+  }
+
+  /**
+   * Resolves handler metadata and retries once on version mismatch.
+   */
+  async inspect(filePath: string, version: string): Promise<protocol.HandlerMeta> {
+    return this.inspectWithRetry(filePath, version, false);
   }
 
   /**
@@ -291,6 +382,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       await worker.terminate();
     } catch (error) {
       logJsonl('WARN', 'runtime_worker_terminate_failed', {
+        workerId: this.meta.id,
         error: getErrorMessage(error),
       });
     }
@@ -306,6 +398,9 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     return {
       status: this.getStatus(),
+      id: this.meta.id,
+      dbSet: [...this.meta.dbSet],
+      isFallbackAllDb: this.meta.isFallbackAllDb,
       threadId: this.worker?.threadId,
       inflight: this.inflight.size,
       trackedHandlers: handlers.length,
@@ -321,6 +416,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
         maxYoungGenerationSizeMb: this.options.maxYoungGenerationSizeMb,
         stackSizeMb: this.options.stackSizeMb,
+        maxResponseBytes: this.options.maxResponseBytes,
       },
       memory:
         this.latestMemory === undefined || this.latestMemoryAt === undefined
@@ -336,9 +432,9 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   }
 
   /**
-   * Executes request with one retry path for stale worker cache.
+   * Executes one request with retry path for stale worker cache.
    */
-  private async executeWithRetry(payload: protocol.Payload, retried: boolean): Promise<protocol.SerializedResponse> {
+  private async executeWithRetry(payload: protocol.Payload, retried: boolean): Promise<HandlerExecuteResult> {
     try {
       return await this.executeOnce(payload);
     } catch (error) {
@@ -355,12 +451,29 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   }
 
   /**
+   * Inspects handler metadata with retry path for stale worker cache.
+   */
+  private async inspectWithRetry(filePath: string, version: string, retried: boolean): Promise<protocol.HandlerMeta> {
+    try {
+      return await this.inspectOnce(filePath, version);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+
+      if (!retried && code === 'WORKER_VERSION_MISMATCH') {
+        await this.restart('worker_version_mismatch');
+        this.versionsByFilePath.set(filePath, version);
+        return this.inspectWithRetry(filePath, version, true);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Enqueues a request into worker with timeout protection.
    */
-  private async executeOnce(payload: protocol.Payload): Promise<protocol.SerializedResponse> {
-    if (this.closed) {
-      throw new Error('runtime worker is closed');
-    }
+  private async executeOnce(payload: protocol.Payload): Promise<HandlerExecuteResult> {
+    this.assertExecutable();
 
     if (this.inflight.size >= this.options.maxInflight) {
       const overloadError = new Error('runtime worker overloaded');
@@ -368,17 +481,14 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       throw overloadError;
     }
 
-    const knownVersion = this.versionsByFilePath.get(payload.filePath);
-    if (knownVersion !== undefined && knownVersion !== payload.version) {
-      await this.restart('handler_version_changed');
-    }
+    this.assertKnownVersion(payload.filePath, payload.version);
 
     this.versionsByFilePath.set(payload.filePath, payload.version);
 
     const worker = this.ensureWorker();
 
-    return new Promise<protocol.SerializedResponse>((resolve, reject) => {
-      const id = `${Date.now().toString(36)}-${(this.requestCounter++).toString(36)}`;
+    return new Promise<HandlerExecuteResult>((resolve, reject) => {
+      const id = this.nextRequestId();
 
       const timer = setTimeout(() => {
         this.inflight.delete(id);
@@ -390,12 +500,73 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         void this.restart('request_timeout');
       }, this.options.requestTimeoutMs);
 
-      this.inflight.set(id, { resolve, reject, timer });
+      const inflight: ExecuteInflightRequest = {
+        kind: 'execute',
+        resolve,
+        reject,
+        timer,
+      };
+      this.inflight.set(id, inflight);
 
-      const message: protocol.InboundMessage = {
+      const message: protocol.ExecuteMessage = {
         type: 'execute',
         id,
         payload,
+      };
+
+      const transfer: ArrayBuffer[] = [];
+      if (payload.body !== undefined && payload.body.byteLength > 0) {
+        transfer.push(payload.body.buffer as ArrayBuffer);
+      }
+
+      if (transfer.length > 0) {
+        worker.postMessage(message, transfer);
+        return;
+      }
+
+      worker.postMessage(message);
+    });
+  }
+
+  /**
+   * Sends inspect command to worker with timeout protection.
+   */
+  private async inspectOnce(filePath: string, version: string): Promise<protocol.HandlerMeta> {
+    this.assertExecutable();
+
+    this.assertKnownVersion(filePath, version);
+    this.versionsByFilePath.set(filePath, version);
+
+    const worker = this.ensureWorker();
+
+    return new Promise<protocol.HandlerMeta>((resolve, reject) => {
+      const id = this.nextRequestId();
+
+      const timer = setTimeout(() => {
+        this.inflight.delete(id);
+
+        const timeoutError = new Error(`runtime worker timeout after ${this.options.requestTimeoutMs}ms`);
+        (timeoutError as NodeJS.ErrnoException).code = 'WORKER_TIMEOUT';
+
+        reject(timeoutError);
+        void this.restart('inspect_timeout');
+      }, this.options.requestTimeoutMs);
+
+      const inflight: InspectInflightRequest = {
+        kind: 'inspect',
+        resolve,
+        reject,
+        timer,
+      };
+      this.inflight.set(id, inflight);
+
+      const message: protocol.InspectMessage = {
+        type: 'inspect',
+        id,
+        payload: {
+          filePath,
+          version,
+        },
       };
 
       worker.postMessage(message);
@@ -413,6 +584,9 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     const worker = new Worker(this.workerUrl, {
       workerData: {
         memorySampleIntervalMs: this.options.memorySampleIntervalMs,
+        maxResponseBytes: this.options.maxResponseBytes,
+        workerId: this.meta.id,
+        dbSet: this.meta.dbSet,
       },
       resourceLimits: {
         maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
@@ -429,6 +603,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     worker.once('error', (error) => {
       logJsonl('ERROR', 'runtime_worker_error', {
+        workerId: this.meta.id,
         error: getErrorMessage(error),
       });
 
@@ -459,9 +634,12 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     this.worker = worker;
     logJsonl('INFO', 'runtime_worker_started', {
+      workerId: this.meta.id,
+      dbSet: this.meta.dbSet,
       maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
       maxYoungGenerationSizeMb: this.options.maxYoungGenerationSizeMb,
       stackSizeMb: this.options.stackSizeMb,
+      maxResponseBytes: this.options.maxResponseBytes,
     });
     return worker;
   }
@@ -483,17 +661,45 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     this.inflight.delete(message.id);
     clearTimeout(inflight.timer);
 
+    if (message.type === 'result') {
+      if (inflight.kind !== 'execute') {
+        inflight.reject(new Error('runtime worker result type mismatch'));
+        return;
+      }
+
+      if (!message.ok) {
+        inflight.reject(new WorkerRuntimeError(message.error ?? { name: 'Error', message: 'Unknown worker error' }));
+        return;
+      }
+
+      if (message.response === undefined) {
+        inflight.reject(new Error('runtime worker missing response payload'));
+        return;
+      }
+
+      inflight.resolve({
+        response: message.response,
+        meta: message.meta ?? { db: [] },
+      });
+      return;
+    }
+
+    if (inflight.kind !== 'inspect') {
+      inflight.reject(new Error('runtime worker inspect type mismatch'));
+      return;
+    }
+
     if (!message.ok) {
       inflight.reject(new WorkerRuntimeError(message.error ?? { name: 'Error', message: 'Unknown worker error' }));
       return;
     }
 
-    if (message.response === undefined) {
-      inflight.reject(new Error('runtime worker missing response payload'));
+    if (message.meta === undefined) {
+      inflight.reject(new Error('runtime worker missing inspect metadata'));
       return;
     }
 
-    inflight.resolve(message.response);
+    inflight.resolve(message.meta);
   }
 
   /**
@@ -508,6 +714,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     if (message.heapUsed >= hardLimitBytes) {
       logJsonl('WARN', 'runtime_worker_memory_hard_limit', {
+        workerId: this.meta.id,
         heapUsed: message.heapUsed,
         hardLimitBytes,
       });
@@ -517,6 +724,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     if (message.heapUsed >= softLimitBytes && this.inflight.size === 0) {
       logJsonl('WARN', 'runtime_worker_memory_soft_limit', {
+        workerId: this.meta.id,
         heapUsed: message.heapUsed,
         softLimitBytes,
       });
@@ -562,6 +770,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         await worker.terminate();
       } catch (error) {
         logJsonl('WARN', 'runtime_worker_restart_terminate_failed', {
+          workerId: this.meta.id,
           reason,
           error: getErrorMessage(error),
         });
@@ -573,7 +782,10 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     this.ensureWorker();
-    logJsonl('WARN', 'runtime_worker_restarted', { reason });
+    logJsonl('WARN', 'runtime_worker_restarted', {
+      workerId: this.meta.id,
+      reason,
+    });
   }
 
   /**
@@ -607,5 +819,35 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     return 'running';
+  }
+
+  /**
+   * Throws when pool cannot accept new work.
+   */
+  private assertExecutable(): void {
+    if (this.closed) {
+      throw new Error('runtime worker is closed');
+    }
+  }
+
+  /**
+   * Enforces version coherence within one worker lifecycle.
+   */
+  private assertKnownVersion(filePath: string, version: string): void {
+    const knownVersion = this.versionsByFilePath.get(filePath);
+    if (knownVersion === undefined || knownVersion === version) {
+      return;
+    }
+
+    const mismatchError = new Error(`handler version changed: ${filePath}`);
+    (mismatchError as NodeJS.ErrnoException).code = 'WORKER_VERSION_MISMATCH';
+    throw mismatchError;
+  }
+
+  /**
+   * Generates unique request id.
+   */
+  private nextRequestId(): string {
+    return `${Date.now().toString(36)}-${(this.requestCounter++).toString(36)}`;
   }
 }

@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { HandlerResult, HttpCode } from '@/common/consts.js';
 import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
 import { createFileRuntime } from '@/workers/file-runtime.js';
+import type { ExecutorOptions, WorkerStrategy } from '@/workers/options.js';
 
 import { createMetaApi } from './meta-api.js';
 
@@ -13,6 +14,21 @@ import type { NormalizedRequest } from './types.js';
 import { safeSendJson } from './utils/send-json.js';
 import { getRealIp } from './utils/headers.js';
 import { createBodyPreviewCapture, parseQuery, toURL } from './utils/request.js';
+
+/**
+ * Database config item accepted by server options.
+ */
+export interface FluxionDatabaseConfig {
+  /**
+   * Stable database name.
+   */
+  name: string;
+}
+
+/**
+ * User-provided database config input.
+ */
+export type FluxionDatabaseInput = string | FluxionDatabaseConfig;
 
 export interface FluxionOptions {
   /**
@@ -24,16 +40,67 @@ export interface FluxionOptions {
   host: string;
 
   port: number;
+
+  /**
+   * Declared database names used by worker strategy routing.
+   */
+  databases?: FluxionDatabaseInput[];
+
+  /**
+   * Worker routing strategy.
+   */
+  workerStrategy?: WorkerStrategy;
+
+  /**
+   * Base worker runtime option overrides.
+   */
+  workerOptions?: Partial<ExecutorOptions>;
+}
+
+/**
+ * Normalizes database config into unique non-empty names.
+ */
+function normalizeDatabaseNames(databases: FluxionDatabaseInput[] | undefined): string[] {
+  if (databases === undefined || databases.length === 0) {
+    return [];
+  }
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < databases.length; i++) {
+    const item = databases[i];
+    const rawName = typeof item === 'string' ? item : item.name;
+    const name = rawName.trim();
+
+    if (name.length === 0) {
+      throw new Error(`Invalid databases[${i}]: empty name`);
+    }
+
+    if (seen.has(name)) {
+      throw new Error(`Duplicate database name: ${name}`);
+    }
+
+    seen.add(name);
+    names.push(name);
+  }
+
+  return names;
 }
 
 export function fluxion(options: FluxionOptions): http.Server {
   const dir = path.resolve(options.dir);
+  const databaseNames = normalizeDatabaseNames(options.databases);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
     logJsonl('INFO', 'dynamic_directory_created', { directory: dir });
   }
 
-  const fileRuntime = createFileRuntime(dir);
+  const fileRuntime = createFileRuntime(dir, {
+    databaseNames,
+    workerStrategy: options.workerStrategy,
+    workerOptions: options.workerOptions,
+  });
   const metaApi = createMetaApi({
     dir,
     getRouteSnapshot: fileRuntime.getRouteSnapshot,

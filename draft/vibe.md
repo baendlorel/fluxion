@@ -37,3 +37,10 @@ dynamicDirectory
 
 你记住现在我们的项目叫fluxion，可以写在AGENTS.md里。我希望的是，假如我访问了/aaa/bb/cc这个路由，那么fluxion会寻找dynamicDirectory下的aaa文件夹里的server里的bb文件夹里的cc.js文件或者cc/index.js(优先)文件，以里面的函数作为handler来处理这个请求。这个函数的签名是`(req, res) => {}`，你可以在里面写任何逻辑来处理请求和响应。我不知道await import(xxx)能否胜任以及它缓存是否原生，或者是否有性能问题。我希望的是加载这个js文件的default导出。
 请你评估这个方案
+
+---
+
+worker优化：
+1、直接从worker返回你说的buffer来限制大小、判定,减少拷贝传输成本避免内存膨胀；
+2、mjs编写的时候可以选择自己需要远程的什么对象，比如{handler,db:['pg','xxxDB']}等；handler里会传入第三个入参context来包含这些功能;
+3、实现workerstrategy这个方案。

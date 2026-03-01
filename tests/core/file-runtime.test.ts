@@ -12,10 +12,14 @@ import {
   writeFile,
 } from '../helpers/test-utils.js';
 import { createFileRuntime } from '@/workers/file-runtime.js';
+import type { FileRuntime, FileRuntimeOptions } from '@/workers/file-runtime.js';
 import { HandlerResult } from '@/common/consts.js';
 
-async function startRuntimeServer(dynamicDirectory: string): Promise<{ server: http.Server; baseUrl: string }> {
-  const runtime = createFileRuntime(dynamicDirectory);
+async function startRuntimeServer(
+  dynamicDirectory: string,
+  options?: FileRuntimeOptions,
+): Promise<{ server: http.Server; baseUrl: string; runtime: FileRuntime }> {
+  const runtime = createFileRuntime(dynamicDirectory, options);
 
   const server = http.createServer((req, res) => {
     void runtime
@@ -32,8 +36,12 @@ async function startRuntimeServer(dynamicDirectory: string): Promise<{ server: h
       });
   });
 
+  server.once('close', () => {
+    void runtime.close();
+  });
+
   const { baseUrl } = await listenEphemeral(server);
-  return { server, baseUrl };
+  return { server, baseUrl, runtime };
 }
 
 describe('file-runtime', () => {
@@ -156,5 +164,104 @@ describe('file-runtime', () => {
 
     expect(snapshot.handlers.some((item) => item.file.includes('_lib'))).toBe(false);
     expect(snapshot.staticFiles.some((item) => item.file.includes('_lib'))).toBe(false);
+  });
+
+  it('supports object-style default export and passes handler context', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-context-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'ctx.mjs'),
+      [
+        'export default {',
+        "  db: ['main'],",
+        '  handler(_req, res, context) {',
+        "    res.setHeader('x-worker-id', context.worker.id);",
+        "    res.setHeader('x-db-list', Object.keys(context.db).join(','));",
+        "    res.end(context.hasDb('main') ? 'context-ok' : 'context-missing');",
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
+      databaseNames: ['main'],
+    });
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/ctx`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('context-ok');
+    expect(response.headers.get('x-db-list')).toBe('main');
+    expect(response.headers.get('x-worker-id')).toContain('fluxion-worker-all');
+  });
+
+  it('routes handlers to minimal matching worker and keeps all-db fallback', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-strategy-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'small.mjs'),
+      [
+        'export default {',
+        "  db: ['db1'],",
+        '  handler(_req, res, context) {',
+        '    res.end(context.worker.id);',
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    await writeFile(
+      path.join(dynamicDirectory, 'wide.mjs'),
+      [
+        'export default {',
+        "  db: ['db1', 'db2'],",
+        '  handler(_req, res, context) {',
+        '    res.end(context.worker.id);',
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl, runtime } = await startRuntimeServer(dynamicDirectory, {
+      databaseNames: ['db1', 'db2'],
+      workerStrategy: [{ id: 'worker-db1', db: ['db1'] }],
+    });
+    servers.push(server);
+
+    const snapshot = runtime.getWorkerSnapshot();
+    expect(snapshot.workers.length).toBe(2);
+    expect(snapshot.workers.some((worker) => worker.id === 'worker-db1')).toBe(true);
+    expect(snapshot.workers.some((worker) => worker.isFallbackAllDb)).toBe(true);
+
+    const smallResponse = await fetch(`${baseUrl}/small`);
+    expect(smallResponse.status).toBe(200);
+    expect(await smallResponse.text()).toBe('worker-db1');
+
+    const wideResponse = await fetch(`${baseUrl}/wide`);
+    expect(wideResponse.status).toBe(200);
+    expect(await wideResponse.text()).toContain('fluxion-worker-all');
+  });
+
+  it('fails request when worker response exceeds maxResponseBytes', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-res-size-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'large.mjs'),
+      "export default function handler(_req, res) { res.end('0123456789'.repeat(40)); }",
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
+      workerOptions: {
+        maxResponseBytes: 128,
+      },
+    });
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/large`);
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain('worker response too large');
   });
 });

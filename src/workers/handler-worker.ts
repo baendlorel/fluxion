@@ -6,18 +6,96 @@ import { Readable, Writable } from 'node:stream';
 import type { protocol } from './protocol.js';
 
 /**
+ * Worker bootstrap data injected by main thread.
+ */
+interface WorkerBootstrapData {
+  /**
+   * Memory telemetry interval in milliseconds.
+   */
+  memorySampleIntervalMs?: number;
+  /**
+   * ! Maximum response payload size allowed for one request.
+   */
+  maxResponseBytes?: number;
+  /**
+   * Stable worker id.
+   */
+  workerId?: string;
+  /**
+   * Database names available in this worker.
+   */
+  dbSet?: string[];
+}
+
+/**
+ * Third argument passed to dynamic handlers.
+ */
+interface HandlerContext {
+  /**
+   * Database slots declared by handler metadata.
+   * & Reserved for adapter injection while keeping current API stable.
+   */
+  db: Record<string, undefined>;
+  /**
+   * Checks whether current worker can access a database name.
+   */
+  hasDb(name: string): boolean;
+  /**
+   * Worker identity and capability snapshot.
+   */
+  worker: {
+    /**
+     * Worker id.
+     */
+    id: string;
+    /**
+     * Worker-level database capability set.
+     */
+    dbSet: string[];
+  };
+}
+
+/**
  * Handler function signature exported by dynamic modules.
  */
-type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
+type ModuleDefaultHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  context: HandlerContext,
+) => unknown;
+
+/**
+ * Object-style default export for handler metadata.
+ */
+interface ModuleDefaultHandlerObject {
+  /**
+   * Runtime handler function.
+   */
+  handler: ModuleDefaultHandler;
+  /**
+   * Required database names.
+   */
+  db?: string | string[];
+}
+
+/**
+ * Parsed handler module export.
+ */
+interface ParsedModuleDefault {
+  /**
+   * Runtime handler function.
+   */
+  handler: ModuleDefaultHandler;
+  /**
+   * Handler metadata used by worker routing.
+   */
+  meta: protocol.HandlerMeta;
+}
 
 /**
  * Cached handler entry inside one worker lifecycle.
  */
-interface HandlerCacheEntry {
-  /**
-   * Loaded handler function.
-   */
-  handler: ModuleDefaultHandler;
+interface HandlerCacheEntry extends ParsedModuleDefault {
   /**
    * Version token used by main thread.
    */
@@ -30,16 +108,165 @@ interface HandlerCacheEntry {
 const handlerCache = new Map<string, HandlerCacheEntry>();
 
 /**
+ * Runtime bootstrap options resolved from workerData.
+ */
+const bootstrapData = workerData as WorkerBootstrapData | undefined;
+
+/**
+ * Memory report interval provided by main thread.
+ */
+const memorySampleIntervalMs =
+  typeof bootstrapData?.memorySampleIntervalMs === 'number' && bootstrapData.memorySampleIntervalMs > 0
+    ? Math.floor(bootstrapData.memorySampleIntervalMs)
+    : 5000;
+
+/**
+ * ! Maximum response size for a single handler execution.
+ */
+const maxResponseBytes =
+  typeof bootstrapData?.maxResponseBytes === 'number' && bootstrapData.maxResponseBytes > 0
+    ? Math.floor(bootstrapData.maxResponseBytes)
+    : 2 * 1024 * 1024;
+
+/**
+ * Worker identity string used in handler context.
+ */
+const workerId = typeof bootstrapData?.workerId === 'string' ? bootstrapData.workerId : 'runtime-worker';
+
+/**
+ * Database capability set available in this worker.
+ */
+const workerDbSet = normalizeDbList(bootstrapData?.dbSet);
+
+/**
+ * Fast lookup set for worker DB capability checks.
+ */
+const workerDbNameSet = new Set(workerDbSet);
+
+/**
  * Converts unknown errors to protocol error payload.
  */
 function toWorkerError(error: unknown): protocol.SerializedError {
   const err = error as NodeJS.ErrnoException;
+  const isError = error instanceof Error;
 
   return {
-    name: Error.isError(error) ? error.name : 'Error',
-    message: Error.isError(error) ? error.message : String(error),
-    stack: Error.isError(error) ? error.stack : undefined,
+    name: isError ? error.name : 'Error',
+    message: isError ? error.message : String(error),
+    stack: isError ? error.stack : undefined,
     code: typeof err.code === 'string' ? err.code : undefined,
+  };
+}
+
+/**
+ * Normalizes database names from metadata/config input.
+ */
+function normalizeDbList(input: unknown): string[] {
+  if (typeof input === 'string') {
+    const normalized = input.trim();
+    return normalized.length === 0 ? [] : [normalized];
+  }
+
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (let i = 0; i < input.length; i++) {
+    const item = input[i];
+    if (typeof item !== 'string') {
+      continue;
+    }
+
+    const name = item.trim();
+    if (name.length === 0 || seen.has(name)) {
+      continue;
+    }
+
+    seen.add(name);
+    normalized.push(name);
+  }
+
+  normalized.sort((left, right) => left.localeCompare(right));
+  return normalized;
+}
+
+/**
+ * Runtime shape guard for plain object values.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Parses default export into handler + metadata shape.
+ */
+function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedModuleDefault {
+  if (typeof defaultExport === 'function') {
+    return {
+      handler: defaultExport as ModuleDefaultHandler,
+      meta: { db: [] },
+    };
+  }
+
+  if (isRecord(defaultExport)) {
+    const objectExport = defaultExport as Partial<ModuleDefaultHandlerObject>;
+    if (typeof objectExport.handler !== 'function') {
+      throw new TypeError(
+        `Default export must be a function or { handler, db? }: ${filePath}`,
+      );
+    }
+
+    return {
+      handler: objectExport.handler,
+      meta: {
+        db: normalizeDbList(objectExport.db),
+      },
+    };
+  }
+
+  throw new TypeError(
+    `Default export must be a function or { handler, db? }: ${filePath}`,
+  );
+}
+
+/**
+ * ! Validates handler DB requirements against worker capability.
+ */
+function assertWorkerDbCapability(filePath: string, meta: protocol.HandlerMeta): void {
+  const missing = meta.db.filter((name) => !workerDbNameSet.has(name));
+  if (missing.length === 0) {
+    return;
+  }
+
+  const dbError = new Error(
+    `Handler requires unavailable db in worker "${workerId}": ${filePath} -> ${missing.join(', ')}`,
+  );
+  (dbError as NodeJS.ErrnoException).code = 'WORKER_DB_NOT_AVAILABLE';
+  throw dbError;
+}
+
+/**
+ * Builds request context passed as third arg to handler.
+ */
+function createHandlerContext(meta: protocol.HandlerMeta): HandlerContext {
+  const db: Record<string, undefined> = Object.create(null) as Record<string, undefined>;
+
+  for (let i = 0; i < meta.db.length; i++) {
+    db[meta.db[i]] = undefined;
+  }
+
+  return {
+    db,
+    hasDb(name: string): boolean {
+      return workerDbNameSet.has(name);
+    },
+    worker: {
+      id: workerId,
+      dbSet: [...workerDbSet],
+    },
   };
 }
 
@@ -59,6 +286,11 @@ class MemoryServerResponse extends Writable {
   public statusMessage = '';
 
   /**
+   * ! Maximum response body bytes allowed.
+   */
+  private readonly maxBodyBytes: number;
+
+  /**
    * Response headers map (lowercased keys).
    */
   private readonly headerMap = new Map<string, string>();
@@ -67,6 +299,19 @@ class MemoryServerResponse extends Writable {
    * Buffered body chunks.
    */
   private readonly bodyChunks: Buffer[] = [];
+
+  /**
+   * Total bytes currently buffered.
+   */
+  private totalBodyBytes = 0;
+
+  /**
+   * @param maxBodyBytes Maximum body bytes before hard-failing.
+   */
+  constructor(maxBodyBytes: number) {
+    super();
+    this.maxBodyBytes = maxBodyBytes;
+  }
 
   /**
    * Sets response header.
@@ -132,8 +377,7 @@ class MemoryServerResponse extends Writable {
     const resolvedEncoding = typeof encoding === 'string' ? encoding : undefined;
 
     if (chunk !== undefined && chunk !== null) {
-      const normalizedChunk = toBuffer(chunk, resolvedEncoding);
-      this.bodyChunks.push(normalizedChunk);
+      this.appendChunk(toBuffer(chunk, resolvedEncoding));
     }
 
     return super.end(resolvedCallback);
@@ -150,10 +394,19 @@ class MemoryServerResponse extends Writable {
       };
     }
 
+    const body = new Uint8Array(this.totalBodyBytes);
+    let offset = 0;
+
+    for (let i = 0; i < this.bodyChunks.length; i++) {
+      const chunk = this.bodyChunks[i];
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
     return {
       statusCode: this.statusCode,
       headers: this.getHeaders(),
-      body: Buffer.concat(this.bodyChunks),
+      body,
     };
   }
 
@@ -165,8 +418,12 @@ class MemoryServerResponse extends Writable {
     encoding: BufferEncoding,
     callback: (error?: Error | null) => void,
   ): void {
-    this.bodyChunks.push(toBuffer(chunk, encoding));
-    callback();
+    try {
+      this.appendChunk(toBuffer(chunk, encoding));
+      callback();
+    } catch (error) {
+      callback(error as Error);
+    }
   }
 
   /**
@@ -195,6 +452,27 @@ class MemoryServerResponse extends Writable {
 
       this.setHeader(key, String(value));
     }
+  }
+
+  /**
+   * ! Appends one response chunk and enforces body size cap.
+   */
+  private appendChunk(chunk: Buffer): void {
+    if (chunk.byteLength === 0) {
+      return;
+    }
+
+    const nextTotalBytes = this.totalBodyBytes + chunk.byteLength;
+    if (nextTotalBytes > this.maxBodyBytes) {
+      const sizeError = new Error(
+        `worker response too large: ${nextTotalBytes} bytes exceeds ${this.maxBodyBytes} bytes`,
+      );
+      (sizeError as NodeJS.ErrnoException).code = 'WORKER_RESPONSE_TOO_LARGE';
+      throw sizeError;
+    }
+
+    this.totalBodyBytes = nextTotalBytes;
+    this.bodyChunks.push(chunk);
   }
 }
 
@@ -259,14 +537,14 @@ function createIncomingRequest(payload: protocol.Payload): http.IncomingMessage 
 }
 
 /**
- * Loads handler module and validates default export.
+ * Loads handler module and resolves metadata.
  * ! If version differs inside the same worker, supervisor must restart worker first.
  */
-async function loadHandler(filePath: string, version: string): Promise<ModuleDefaultHandler> {
+async function loadHandler(filePath: string, version: string): Promise<HandlerCacheEntry> {
   const cached = handlerCache.get(filePath);
   if (cached !== undefined) {
     if (cached.version === version) {
-      return cached.handler;
+      return cached;
     }
 
     const versionError = new Error(`Handler version changed in worker: ${filePath}`);
@@ -275,30 +553,33 @@ async function loadHandler(filePath: string, version: string): Promise<ModuleDef
   }
 
   const loaded = await import(pathToFileURL(filePath).href);
-  const defaultExport = loaded.default;
+  const parsed = parseModuleDefault(loaded.default as unknown, filePath);
 
-  if (typeof defaultExport !== 'function') {
-    throw new TypeError(`Default export is not a function: ${filePath}`);
-  }
+  assertWorkerDbCapability(filePath, parsed.meta);
 
-  const handler = defaultExport as ModuleDefaultHandler;
-  handlerCache.set(filePath, { handler, version });
-  return handler;
+  const entry: HandlerCacheEntry = {
+    handler: parsed.handler,
+    version,
+    meta: parsed.meta,
+  };
+
+  handlerCache.set(filePath, entry);
+  return entry;
 }
 
 /**
- * Executes one request and returns a protocol message.
+ * Executes one request and returns worker result message.
  */
-async function execute(message: protocol.ExecuteMessage): Promise<protocol.OutboundMessage> {
+async function execute(message: protocol.ExecuteMessage): Promise<protocol.ResultMessage> {
   const startedAt = Date.now();
   const payload = message.payload;
 
   try {
-    const handler = await loadHandler(payload.filePath, payload.version);
+    const entry = await loadHandler(payload.filePath, payload.version);
     const request = createIncomingRequest(payload);
-    const response = new MemoryServerResponse() as unknown as http.ServerResponse;
+    const response = new MemoryServerResponse(maxResponseBytes) as unknown as http.ServerResponse;
 
-    await Promise.resolve(handler(request, response));
+    await Promise.resolve(entry.handler(request, response, createHandlerContext(entry.meta)));
 
     const writableResponse = response as unknown as MemoryServerResponse;
     if (!writableResponse.writableEnded) {
@@ -318,6 +599,7 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Outbo
       ok: true,
       elapsedMs: Date.now() - startedAt,
       heapUsed: process.memoryUsage().heapUsed,
+      meta: entry.meta,
       response: writableResponse.toSerializedResponse(),
     };
   } catch (error) {
@@ -333,6 +615,29 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Outbo
 }
 
 /**
+ * Resolves metadata without executing the handler.
+ */
+async function inspect(message: protocol.InspectMessage): Promise<protocol.InspectResultMessage> {
+  try {
+    const entry = await loadHandler(message.payload.filePath, message.payload.version);
+
+    return {
+      type: 'inspect_result',
+      id: message.id,
+      ok: true,
+      meta: entry.meta,
+    };
+  } catch (error) {
+    return {
+      type: 'inspect_result',
+      id: message.id,
+      ok: false,
+      error: toWorkerError(error),
+    };
+  }
+}
+
+/**
  * ! Worker must run under parentPort; standalone run is invalid.
  */
 if (parentPort === null) {
@@ -341,10 +646,22 @@ if (parentPort === null) {
 const port = parentPort;
 
 /**
- * Memory report interval provided by main thread.
+ * Posts outbound message and transfers body buffer when present.
  */
-const memorySampleIntervalMs =
-  typeof workerData?.memorySampleIntervalMs === 'number' ? workerData.memorySampleIntervalMs : 5000;
+function postOutboundMessage(message: protocol.OutboundMessage): void {
+  if (message.type !== 'result' || !message.ok || message.response?.body === undefined) {
+    port.postMessage(message);
+    return;
+  }
+
+  const body = message.response.body;
+  if (body.byteLength === 0) {
+    port.postMessage(message);
+    return;
+  }
+
+  port.postMessage(message, [body.buffer as ArrayBuffer]);
+}
 
 /**
  * Periodically reports worker memory usage.
@@ -352,7 +669,7 @@ const memorySampleIntervalMs =
 const memoryReporter = setInterval(() => {
   const usage = process.memoryUsage();
 
-  const message: protocol.OutboundMessage = {
+  const message: protocol.MemoryMessage = {
     type: 'memory',
     heapUsed: usage.heapUsed,
     rss: usage.rss,
@@ -369,11 +686,16 @@ memoryReporter.unref();
  * Main worker message loop.
  */
 port.on('message', (message: protocol.InboundMessage) => {
-  if (message.type !== 'execute') {
+  if (message.type === 'execute') {
+    void execute(message).then((result) => {
+      postOutboundMessage(result);
+    });
     return;
   }
 
-  void execute(message).then((result) => {
-    port.postMessage(result);
-  });
+  if (message.type === 'inspect') {
+    void inspect(message).then((result) => {
+      port.postMessage(result);
+    });
+  }
 });

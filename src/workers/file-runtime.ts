@@ -8,7 +8,8 @@ import type { NormalizedRequest } from '@/core/types.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
 
 import { createHandlerWorkerPool } from './handler-worker-pool.js';
-import type { HandlerWorkerSnapshot } from './handler-worker-pool.js';
+import type { HandlerWorkerPool, HandlerWorkerSnapshot } from './handler-worker-pool.js';
+import type { ExecutorOptions, WorkerStrategy } from './options.js';
 import type { protocol } from './protocol.js';
 
 /**
@@ -102,6 +103,24 @@ export interface FileWorkerSnapshot {
 }
 
 /**
+ * Optional file runtime configuration.
+ */
+export interface FileRuntimeOptions {
+  /**
+   * Declared database names for worker strategy routing.
+   */
+  databaseNames?: string[];
+  /**
+   * Worker strategy selector.
+   */
+  workerStrategy?: WorkerStrategy;
+  /**
+   * Base runtime option overrides applied to worker pools.
+   */
+  workerOptions?: Partial<ExecutorOptions>;
+}
+
+/**
  * File runtime public contract.
  */
 export interface FileRuntime {
@@ -132,6 +151,68 @@ export interface FileRuntime {
 }
 
 /**
+ * Worker definition before the pool is created.
+ */
+interface ResolvedWorkerDefinition {
+  /**
+   * Stable worker id.
+   */
+  id: string;
+  /**
+   * Database names this worker can access.
+   */
+  dbSet: string[];
+  /**
+   * Marks auto-added all-db worker.
+   */
+  isFallbackAllDb: boolean;
+  /**
+   * Optional runtime overrides for this worker.
+   */
+  overrides?: Partial<ExecutorOptions>;
+}
+
+/**
+ * Runtime worker binding used for routing.
+ */
+interface WorkerBinding {
+  /**
+   * Stable worker id.
+   */
+  id: string;
+  /**
+   * Database names this worker can access.
+   */
+  dbSet: string[];
+  /**
+   * DB lookup set for subset checks.
+   */
+  dbNameSet: Set<string>;
+  /**
+   * Marks auto-added all-db worker.
+   */
+  isFallbackAllDb: boolean;
+  /**
+   * Worker pool handle.
+   */
+  pool: HandlerWorkerPool;
+}
+
+/**
+ * Cached handler metadata keyed by file path.
+ */
+interface HandlerMetaCacheEntry {
+  /**
+   * File version token.
+   */
+  version: string;
+  /**
+   * Parsed metadata returned by worker inspect/execute.
+   */
+  meta: protocol.HandlerMeta;
+}
+
+/**
  * Returns static content-type by file extension.
  */
 function getContentType(filePath: string): string {
@@ -144,6 +225,202 @@ function getContentType(filePath: string): string {
  */
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join('/');
+}
+
+/**
+ * Normalizes database name arrays into deduped sorted values.
+ */
+function normalizeDbSet(input: readonly string[] | undefined): string[] {
+  if (input === undefined || input.length === 0) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (let i = 0; i < input.length; i++) {
+    const raw = input[i];
+    const name = raw.trim();
+
+    if (name.length === 0 || seen.has(name)) {
+      continue;
+    }
+
+    seen.add(name);
+    normalized.push(name);
+  }
+
+  normalized.sort((left, right) => left.localeCompare(right));
+  return normalized;
+}
+
+/**
+ * Determines whether two normalized db sets are equal.
+ */
+function isSameDbSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Checks whether `required` is subset of `available`.
+ */
+function isDbSubset(required: readonly string[], available: Set<string>): boolean {
+  for (let i = 0; i < required.length; i++) {
+    if (!available.has(required[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Extracts runtime overrides from a custom worker item.
+ */
+function extractWorkerOverrides(
+  baseOverrides: Partial<ExecutorOptions> | undefined,
+  customItem: { id: string; db: string[] } & Partial<ExecutorOptions>,
+): Partial<ExecutorOptions> {
+  const { id: _id, db: _db, ...customOverrides } = customItem;
+  return {
+    ...baseOverrides,
+    ...customOverrides,
+  };
+}
+
+/**
+ * ! Resolves worker strategy into concrete worker definitions.
+ */
+function resolveWorkerDefinitions(
+  databaseNames: readonly string[],
+  workerStrategy: WorkerStrategy | undefined,
+  baseOverrides: Partial<ExecutorOptions> | undefined,
+): ResolvedWorkerDefinition[] {
+  const allDbSet = normalizeDbSet(databaseNames);
+
+  if (workerStrategy === undefined || workerStrategy === 'all') {
+    return [
+      {
+        id: 'fluxion-worker-all',
+        dbSet: allDbSet,
+        isFallbackAllDb: false,
+        overrides: baseOverrides,
+      },
+    ];
+  }
+
+  const declaredDbSet = new Set(allDbSet);
+  const definitions: ResolvedWorkerDefinition[] = [];
+  const idSet = new Set<string>();
+
+  for (let i = 0; i < workerStrategy.length; i++) {
+    const item = workerStrategy[i];
+    const id = item.id.trim();
+
+    if (id.length === 0) {
+      throw new Error(`Invalid workerStrategy item at index ${i}: id is empty`);
+    }
+
+    if (idSet.has(id)) {
+      throw new Error(`Duplicate workerStrategy id: ${id}`);
+    }
+
+    const dbSet = normalizeDbSet(item.db);
+    const unknownDb = dbSet.find((name) => !declaredDbSet.has(name));
+    if (unknownDb !== undefined) {
+      throw new Error(`Unknown database in workerStrategy (${id}): ${unknownDb}`);
+    }
+
+    definitions.push({
+      id,
+      dbSet,
+      isFallbackAllDb: false,
+      overrides: extractWorkerOverrides(baseOverrides, item),
+    });
+    idSet.add(id);
+  }
+
+  const hasAllDbWorker = definitions.some((item) => isSameDbSet(item.dbSet, allDbSet));
+  if (hasAllDbWorker) {
+    return definitions;
+  }
+
+  let fallbackId = 'fluxion-worker-all';
+  let suffix = 1;
+  while (idSet.has(fallbackId)) {
+    fallbackId = `fluxion-worker-all-${suffix}`;
+    suffix += 1;
+  }
+
+  definitions.push({
+    id: fallbackId,
+    dbSet: allDbSet,
+    isFallbackAllDb: true,
+    overrides: baseOverrides,
+  });
+
+  return definitions;
+}
+
+/**
+ * Selects one worker for metadata inspect.
+ */
+function resolveInspectWorker(workers: readonly WorkerBinding[], allDbSet: readonly string[]): WorkerBinding;
+function resolveInspectWorker(workers: readonly WorkerBinding[], allDbSet: readonly string[]): WorkerBinding {
+  const fallback = workers.find((worker) => worker.isFallbackAllDb);
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  const allDbWorker = workers.find((worker) => isSameDbSet(worker.dbSet, allDbSet));
+  if (allDbWorker !== undefined) {
+    return allDbWorker;
+  }
+
+  return workers[0];
+}
+
+/**
+ * Picks worker by minimal superset matching for handler db requirements.
+ */
+function matchWorkerByDbRequirement(requiredDb: readonly string[], workers: readonly WorkerBinding[]): WorkerBinding {
+  const normalizedRequiredDb = normalizeDbSet(requiredDb);
+
+  const candidates = workers
+    .filter((worker) => isDbSubset(normalizedRequiredDb, worker.dbNameSet))
+    .map((worker) => ({
+      worker,
+      inflight: worker.pool.getSnapshot().inflight,
+      dbSize: worker.dbSet.length,
+    }));
+
+  if (candidates.length === 0) {
+    throw new Error(`No worker can satisfy handler db requirement: [${normalizedRequiredDb.join(', ')}]`);
+  }
+
+  candidates.sort((left, right) => {
+    if (left.dbSize !== right.dbSize) {
+      return left.dbSize - right.dbSize;
+    }
+
+    if (left.inflight !== right.inflight) {
+      return left.inflight - right.inflight;
+    }
+
+    return left.worker.id.localeCompare(right.worker.id);
+  });
+
+  return candidates[0].worker;
 }
 
 /**
@@ -414,22 +691,60 @@ function applyWorkerResponse(res: http.ServerResponse, response: protocol.Serial
     return;
   }
 
-  res.end(Buffer.from(response.body));
+  const body = Buffer.from(response.body.buffer, response.body.byteOffset, response.body.byteLength);
+  res.end(body);
 }
 
 /**
  * @param dir Dynamic directory set in `FluxionOptions`
  */
-export function createFileRuntime(dir: string): FileRuntime {
+export function createFileRuntime(dir: string, options: FileRuntimeOptions = {}): FileRuntime {
   /**
    * Main-thread view of loaded handler versions.
    */
   const handlerVersions = new Map<string, string>();
 
   /**
-   * Worker-backed handler executor.
+   * Cached handler metadata for worker routing.
    */
-  const handlerWorkerPool = createHandlerWorkerPool();
+  const handlerMetaCache = new Map<string, HandlerMetaCacheEntry>();
+
+  /**
+   * Database names declared by user options.
+   */
+  const databaseNames = normalizeDbSet(options.databaseNames);
+
+  /**
+   * Static worker definitions resolved from strategy.
+   */
+  const workerDefinitions = resolveWorkerDefinitions(databaseNames, options.workerStrategy, options.workerOptions);
+
+  /**
+   * Worker pool bindings used for request routing.
+   */
+  const workerBindings: WorkerBinding[] = workerDefinitions.map((definition) => ({
+    id: definition.id,
+    dbSet: [...definition.dbSet],
+    dbNameSet: new Set(definition.dbSet),
+    isFallbackAllDb: definition.isFallbackAllDb,
+    pool: createHandlerWorkerPool({
+      meta: {
+        id: definition.id,
+        dbSet: definition.dbSet,
+        isFallbackAllDb: definition.isFallbackAllDb,
+      },
+      overrides: definition.overrides,
+    }),
+  }));
+
+  if (workerBindings.length === 0) {
+    throw new Error('No worker pools were created for runtime');
+  }
+
+  /**
+   * Worker used to inspect handler metadata.
+   */
+  const inspectWorker = resolveInspectWorker(workerBindings, databaseNames);
 
   /**
    * Writes load/reload logs for handlers.
@@ -455,6 +770,40 @@ export function createFileRuntime(dir: string): FileRuntime {
       previousVersion,
       version,
     });
+  };
+
+  /**
+   * Resolves cached or fresh handler metadata from worker inspect API.
+   */
+  const resolveHandlerMeta = async (filePath: string, version: string): Promise<protocol.HandlerMeta> => {
+    const cached = handlerMetaCache.get(filePath);
+    if (cached !== undefined && cached.version === version) {
+      return cached.meta;
+    }
+
+    const inspected = await inspectWorker.pool.inspect(filePath, version);
+    const normalizedMeta: protocol.HandlerMeta = {
+      db: normalizeDbSet(inspected.db),
+    };
+
+    handlerMetaCache.set(filePath, {
+      version,
+      meta: normalizedMeta,
+    });
+
+    return normalizedMeta;
+  };
+
+  /**
+   * Selects target worker by handler db requirements.
+   */
+  const resolveExecutionWorker = async (filePath: string, version: string): Promise<WorkerBinding> => {
+    if (workerBindings.length === 1) {
+      return workerBindings[0];
+    }
+
+    const meta = await resolveHandlerMeta(filePath, version);
+    return matchWorkerByDbRequirement(meta.db, workerBindings);
   };
 
   /**
@@ -497,7 +846,9 @@ export function createFileRuntime(dir: string): FileRuntime {
       return HandlerResult.NotFound;
     }
 
-    const response = await handlerWorkerPool.execute({
+    const worker = await resolveExecutionWorker(resolved.filePath, resolved.version);
+
+    const executeResult = await worker.pool.execute({
       filePath: resolved.filePath,
       version: resolved.version,
       method: normalized.method,
@@ -507,7 +858,14 @@ export function createFileRuntime(dir: string): FileRuntime {
       ip: normalized.ip,
     });
 
-    applyWorkerResponse(res, response);
+    handlerMetaCache.set(resolved.filePath, {
+      version: resolved.version,
+      meta: {
+        db: normalizeDbSet(executeResult.meta.db),
+      },
+    });
+
+    applyWorkerResponse(res, executeResult.response);
 
     const previousVersion = handlerVersions.get(resolved.filePath);
     if (previousVersion !== resolved.version) {
@@ -657,17 +1015,21 @@ export function createFileRuntime(dir: string): FileRuntime {
 
   return {
     /**
-     * Clears version cache and asks worker pool to rotate.
+     * Clears version cache and asks all worker pools to rotate.
      */
     clearCache() {
       handlerVersions.clear();
-      void handlerWorkerPool.clearCache();
+      handlerMetaCache.clear();
+
+      for (let i = 0; i < workerBindings.length; i++) {
+        void workerBindings[i].pool.clearCache();
+      }
     },
     /**
-     * Closes worker pool.
+     * Closes worker pools.
      */
     async close() {
-      await handlerWorkerPool.close();
+      await Promise.all(workerBindings.map((worker) => worker.pool.close()));
     },
     /**
      * Returns worker diagnostics for meta api.
@@ -675,7 +1037,7 @@ export function createFileRuntime(dir: string): FileRuntime {
     getWorkerSnapshot() {
       return {
         dir,
-        workers: [handlerWorkerPool.getSnapshot()],
+        workers: workerBindings.map((worker) => worker.pool.getSnapshot()),
       };
     },
     getRouteSnapshot,
