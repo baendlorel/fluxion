@@ -5,8 +5,8 @@ import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
 import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
+import { createFileRuntime } from '@/workers/file-runtime.js';
 
-import { createFileRuntime } from './file-runtime.js';
 import { createMetaApi } from './meta-api.js';
 
 import type { NormalizedRequest } from './types.js';
@@ -129,6 +129,7 @@ export function fluxion(options: FluxionOptions): http.Server {
   });
 
   server.on('close', () => {
+    void fileRuntime.close();
     log('INFO', `Server closed at http://${options.host}:${options.port}`);
   });
 

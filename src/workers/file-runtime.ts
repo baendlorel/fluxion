@@ -1,18 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
-import { pathToFileURL } from 'node:url';
+import type http from 'node:http';
 
 import { HandlerResult, STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import { log, logJsonl } from '@/common/logger.js';
-import type { NormalizedRequest } from './types.js';
+import type { NormalizedRequest } from '@/core/types.js';
+import { parseQuery, toURL } from '@/core/utils/request.js';
 
-type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
-
-interface HandlerCacheEntry {
-  handler: ModuleDefaultHandler;
-  version: string;
-}
+import { createHandlerWorkerPool } from './handler-worker-pool.js';
+import type { WorkerHeaders, WorkerSerializedResponse } from './protocol.js';
 
 interface ParsedPath {
   pathname: string;
@@ -40,6 +36,17 @@ export interface StaticRouteEntry extends RouteEntryBase {
 export interface FileRouteSnapshot {
   handlers: HandlerRouteEntry[];
   staticFiles: StaticRouteEntry[];
+}
+
+export interface FileRuntime {
+  clearCache(): void;
+  close(): Promise<void>;
+  getRouteSnapshot(): Promise<FileRouteSnapshot>;
+  handleRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    normalized?: NormalizedRequest,
+  ): Promise<HandlerResult>;
 }
 
 function getContentType(filePath: string): string {
@@ -173,11 +180,124 @@ async function streamStaticFile(
   });
 }
 
+function normalizeRequest(req: http.IncomingMessage, normalized?: NormalizedRequest): NormalizedRequest | undefined {
+  if (normalized !== undefined) {
+    return normalized;
+  }
+
+  const url = toURL(req.url);
+  if (url === undefined) {
+    return undefined;
+  }
+
+  const socket = req.socket as { remoteAddress?: string | undefined } | undefined;
+
+  return {
+    method: req.method ?? 'GET',
+    ip: socket?.remoteAddress ?? 'unknown',
+    url,
+    query: parseQuery(url.searchParams),
+  };
+}
+
+function normalizeHeaders(headers: http.IncomingHttpHeaders): WorkerHeaders {
+  const serializedHeaders: WorkerHeaders = {};
+
+  const headerKeys = Object.keys(headers);
+  for (let i = 0; i < headerKeys.length; i++) {
+    const key = headerKeys[i];
+    const value = headers[key];
+
+    if (value === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      serializedHeaders[key] = value;
+      continue;
+    }
+
+    serializedHeaders[key] = value;
+  }
+
+  return serializedHeaders;
+}
+
+async function readRequestBody(req: http.IncomingMessage, method: string): Promise<Uint8Array | undefined> {
+  if (method === 'GET' || method === 'HEAD') {
+    return undefined;
+  }
+
+  if (req.readableEnded) {
+    return undefined;
+  }
+
+  return new Promise<Uint8Array | undefined>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+
+    const cleanup = (): void => {
+      req.off('data', onData);
+      req.off('end', onEnd);
+      req.off('error', onError);
+      req.off('aborted', onAborted);
+    };
+
+    const onData = (chunk: Buffer | string): void => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    };
+
+    const onEnd = (): void => {
+      cleanup();
+
+      if (chunks.length === 0) {
+        resolve(undefined);
+        return;
+      }
+
+      resolve(Buffer.concat(chunks));
+    };
+
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+
+    const onAborted = (): void => {
+      cleanup();
+      reject(new Error('request aborted while reading body'));
+    };
+
+    req.on('data', onData);
+    req.once('end', onEnd);
+    req.once('error', onError);
+    req.once('aborted', onAborted);
+  });
+}
+
+function applyWorkerResponse(res: http.ServerResponse, response: WorkerSerializedResponse): void {
+  res.statusCode = response.statusCode;
+
+  const headerKeys = Object.keys(response.headers);
+  for (let i = 0; i < headerKeys.length; i++) {
+    const key = headerKeys[i];
+    res.setHeader(key, response.headers[key]);
+  }
+
+  if (response.body === undefined || response.body.byteLength === 0) {
+    res.end();
+    return;
+  }
+
+  res.end(Buffer.from(response.body));
+}
+
 /**
  * @param dir Dynamic directory set in `FluxionOptions`
  */
-export function createFileRuntime(dir: string) {
-  const handlerCache = new Map<string, HandlerCacheEntry>();
+export function createFileRuntime(dir: string): FileRuntime {
+  const handlerVersions = new Map<string, string>();
+
+  const handlerWorkerPool = createHandlerWorkerPool();
 
   const logHandlerLoad = (filePath: string, version: string, previousVersion?: string): void => {
     const relativeFilePath = normalizeRelativePath(path.relative(dir, filePath));
@@ -202,27 +322,6 @@ export function createFileRuntime(dir: string) {
     });
   };
 
-  const loadHandler = async (filePath: string, version: string): Promise<ModuleDefaultHandler> => {
-    const cached = handlerCache.get(filePath);
-
-    if (cached !== undefined && cached.version === version) {
-      return cached.handler;
-    }
-
-    const fileUrl = `${pathToFileURL(filePath).href}?v=${encodeURIComponent(version)}`;
-    const loaded = await import(fileUrl);
-    const defaultExport = loaded.default;
-
-    if (typeof defaultExport !== 'function') {
-      throw new TypeError(`Default export is not a function: ${filePath}`);
-    }
-
-    const handler = defaultExport as ModuleDefaultHandler;
-    handlerCache.set(filePath, { handler, version });
-    logHandlerLoad(filePath, version, cached?.version);
-    return handler;
-  };
-
   const resolveHandlerFile = async (segments: readonly string[]): Promise<ResolvedHandlerFile | undefined> => {
     const candidates = buildHandlerCandidates(dir, segments);
 
@@ -245,6 +344,7 @@ export function createFileRuntime(dir: string) {
     parsedPath: ParsedPath,
     req: http.IncomingMessage,
     res: http.ServerResponse,
+    normalized: NormalizedRequest,
   ): Promise<HandlerResult> => {
     if (parsedPath.pathname.endsWith('.mjs')) {
       return HandlerResult.NotFound;
@@ -256,8 +356,24 @@ export function createFileRuntime(dir: string) {
       return HandlerResult.NotFound;
     }
 
-    const handler = await loadHandler(resolved.filePath, resolved.version);
-    await Promise.resolve(handler(req, res));
+    const response = await handlerWorkerPool.execute({
+      filePath: resolved.filePath,
+      version: resolved.version,
+      method: normalized.method,
+      url: req.url ?? `${normalized.url.pathname}${normalized.url.search}`,
+      headers: normalizeHeaders(req.headers),
+      body: await readRequestBody(req, normalized.method),
+      ip: normalized.ip,
+    });
+
+    applyWorkerResponse(res, response);
+
+    const previousVersion = handlerVersions.get(resolved.filePath);
+    if (previousVersion !== resolved.version) {
+      handlerVersions.set(resolved.filePath, resolved.version);
+      logHandlerLoad(resolved.filePath, resolved.version, previousVersion);
+    }
+
     return HandlerResult.Handled;
   };
 
@@ -394,25 +510,34 @@ export function createFileRuntime(dir: string) {
 
   return {
     clearCache() {
-      handlerCache.clear();
+      handlerVersions.clear();
+      void handlerWorkerPool.clearCache();
+    },
+    async close() {
+      await handlerWorkerPool.close();
     },
     getRouteSnapshot,
     async handleRequest(
       req: http.IncomingMessage,
       res: http.ServerResponse,
-      normalized: NormalizedRequest,
+      normalized?: NormalizedRequest,
     ): Promise<HandlerResult> {
-      const parsedPath = parseRequestPath(normalized.url);
+      const resolvedNormalized = normalizeRequest(req, normalized);
+      if (resolvedNormalized === undefined) {
+        return HandlerResult.NotFound;
+      }
+
+      const parsedPath = parseRequestPath(resolvedNormalized.url);
       if (parsedPath === undefined) {
         return HandlerResult.NotFound;
       }
 
-      const handlerResult = await tryHandleHandler(parsedPath, req, res);
+      const handlerResult = await tryHandleHandler(parsedPath, req, res, resolvedNormalized);
       if (handlerResult === HandlerResult.Handled) {
         return HandlerResult.Handled;
       }
 
-      return tryHandleStatic(parsedPath, req, res, normalized);
+      return tryHandleStatic(parsedPath, req, res, resolvedNormalized);
     },
   };
 }

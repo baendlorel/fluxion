@@ -1,6 +1,6 @@
 import http from 'node:http';
 
-import type { FileRouteSnapshot } from './file-runtime.js';
+import type { FileRouteSnapshot } from '@/workers/file-runtime.js';
 import { sendJson } from './utils/send-json.js';
 import { NormalizedRequest } from './types.js';
 import { META_PREFIX } from '@/common/consts.js';
