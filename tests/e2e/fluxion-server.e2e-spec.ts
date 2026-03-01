@@ -103,6 +103,16 @@ describe('fluxion e2e', () => {
     expect(healthzResponse.status).toBe(200);
     expect(healthzResponse.data?.ok).toBe(true);
 
+    const workersResponse = await client.get('/_fluxion/workers');
+    expect(workersResponse.status).toBe(200);
+    expect(workersResponse.data).toMatchObject({
+      workers: {
+        dir: dynamicDirectory,
+      },
+    });
+    expect(Array.isArray(workersResponse.data.workers?.workers)).toBe(true);
+    expect(workersResponse.data.workers?.workers.length).toBeGreaterThanOrEqual(1);
+
     const missingRouteResponse = await client.get('/missing/path');
     expect(missingRouteResponse.status).toBe(404);
     expect(missingRouteResponse.data).toMatchObject({

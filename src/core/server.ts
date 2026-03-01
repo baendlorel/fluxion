@@ -34,7 +34,11 @@ export function fluxion(options: FluxionOptions): http.Server {
   }
 
   const fileRuntime = createFileRuntime(dir);
-  const metaApi = createMetaApi({ dir, getRouteSnapshot: fileRuntime.getRouteSnapshot });
+  const metaApi = createMetaApi({
+    dir,
+    getRouteSnapshot: fileRuntime.getRouteSnapshot,
+    getWorkerSnapshot: fileRuntime.getWorkerSnapshot,
+  });
 
   void fileRuntime
     .getRouteSnapshot()

@@ -1,8 +1,8 @@
-import http from 'node:http';
+import type http from 'node:http';
 
-import type { FileRouteSnapshot } from '@/workers/file-runtime.js';
+import type { FileRouteSnapshot, FileWorkerSnapshot } from '@/workers/file-runtime.js';
 import { sendJson } from './utils/send-json.js';
-import { NormalizedRequest } from './types.js';
+import type { NormalizedRequest } from './types.js';
 import { META_PREFIX } from '@/common/consts.js';
 
 interface CreateMetaApiOptions {
@@ -11,6 +11,7 @@ interface CreateMetaApiOptions {
    */
   dir: string;
   getRouteSnapshot: () => Promise<FileRouteSnapshot> | FileRouteSnapshot;
+  getWorkerSnapshot: () => Promise<FileWorkerSnapshot> | FileWorkerSnapshot;
 }
 
 export function createMetaApi(options: CreateMetaApiOptions) {
@@ -31,6 +32,12 @@ export function createMetaApi(options: CreateMetaApiOptions) {
 
         if (pathname === META_PREFIX + '/healthz') {
           sendJson(res, { ok: true, now: Date.now() });
+          return true;
+        }
+
+        if (pathname === META_PREFIX + '/workers') {
+          const workers = await options.getWorkerSnapshot();
+          sendJson(res, { workers });
           return true;
         }
       }

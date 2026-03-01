@@ -8,6 +8,7 @@ import type { NormalizedRequest } from '@/core/types.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
 
 import { createHandlerWorkerPool } from './handler-worker-pool.js';
+import type { HandlerWorkerSnapshot } from './handler-worker-pool.js';
 import type { protocol } from './protocol.js';
 
 interface ParsedPath {
@@ -38,10 +39,16 @@ export interface FileRouteSnapshot {
   staticFiles: StaticRouteEntry[];
 }
 
+export interface FileWorkerSnapshot {
+  dir: string;
+  workers: HandlerWorkerSnapshot[];
+}
+
 export interface FileRuntime {
   clearCache(): void;
   close(): Promise<void>;
   getRouteSnapshot(): Promise<FileRouteSnapshot>;
+  getWorkerSnapshot(): FileWorkerSnapshot;
   handleRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -515,6 +522,12 @@ export function createFileRuntime(dir: string): FileRuntime {
     },
     async close() {
       await handlerWorkerPool.close();
+    },
+    getWorkerSnapshot() {
+      return {
+        dir,
+        workers: [handlerWorkerPool.getSnapshot()],
+      };
     },
     getRouteSnapshot,
     async handleRequest(

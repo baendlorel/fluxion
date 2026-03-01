@@ -25,6 +25,33 @@ interface InflightRequest {
   timer: NodeJS.Timeout;
 }
 
+export interface HandlerWorkerSnapshot {
+  status: 'running' | 'stopped' | 'restarting' | 'closed';
+  threadId?: number;
+  inflight: number;
+  trackedHandlers: number;
+  handlers: Array<{ filePath: string; version: string }>;
+  restartCount: number;
+  lastRestartReason?: string;
+  lastRestartAt?: number;
+  limits: {
+    requestTimeoutMs: number;
+    maxInflight: number;
+    memorySoftLimitMb: number;
+    memoryHardLimitMb: number;
+    maxOldGenerationSizeMb: number;
+    maxYoungGenerationSizeMb: number;
+    stackSizeMb: number;
+  };
+  memory?: {
+    heapUsed: number;
+    rss: number;
+    external: number;
+    arrayBuffers: number;
+    sampledAt: number;
+  };
+}
+
 function resolveWorkerEntryUrl(): URL {
   const currentExt = path.extname(fileURLToPath(import.meta.url));
   const workerFileName = currentExt === '.ts' ? 'handler-worker.ts' : 'handler-worker.js';
@@ -35,6 +62,7 @@ export interface HandlerWorkerPool {
   execute(payload: protocol.Payload): Promise<protocol.SerializedResponse>;
   clearCache(): Promise<void>;
   close(): Promise<void>;
+  getSnapshot(): HandlerWorkerSnapshot;
 }
 
 export function createHandlerWorkerPool(overrides?: Partial<ExecutorOptions>): HandlerWorkerPool {
@@ -57,6 +85,16 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   private restarting: Promise<void> | undefined;
 
   private closed = false;
+
+  private latestMemory: protocol.MemoryMessage | undefined;
+
+  private latestMemoryAt: number | undefined;
+
+  private restartCount = 0;
+
+  private lastRestartReason: string | undefined;
+
+  private lastRestartAt: number | undefined;
 
   constructor(options: ExecutorOptions) {
     this.options = options;
@@ -94,6 +132,42 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         error: getErrorMessage(error),
       });
     }
+  }
+
+  getSnapshot(): HandlerWorkerSnapshot {
+    const handlers = Array.from(this.versionsByFilePath.entries())
+      .map(([filePath, version]) => ({ filePath, version }))
+      .sort((left, right) => left.filePath.localeCompare(right.filePath));
+
+    return {
+      status: this.getStatus(),
+      threadId: this.worker?.threadId,
+      inflight: this.inflight.size,
+      trackedHandlers: handlers.length,
+      handlers,
+      restartCount: this.restartCount,
+      lastRestartReason: this.lastRestartReason,
+      lastRestartAt: this.lastRestartAt,
+      limits: {
+        requestTimeoutMs: this.options.requestTimeoutMs,
+        maxInflight: this.options.maxInflight,
+        memorySoftLimitMb: this.options.memorySoftLimitMb,
+        memoryHardLimitMb: this.options.memoryHardLimitMb,
+        maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
+        maxYoungGenerationSizeMb: this.options.maxYoungGenerationSizeMb,
+        stackSizeMb: this.options.stackSizeMb,
+      },
+      memory:
+        this.latestMemory === undefined || this.latestMemoryAt === undefined
+          ? undefined
+          : {
+              heapUsed: this.latestMemory.heapUsed,
+              rss: this.latestMemory.rss,
+              external: this.latestMemory.external,
+              arrayBuffers: this.latestMemory.arrayBuffers,
+              sampledAt: this.latestMemoryAt,
+            },
+    };
   }
 
   private async executeWithRetry(payload: protocol.Payload, retried: boolean): Promise<protocol.SerializedResponse> {
@@ -246,6 +320,9 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   }
 
   private handleMemoryMessage(message: protocol.MemoryMessage): void {
+    this.latestMemory = message;
+    this.latestMemoryAt = Date.now();
+
     const softLimitBytes = this.options.memorySoftLimitMb * 1024 * 1024;
     const hardLimitBytes = this.options.memoryHardLimitMb * 1024 * 1024;
 
@@ -288,6 +365,9 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     const worker = this.worker;
     this.worker = undefined;
     this.versionsByFilePath.clear();
+    this.restartCount += 1;
+    this.lastRestartReason = reason;
+    this.lastRestartAt = Date.now();
 
     this.rejectInflight(new Error(`runtime worker restarted: ${reason}`));
 
@@ -319,5 +399,21 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       clearTimeout(request.timer);
       request.reject(error);
     }
+  }
+
+  private getStatus(): HandlerWorkerSnapshot['status'] {
+    if (this.closed) {
+      return 'closed';
+    }
+
+    if (this.restarting !== undefined) {
+      return 'restarting';
+    }
+
+    if (this.worker === undefined) {
+      return 'stopped';
+    }
+
+    return 'running';
   }
 }
