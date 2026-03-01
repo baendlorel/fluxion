@@ -3,8 +3,6 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createFileRuntime } from '@/core/file-runtime.js';
-
 import {
   closeServer,
   createTempDirectory,
@@ -13,6 +11,8 @@ import {
   sleep,
   writeFile,
 } from '../helpers/test-utils.js';
+import { createFileRuntime } from '@/workers/file-runtime.js';
+import { HandlerResult } from '@/common/consts.js';
 
 async function startRuntimeServer(dynamicDirectory: string): Promise<{ server: http.Server; baseUrl: string }> {
   const runtime = createFileRuntime(dynamicDirectory);
@@ -21,7 +21,7 @@ async function startRuntimeServer(dynamicDirectory: string): Promise<{ server: h
     void runtime
       .handleRequest(req, res)
       .then((result) => {
-        if (result === 'not_found') {
+        if (result === HandlerResult.NotFound) {
           res.statusCode = 404;
           res.end('not_found');
         }
