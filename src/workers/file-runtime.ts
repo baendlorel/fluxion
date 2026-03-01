@@ -3,7 +3,7 @@ import path from 'node:path';
 import type http from 'node:http';
 
 import { HandlerResult, STATIC_CONTENT_TYPES } from '@/common/consts.js';
-import { log, logJsonl } from '@/common/logger.js';
+import { createLogger, type FluxionLogger } from '@/common/logger.js';
 import type { NormalizedRequest } from '@/core/types.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
 
@@ -122,6 +122,10 @@ export interface FileRuntimeOptions {
    * Maximum request body bytes accepted by dynamic handlers.
    */
   maxRequestBytes?: number;
+  /**
+   * Runtime logger implementation.
+   */
+  logger?: FluxionLogger;
 }
 
 /**
@@ -778,6 +782,11 @@ function applyWorkerResponse(res: http.ServerResponse, response: protocol.Serial
  */
 export function createFileRuntime(dir: string, options: FileRuntimeOptions = {}): FileRuntime {
   /**
+   * Runtime logger.
+   */
+  const logger = options.logger ?? createLogger('one-line');
+
+  /**
    * Main-thread view of loaded handler versions.
    */
   const handlerVersions = new Map<string, string>();
@@ -817,6 +826,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
         isFallbackAllDb: definition.isFallbackAllDb,
       },
       overrides: definition.overrides,
+      logger,
     }),
   }));
 
@@ -837,8 +847,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
     const route = getRouteFromHandlerFile(relativeFilePath);
 
     if (previousVersion === undefined) {
-      log('INFO', `Loaded handler: ${route} (${relativeFilePath})`);
-      logJsonl('INFO', 'handler_loaded', {
+      logger.write('INFO', 'handler_loaded', {
         route,
         file: relativeFilePath,
         version,
@@ -846,8 +855,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       return;
     }
 
-    log('INFO', `Reloaded handler: ${route} (${relativeFilePath})`);
-    logJsonl('INFO', 'handler_reloaded', {
+    logger.write('INFO', 'handler_reloaded', {
       route,
       file: relativeFilePath,
       previousVersion,

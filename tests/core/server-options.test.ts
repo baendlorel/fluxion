@@ -5,15 +5,25 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fluxion } from '@/core/server.js';
+import type { LogEntry, LoggerOption } from '@/common/logger.js';
 
 import { closeServer, createTempDirectory, removeDirectory, writeFile } from '../helpers/test-utils.js';
 
-async function startServer(dynamicDirectory: string, maxRequestBytes: number): Promise<{ server: http.Server; baseUrl: string }> {
+interface StartServerOptions {
+  maxRequestBytes?: number;
+  logger?: LoggerOption;
+}
+
+async function startServer(
+  dynamicDirectory: string,
+  options: StartServerOptions = {},
+): Promise<{ server: http.Server; baseUrl: string }> {
   const server = fluxion({
     dir: dynamicDirectory,
     host: '127.0.0.1',
     port: 0,
-    maxRequestBytes,
+    maxRequestBytes: options.maxRequestBytes,
+    logger: options.logger,
   });
 
   if (!server.listening) {
@@ -34,9 +44,10 @@ async function startServer(dynamicDirectory: string, maxRequestBytes: number): P
 describe('server options', () => {
   const tempDirectories: string[] = [];
   const servers: http.Server[] = [];
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(async () => {
@@ -66,7 +77,7 @@ describe('server options', () => {
       ].join('\n'),
     );
 
-    const { server, baseUrl } = await startServer(dynamicDirectory, 8);
+    const { server, baseUrl } = await startServer(dynamicDirectory, { maxRequestBytes: 8 });
     servers.push(server);
 
     const oversizedResponse = await fetch(`${baseUrl}/echo`, {
@@ -106,5 +117,44 @@ describe('server options', () => {
         maxRequestBytes: 0,
       }),
     ).toThrow('Invalid maxRequestBytes');
+  });
+
+  it('supports json-line logger mode', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-server-logger-json-');
+    tempDirectories.push(dynamicDirectory);
+
+    const { server, baseUrl } = await startServer(dynamicDirectory, { logger: 'json-line' });
+    servers.push(server);
+
+    await fetch(`${baseUrl}/missing`);
+
+    const lines = consoleLogSpy.mock.calls
+      .map((call: unknown[]) => call[0])
+      .filter((value: unknown): value is string => typeof value === 'string');
+    expect(lines.length).toBeGreaterThan(0);
+
+    const entries = lines.map((line: string) => JSON.parse(line) as Record<string, unknown>);
+    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'server_started')).toBe(true);
+    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'request_completed')).toBe(true);
+  });
+
+  it('supports custom logger function', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-server-logger-custom-');
+    tempDirectories.push(dynamicDirectory);
+
+    const entries: LogEntry[] = [];
+
+    const { server, baseUrl } = await startServer(dynamicDirectory, {
+      logger(entry) {
+        entries.push(entry);
+      },
+    });
+    servers.push(server);
+
+    await fetch(`${baseUrl}/missing`);
+
+    expect(entries.some((entry) => entry.event === 'server_started')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'request_completed')).toBe(true);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 });

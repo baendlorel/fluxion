@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
-import { getErrorMessage, log, logJsonl } from '@/common/logger.js';
+import { createLogger, getErrorMessage, type LoggerOption } from '@/common/logger.js';
 import { createFileRuntime } from '@/workers/file-runtime.js';
 import type { ExecutorOptions, WorkerStrategy } from '@/workers/options.js';
 
@@ -61,6 +61,12 @@ export interface FluxionOptions {
    * Requests larger than this limit will return 413.
    */
   maxRequestBytes?: number;
+
+  /**
+   * Logger output mode or custom logger sink.
+   * Defaults to `one-line`.
+   */
+  logger?: LoggerOption;
 }
 
 /**
@@ -97,9 +103,10 @@ function normalizeDatabaseNames(databases: FluxionDatabaseInput[] | undefined): 
 export function fluxion(options: FluxionOptions): http.Server {
   const dir = path.resolve(options.dir);
   const databaseNames = normalizeDatabaseNames(options.databases);
+  const logger = createLogger(options.logger);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    logJsonl('INFO', 'dynamic_directory_created', { directory: dir });
+    logger.write('INFO', 'dynamic_directory_created', { directory: dir });
   }
 
   const fileRuntime = createFileRuntime(dir, {
@@ -107,6 +114,7 @@ export function fluxion(options: FluxionOptions): http.Server {
     workerStrategy: options.workerStrategy,
     workerOptions: options.workerOptions,
     maxRequestBytes: options.maxRequestBytes,
+    logger,
   });
   const metaApi = createMetaApi({
     dir,
@@ -120,24 +128,28 @@ export function fluxion(options: FluxionOptions): http.Server {
       const handlerCount = snapshot.handlers.length;
       const staticFileCount = snapshot.staticFiles.length;
 
-      logJsonl('INFO', 'dynamic_directory_loaded', {
+      logger.write('INFO', 'dynamic_directory_loaded', {
         dir,
         handlerCount,
         staticFileCount,
       });
 
       if (handlerCount === 0) {
-        log('INFO', 'Loaded handler(s): none');
+        logger.write('INFO', 'dynamic_handlers_loaded', { count: 0 });
         return;
       }
 
       for (let i = 0; i < snapshot.handlers.length; i++) {
         const handler = snapshot.handlers[i];
-        log('INFO', `Loaded handler: ${handler.route} (${handler.file})`);
+        logger.write('INFO', 'dynamic_handler_loaded', {
+          route: handler.route,
+          file: handler.file,
+          version: handler.version,
+        });
       }
     })
     .catch((error) => {
-      logJsonl('ERROR', 'dynamic_directory_load_failed', {
+      logger.write('ERROR', 'dynamic_directory_load_failed', {
         dir,
         error: getErrorMessage(error),
       });
@@ -161,7 +173,7 @@ export function fluxion(options: FluxionOptions): http.Server {
 
     const bodyCapture = createBodyPreviewCapture(req);
 
-    logJsonl('INFO', 'request_received', { method, ip, path: url.pathname });
+    logger.write('INFO', 'request_received', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -184,7 +196,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         fields.bodyTruncated = bodyPreview.truncated;
       }
 
-      logJsonl('INFO', 'request_completed', fields);
+      logger.write('INFO', 'request_completed', fields);
     });
 
     void metaApi
@@ -200,7 +212,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         }
       })
       .catch((error) => {
-        logJsonl('ERROR', 'request_failed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
+        logger.write('ERROR', 'request_failed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
 
         if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
           safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
@@ -213,16 +225,22 @@ export function fluxion(options: FluxionOptions): http.Server {
 
   server.on('close', () => {
     void fileRuntime.close();
-    log('INFO', `Server closed at http://${options.host}:${options.port}`);
+    logger.write('INFO', 'server_closed', {
+      host: options.host,
+      port: options.port,
+    });
   });
 
   server.listen(options.port, options.host, () => {
-    log('INFO', `Server started at http://${options.host}:${options.port}`);
-    log('INFO', `Dynamic directory: ${dir}`);
+    logger.write('INFO', 'server_started', {
+      host: options.host,
+      port: options.port,
+    });
+    logger.write('INFO', 'dynamic_directory', { directory: dir });
   });
 
   server.on('error', (error) => {
-    logJsonl('ERROR', 'server_error', {
+    logger.write('ERROR', 'server_error', {
       error: getErrorMessage(error),
     });
   });

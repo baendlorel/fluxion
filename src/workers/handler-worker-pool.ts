@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
-import { getErrorMessage, logJsonl } from '@/common/logger.js';
+import { createLogger, getErrorMessage, type FluxionLogger } from '@/common/logger.js';
 
 import type { protocol } from './protocol.js';
 import type { ExecutorOptions } from './options.js';
@@ -58,6 +58,10 @@ export interface CreateHandlerWorkerPoolOptions {
    * Runtime option overrides for this worker.
    */
   overrides?: Partial<ExecutorOptions>;
+  /**
+   * Logger implementation shared by runtime.
+   */
+  logger?: FluxionLogger;
 }
 
 /**
@@ -250,7 +254,11 @@ type InflightRequest = ExecuteInflightRequest | InspectInflightRequest;
  * Creates a worker pool using merged runtime defaults.
  */
 export function createHandlerWorkerPool(options: CreateHandlerWorkerPoolOptions): HandlerWorkerPool {
-  return new HandlerWorkerPoolImpl(options.meta, resolveExecutorOptions(options.overrides));
+  return new HandlerWorkerPoolImpl(
+    options.meta,
+    resolveExecutorOptions(options.overrides),
+    options.logger ?? createLogger('one-line'),
+  );
 }
 
 class HandlerWorkerPoolImpl implements HandlerWorkerPool {
@@ -263,6 +271,11 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
    * Resolved runtime options.
    */
   private readonly options: ExecutorOptions;
+
+  /**
+   * Runtime logger.
+   */
+  private readonly logger: FluxionLogger;
 
   /**
    * Worker entry module url.
@@ -328,13 +341,14 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
    * @param meta Worker metadata.
    * @param options Resolved runtime options.
    */
-  constructor(meta: WorkerPoolMeta, options: ExecutorOptions) {
+  constructor(meta: WorkerPoolMeta, options: ExecutorOptions, logger: FluxionLogger) {
     this.meta = {
       id: meta.id,
       dbSet: [...meta.dbSet],
       isFallbackAllDb: meta.isFallbackAllDb,
     };
     this.options = options;
+    this.logger = logger;
     this.workerUrl = resolveWorkerEntryUrl();
   }
 
@@ -381,7 +395,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     try {
       await worker.terminate();
     } catch (error) {
-      logJsonl('WARN', 'runtime_worker_terminate_failed', {
+      this.logger.write('WARN', 'runtime_worker_terminate_failed', {
         workerId: this.meta.id,
         error: getErrorMessage(error),
       });
@@ -607,7 +621,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     });
 
     worker.once('error', (error) => {
-      logJsonl('ERROR', 'runtime_worker_error', {
+      this.logger.write('ERROR', 'runtime_worker_error', {
         workerId: this.meta.id,
         error: getErrorMessage(error),
       });
@@ -638,7 +652,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     });
 
     this.worker = worker;
-    logJsonl('INFO', 'runtime_worker_started', {
+    this.logger.write('INFO', 'runtime_worker_started', {
       workerId: this.meta.id,
       dbSet: this.meta.dbSet,
       maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
@@ -718,7 +732,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     const hardLimitBytes = this.options.memoryHardLimitMb * 1024 * 1024;
 
     if (message.heapUsed >= hardLimitBytes) {
-      logJsonl('WARN', 'runtime_worker_memory_hard_limit', {
+      this.logger.write('WARN', 'runtime_worker_memory_hard_limit', {
         workerId: this.meta.id,
         heapUsed: message.heapUsed,
         hardLimitBytes,
@@ -728,7 +742,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     if (message.heapUsed >= softLimitBytes && this.inflight.size === 0) {
-      logJsonl('WARN', 'runtime_worker_memory_soft_limit', {
+      this.logger.write('WARN', 'runtime_worker_memory_soft_limit', {
         workerId: this.meta.id,
         heapUsed: message.heapUsed,
         softLimitBytes,
@@ -774,7 +788,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       try {
         await worker.terminate();
       } catch (error) {
-        logJsonl('WARN', 'runtime_worker_restart_terminate_failed', {
+        this.logger.write('WARN', 'runtime_worker_restart_terminate_failed', {
           workerId: this.meta.id,
           reason,
           error: getErrorMessage(error),
@@ -787,7 +801,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     this.ensureWorker();
-    logJsonl('WARN', 'runtime_worker_restarted', {
+    this.logger.write('WARN', 'runtime_worker_restarted', {
       workerId: this.meta.id,
       reason,
     });
