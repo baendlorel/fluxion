@@ -1,4 +1,4 @@
-export interface WorkerRuntimeOptions {
+export interface ExecutorOptions {
   requestTimeoutMs: number;
   maxInflight: number;
   memorySoftLimitMb: number;
@@ -9,29 +9,15 @@ export interface WorkerRuntimeOptions {
   stackSizeMb: number;
 }
 
-export type WorkerRuntimeOptionOverrides = Partial<WorkerRuntimeOptions>;
-
-export const DEFAULT_WORKER_RUNTIME_OPTIONS: WorkerRuntimeOptions = {
-  requestTimeoutMs: 3000,
-  maxInflight: 64,
-  memorySoftLimitMb: 96,
-  memoryHardLimitMb: 128,
-  memorySampleIntervalMs: 5000,
-  maxOldGenerationSizeMb: 128,
-  maxYoungGenerationSizeMb: 32,
-  stackSizeMb: 4,
-};
-
-export function resolveWorkerRuntimeOptions(overrides: WorkerRuntimeOptionOverrides = {}): WorkerRuntimeOptions {
+export function resolveExecutorOptions(overrides: Partial<ExecutorOptions> = {}): ExecutorOptions {
   return {
-    requestTimeoutMs: overrides.requestTimeoutMs ?? DEFAULT_WORKER_RUNTIME_OPTIONS.requestTimeoutMs,
-    maxInflight: overrides.maxInflight ?? DEFAULT_WORKER_RUNTIME_OPTIONS.maxInflight,
-    memorySoftLimitMb: overrides.memorySoftLimitMb ?? DEFAULT_WORKER_RUNTIME_OPTIONS.memorySoftLimitMb,
-    memoryHardLimitMb: overrides.memoryHardLimitMb ?? DEFAULT_WORKER_RUNTIME_OPTIONS.memoryHardLimitMb,
-    memorySampleIntervalMs: overrides.memorySampleIntervalMs ?? DEFAULT_WORKER_RUNTIME_OPTIONS.memorySampleIntervalMs,
-    maxOldGenerationSizeMb: overrides.maxOldGenerationSizeMb ?? DEFAULT_WORKER_RUNTIME_OPTIONS.maxOldGenerationSizeMb,
-    maxYoungGenerationSizeMb:
-      overrides.maxYoungGenerationSizeMb ?? DEFAULT_WORKER_RUNTIME_OPTIONS.maxYoungGenerationSizeMb,
-    stackSizeMb: overrides.stackSizeMb ?? DEFAULT_WORKER_RUNTIME_OPTIONS.stackSizeMb,
+    requestTimeoutMs: overrides.requestTimeoutMs ?? 3000,
+    maxInflight: overrides.maxInflight ?? 64,
+    memorySoftLimitMb: overrides.memorySoftLimitMb ?? 96,
+    memoryHardLimitMb: overrides.memoryHardLimitMb ?? 128,
+    memorySampleIntervalMs: overrides.memorySampleIntervalMs ?? 5000,
+    maxOldGenerationSizeMb: overrides.maxOldGenerationSizeMb ?? 128,
+    maxYoungGenerationSizeMb: overrides.maxYoungGenerationSizeMb ?? 32,
+    stackSizeMb: overrides.stackSizeMb ?? 4,
   };
 }

@@ -8,7 +8,7 @@ import type { NormalizedRequest } from '@/core/types.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
 
 import { createHandlerWorkerPool } from './handler-worker-pool.js';
-import type { WorkerHeaders, WorkerSerializedResponse } from './protocol.js';
+import type { protocol } from './protocol.js';
 
 interface ParsedPath {
   pathname: string;
@@ -200,8 +200,8 @@ function normalizeRequest(req: http.IncomingMessage, normalized?: NormalizedRequ
   };
 }
 
-function normalizeHeaders(headers: http.IncomingHttpHeaders): WorkerHeaders {
-  const serializedHeaders: WorkerHeaders = {};
+function normalizeHeaders(headers: http.IncomingHttpHeaders): protocol.Headers {
+  const serializedHeaders: protocol.Headers = {};
 
   const headerKeys = Object.keys(headers);
   for (let i = 0; i < headerKeys.length; i++) {
@@ -274,7 +274,7 @@ async function readRequestBody(req: http.IncomingMessage, method: string): Promi
   });
 }
 
-function applyWorkerResponse(res: http.ServerResponse, response: WorkerSerializedResponse): void {
+function applyWorkerResponse(res: http.ServerResponse, response: protocol.SerializedResponse): void {
   res.statusCode = response.statusCode;
 
   const headerKeys = Object.keys(response.headers);

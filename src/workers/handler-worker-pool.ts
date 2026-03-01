@@ -4,21 +4,14 @@ import { Worker } from 'node:worker_threads';
 
 import { getErrorMessage, logJsonl } from '@/common/logger.js';
 
-import type {
-  WorkerExecutePayload,
-  WorkerInboundMessage,
-  WorkerMemoryMessage,
-  WorkerOutboundMessage,
-  WorkerSerializedError,
-  WorkerSerializedResponse,
-} from './protocol.js';
-import { resolveWorkerRuntimeOptions } from './options.js';
-import type { WorkerRuntimeOptionOverrides, WorkerRuntimeOptions } from './options.js';
+import type { protocol } from './protocol.js';
+import type { ExecutorOptions } from './options.js';
+import { resolveExecutorOptions } from './options.js';
 
 class WorkerRuntimeError extends Error {
   public readonly code?: string;
 
-  constructor(error: WorkerSerializedError) {
+  constructor(error: protocol.SerializedError) {
     super(error.message);
     this.name = error.name;
     this.code = error.code;
@@ -27,7 +20,7 @@ class WorkerRuntimeError extends Error {
 }
 
 interface InflightRequest {
-  resolve: (response: WorkerSerializedResponse) => void;
+  resolve: (response: protocol.SerializedResponse) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
 }
@@ -39,17 +32,17 @@ function resolveWorkerEntryUrl(): URL {
 }
 
 export interface HandlerWorkerPool {
-  execute(payload: WorkerExecutePayload): Promise<WorkerSerializedResponse>;
+  execute(payload: protocol.Payload): Promise<protocol.SerializedResponse>;
   clearCache(): Promise<void>;
   close(): Promise<void>;
 }
 
-export function createHandlerWorkerPool(overrides: WorkerRuntimeOptionOverrides = {}): HandlerWorkerPool {
-  return new HandlerWorkerPoolImpl(resolveWorkerRuntimeOptions(overrides));
+export function createHandlerWorkerPool(overrides?: Partial<ExecutorOptions>): HandlerWorkerPool {
+  return new HandlerWorkerPoolImpl(resolveExecutorOptions(overrides));
 }
 
 class HandlerWorkerPoolImpl implements HandlerWorkerPool {
-  private readonly options: WorkerRuntimeOptions;
+  private readonly options: ExecutorOptions;
 
   private readonly workerUrl: URL;
 
@@ -65,12 +58,12 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
   private closed = false;
 
-  constructor(options: WorkerRuntimeOptions) {
+  constructor(options: ExecutorOptions) {
     this.options = options;
     this.workerUrl = resolveWorkerEntryUrl();
   }
 
-  async execute(payload: WorkerExecutePayload): Promise<WorkerSerializedResponse> {
+  async execute(payload: protocol.Payload): Promise<protocol.SerializedResponse> {
     return this.executeWithRetry(payload, false);
   }
 
@@ -103,10 +96,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
   }
 
-  private async executeWithRetry(
-    payload: WorkerExecutePayload,
-    retried: boolean,
-  ): Promise<WorkerSerializedResponse> {
+  private async executeWithRetry(payload: protocol.Payload, retried: boolean): Promise<protocol.SerializedResponse> {
     try {
       return await this.executeOnce(payload);
     } catch (error) {
@@ -122,7 +112,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
   }
 
-  private async executeOnce(payload: WorkerExecutePayload): Promise<WorkerSerializedResponse> {
+  private async executeOnce(payload: protocol.Payload): Promise<protocol.SerializedResponse> {
     if (this.closed) {
       throw new Error('runtime worker is closed');
     }
@@ -142,7 +132,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     const worker = this.ensureWorker();
 
-    return new Promise<WorkerSerializedResponse>((resolve, reject) => {
+    return new Promise<protocol.SerializedResponse>((resolve, reject) => {
       const id = `${Date.now().toString(36)}-${(this.requestCounter++).toString(36)}`;
 
       const timer = setTimeout(() => {
@@ -157,7 +147,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
       this.inflight.set(id, { resolve, reject, timer });
 
-      const message: WorkerInboundMessage = {
+      const message: protocol.InboundMessage = {
         type: 'execute',
         id,
         payload,
@@ -185,7 +175,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
     worker.unref();
 
-    worker.on('message', (message: WorkerOutboundMessage) => {
+    worker.on('message', (message: protocol.OutboundMessage) => {
       this.handleWorkerMessage(message);
     });
 
@@ -228,7 +218,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     return worker;
   }
 
-  private handleWorkerMessage(message: WorkerOutboundMessage): void {
+  private handleWorkerMessage(message: protocol.OutboundMessage): void {
     if (message.type === 'memory') {
       this.handleMemoryMessage(message);
       return;
@@ -255,7 +245,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     inflight.resolve(message.response);
   }
 
-  private handleMemoryMessage(message: WorkerMemoryMessage): void {
+  private handleMemoryMessage(message: protocol.MemoryMessage): void {
     const softLimitBytes = this.options.memorySoftLimitMb * 1024 * 1024;
     const hardLimitBytes = this.options.memoryHardLimitMb * 1024 * 1024;
 

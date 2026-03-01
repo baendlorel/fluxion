@@ -3,15 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { Readable, Writable } from 'node:stream';
 
-import type {
-  WorkerExecuteMessage,
-  WorkerExecutePayload,
-  WorkerHeaderValue,
-  WorkerInboundMessage,
-  WorkerOutboundMessage,
-  WorkerSerializedError,
-  WorkerSerializedResponse,
-} from './protocol.js';
+import type { protocol } from './protocol.js';
 
 type ModuleDefaultHandler = (req: http.IncomingMessage, res: http.ServerResponse) => unknown;
 
@@ -22,7 +14,7 @@ interface HandlerCacheEntry {
 
 const handlerCache = new Map<string, HandlerCacheEntry>();
 
-function toWorkerError(error: unknown): WorkerSerializedError {
+function toWorkerError(error: unknown): protocol.SerializedError {
   const err = error as NodeJS.ErrnoException;
 
   return {
@@ -83,11 +75,7 @@ class MemoryServerResponse extends Writable {
     return this;
   }
 
-  override end(
-    chunk?: unknown,
-    encoding?: BufferEncoding | (() => void),
-    cb?: () => void,
-  ): this {
+  override end(chunk?: unknown, encoding?: BufferEncoding | (() => void), cb?: () => void): this {
     const resolvedCallback = typeof encoding === 'function' ? encoding : cb;
     const resolvedEncoding = typeof encoding === 'string' ? encoding : undefined;
 
@@ -99,7 +87,7 @@ class MemoryServerResponse extends Writable {
     return super.end(resolvedCallback);
   }
 
-  toSerializedResponse(): WorkerSerializedResponse {
+  toSerializedResponse(): protocol.SerializedResponse {
     if (this.bodyChunks.length === 0) {
       return {
         statusCode: this.statusCode,
@@ -137,7 +125,10 @@ class MemoryServerResponse extends Writable {
       }
 
       if (Array.isArray(value)) {
-        this.setHeader(key, value.map((item) => String(item)));
+        this.setHeader(
+          key,
+          value.map((item) => String(item)),
+        );
         continue;
       }
 
@@ -162,10 +153,9 @@ function toBuffer(chunk: unknown, encoding?: BufferEncoding): Buffer {
   return Buffer.from(String(chunk));
 }
 
-function createIncomingRequest(payload: WorkerExecutePayload): http.IncomingMessage {
+function createIncomingRequest(payload: protocol.Payload): http.IncomingMessage {
   const bodyChunk = payload.body;
-  const source =
-    bodyChunk !== undefined && bodyChunk.byteLength > 0 ? [Buffer.from(bodyChunk)] : [];
+  const source = bodyChunk !== undefined && bodyChunk.byteLength > 0 ? [Buffer.from(bodyChunk)] : [];
   const request = Readable.from(source) as unknown as http.IncomingMessage;
 
   request.method = payload.method;
@@ -175,7 +165,7 @@ function createIncomingRequest(payload: WorkerExecutePayload): http.IncomingMess
   const headerKeys = Object.keys(payload.headers);
   for (let i = 0; i < headerKeys.length; i++) {
     const key = headerKeys[i];
-    const value: WorkerHeaderValue = payload.headers[key];
+    const value: protocol.HeaderValue = payload.headers[key];
     headers[key] = Array.isArray(value) ? [...value] : value;
   }
   request.headers = headers;
@@ -225,7 +215,7 @@ async function loadHandler(filePath: string, version: string): Promise<ModuleDef
   return handler;
 }
 
-async function execute(message: WorkerExecuteMessage): Promise<WorkerOutboundMessage> {
+async function execute(message: protocol.ExecuteMessage): Promise<protocol.OutboundMessage> {
   const startedAt = Date.now();
   const payload = message.payload;
 
@@ -279,7 +269,7 @@ const memorySampleIntervalMs =
 const memoryReporter = setInterval(() => {
   const usage = process.memoryUsage();
 
-  const message: WorkerOutboundMessage = {
+  const message: protocol.OutboundMessage = {
     type: 'memory',
     heapUsed: usage.heapUsed,
     rss: usage.rss,
@@ -292,7 +282,7 @@ const memoryReporter = setInterval(() => {
 
 memoryReporter.unref();
 
-port.on('message', (message: WorkerInboundMessage) => {
+port.on('message', (message: protocol.InboundMessage) => {
   if (message.type !== 'execute') {
     return;
   }
