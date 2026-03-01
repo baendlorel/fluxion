@@ -1,6 +1,7 @@
+import chalk from 'chalk';
 import { dtm } from './dtm.js';
 
-export type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+export type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC';
 
 export interface LogEntry {
   timestamp: string;
@@ -45,24 +46,13 @@ function omitReservedFields(entry: LogEntry): Record<string, unknown> {
 function writeOneLine(entry: LogEntry): void {
   const fields = omitReservedFields(entry);
   const hasFields = Object.keys(fields).length > 0;
-  const head = `[${entry.timestamp}] ${entry.level} -`;
+  const timestampText = chalk.dim(`[${entry.timestamp}]`);
+  const levelText = formatLevel(entry.level);
+  const body = entry.message ?? entry.event;
+  const bodyText = entry.message !== undefined ? chalk.white(body) : chalk.bold.white(body);
+  const fieldsText = hasFields ? ` ${chalk.dim(safeStringify(fields))}` : '';
 
-  if (entry.message !== undefined) {
-    if (!hasFields) {
-      console.log(`${head} ${entry.message}`);
-      return;
-    }
-
-    console.log(`${head} ${entry.message} ${safeStringify(fields)}`);
-    return;
-  }
-
-  if (!hasFields) {
-    console.log(`${head} ${entry.event}`);
-    return;
-  }
-
-  console.log(`${head} ${entry.event} ${safeStringify(fields)}`);
+  console.log(`${timestampText} ${levelText} ${bodyText}${fieldsText}`);
 }
 
 function writeJsonLine(entry: LogEntry): void {
@@ -83,6 +73,23 @@ export function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink 
   }
 
   throw new Error('Invalid logger option: expected function | "one-line" | "json-line"');
+}
+
+function formatLevel(level: LogLevel): string {
+  const label = `[${level}]`;
+
+  switch (level) {
+    case 'INFO':
+      return chalk.bold.hex('#38bdf8')(label);
+    case 'WARN':
+      return chalk.bold.hex('#fb923c')(label);
+    case 'ERROR':
+      return chalk.bold.hex('#ef4444')(label);
+    case 'SUCC':
+      return chalk.bold.hex('#22c55e')(label);
+    default:
+      return chalk.bold(label);
+  }
 }
 
 export function createLogger(option: LoggerOption | undefined = 'one-line'): FluxionLogger {
@@ -134,5 +141,5 @@ export function logJsonl(level: LogLevel, event: string, fields: Record<string, 
  * Compatibility helper for existing call sites. Prefer structured events.
  */
 export function log(level: LogLevel, message: string, fields: Record<string, unknown> = {}): void {
-  defaultLogger.write(level, 'message', { message, ...fields });
+  defaultLogger.write(level, 'Message', { message, ...fields });
 }

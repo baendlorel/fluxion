@@ -847,7 +847,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
     const route = getRouteFromHandlerFile(relativeFilePath);
 
     if (previousVersion === undefined) {
-      logger.write('INFO', 'handler_loaded', {
+      logger.write('INFO', 'HandlerLoaded', {
         route,
         file: relativeFilePath,
         version,
@@ -855,7 +855,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       return;
     }
 
-    logger.write('INFO', 'handler_reloaded', {
+    logger.write('INFO', 'HandlerReloaded', {
       route,
       file: relativeFilePath,
       previousVersion,

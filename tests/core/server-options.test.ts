@@ -134,8 +134,8 @@ describe('server options', () => {
     expect(lines.length).toBeGreaterThan(0);
 
     const entries = lines.map((line: string) => JSON.parse(line) as Record<string, unknown>);
-    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'server_started')).toBe(true);
-    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'request_completed')).toBe(true);
+    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'ServerStarted')).toBe(true);
+    expect(entries.some((entry: Record<string, unknown>) => entry.event === 'RequestCompleted')).toBe(true);
   });
 
   it('supports custom logger function', async () => {
@@ -153,8 +153,8 @@ describe('server options', () => {
 
     await fetch(`${baseUrl}/missing`);
 
-    expect(entries.some((entry) => entry.event === 'server_started')).toBe(true);
-    expect(entries.some((entry) => entry.event === 'request_completed')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'ServerStarted')).toBe(true);
+    expect(entries.some((entry) => entry.event === 'RequestCompleted')).toBe(true);
     expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 });

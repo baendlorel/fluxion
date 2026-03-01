@@ -106,7 +106,7 @@ export function fluxion(options: FluxionOptions): http.Server {
   const logger = createLogger(options.logger);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    logger.write('INFO', 'dynamic_directory_created', { directory: dir });
+    logger.write('INFO', 'DynamicDirectoryCreated', { directory: dir });
   }
 
   const fileRuntime = createFileRuntime(dir, {
@@ -128,20 +128,20 @@ export function fluxion(options: FluxionOptions): http.Server {
       const handlerCount = snapshot.handlers.length;
       const staticFileCount = snapshot.staticFiles.length;
 
-      logger.write('INFO', 'dynamic_directory_loaded', {
+      logger.write('INFO', 'DynamicDirectoryLoaded', {
         dir,
         handlerCount,
         staticFileCount,
       });
 
       if (handlerCount === 0) {
-        logger.write('INFO', 'dynamic_handlers_loaded', { count: 0 });
+        logger.write('INFO', 'DynamicHandlersLoaded', { count: 0 });
         return;
       }
 
       for (let i = 0; i < snapshot.handlers.length; i++) {
         const handler = snapshot.handlers[i];
-        logger.write('INFO', 'dynamic_handler_loaded', {
+        logger.write('INFO', 'HandlerLoaded', {
           route: handler.route,
           file: handler.file,
           version: handler.version,
@@ -149,7 +149,7 @@ export function fluxion(options: FluxionOptions): http.Server {
       }
     })
     .catch((error) => {
-      logger.write('ERROR', 'dynamic_directory_load_failed', {
+      logger.write('ERROR', 'DynamicDirectoryLoadFailed', {
         dir,
         error: getErrorMessage(error),
       });
@@ -173,7 +173,7 @@ export function fluxion(options: FluxionOptions): http.Server {
 
     const bodyCapture = createBodyPreviewCapture(req);
 
-    logger.write('INFO', 'request_received', { method, ip, path: url.pathname });
+    logger.write('INFO', 'RequestReceived', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -196,7 +196,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         fields.bodyTruncated = bodyPreview.truncated;
       }
 
-      logger.write('INFO', 'request_completed', fields);
+      logger.write('INFO', 'RequestCompleted', fields);
     });
 
     void metaApi
@@ -212,7 +212,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         }
       })
       .catch((error) => {
-        logger.write('ERROR', 'request_failed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
+        logger.write('ERROR', 'RequestFailed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
 
         if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
           safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
@@ -225,22 +225,22 @@ export function fluxion(options: FluxionOptions): http.Server {
 
   server.on('close', () => {
     void fileRuntime.close();
-    logger.write('INFO', 'server_closed', {
+    logger.write('INFO', 'ServerClosed', {
       host: options.host,
       port: options.port,
     });
   });
 
   server.listen(options.port, options.host, () => {
-    logger.write('INFO', 'server_started', {
+    logger.write('INFO', 'ServerStarted', {
       host: options.host,
       port: options.port,
     });
-    logger.write('INFO', 'dynamic_directory', { directory: dir });
+    logger.write('INFO', 'DynamicDirectory', { directory: dir });
   });
 
   server.on('error', (error) => {
-    logger.write('ERROR', 'server_error', {
+    logger.write('ERROR', 'ServerError', {
       error: getErrorMessage(error),
     });
   });

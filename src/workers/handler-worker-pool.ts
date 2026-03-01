@@ -395,7 +395,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     try {
       await worker.terminate();
     } catch (error) {
-      this.logger.write('WARN', 'runtime_worker_terminate_failed', {
+      this.logger.write('WARN', 'RuntimeWorkerTerminateFailed', {
         workerId: this.meta.id,
         error: getErrorMessage(error),
       });
@@ -621,7 +621,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     });
 
     worker.once('error', (error) => {
-      this.logger.write('ERROR', 'runtime_worker_error', {
+      this.logger.write('ERROR', 'RuntimeWorkerError', {
         workerId: this.meta.id,
         error: getErrorMessage(error),
       });
@@ -652,7 +652,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     });
 
     this.worker = worker;
-    this.logger.write('INFO', 'runtime_worker_started', {
+    this.logger.write('INFO', 'RuntimeWorkerStarted', {
       workerId: this.meta.id,
       dbSet: this.meta.dbSet,
       maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
@@ -732,7 +732,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     const hardLimitBytes = this.options.memoryHardLimitMb * 1024 * 1024;
 
     if (message.heapUsed >= hardLimitBytes) {
-      this.logger.write('WARN', 'runtime_worker_memory_hard_limit', {
+      this.logger.write('WARN', 'RuntimeWorkerMemoryHardLimit', {
         workerId: this.meta.id,
         heapUsed: message.heapUsed,
         hardLimitBytes,
@@ -742,7 +742,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     if (message.heapUsed >= softLimitBytes && this.inflight.size === 0) {
-      this.logger.write('WARN', 'runtime_worker_memory_soft_limit', {
+      this.logger.write('WARN', 'RuntimeWorkerMemorySoftLimit', {
         workerId: this.meta.id,
         heapUsed: message.heapUsed,
         softLimitBytes,
@@ -788,7 +788,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       try {
         await worker.terminate();
       } catch (error) {
-        this.logger.write('WARN', 'runtime_worker_restart_terminate_failed', {
+        this.logger.write('WARN', 'RuntimeWorkerRestartTerminateFailed', {
           workerId: this.meta.id,
           reason,
           error: getErrorMessage(error),
@@ -801,7 +801,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     }
 
     this.ensureWorker();
-    this.logger.write('WARN', 'runtime_worker_restarted', {
+    this.logger.write('WARN', 'RuntimeWorkerRestarted', {
       workerId: this.meta.id,
       reason,
     });
