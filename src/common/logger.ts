@@ -46,10 +46,10 @@ function omitReservedFields(entry: LogEntry): Record<string, unknown> {
 function writeOneLine(entry: LogEntry): void {
   const fields = omitReservedFields(entry);
   const hasFields = Object.keys(fields).length > 0;
-  const timestampText = chalk.dim(`[${entry.timestamp}]`);
+  const timestampText = chalk.hex('#166534')(`[${entry.timestamp}]`);
   const levelText = formatLevel(entry.level);
   const body = entry.message ?? entry.event;
-  const bodyText = entry.message !== undefined ? chalk.white(body) : chalk.bold.white(body);
+  const bodyText = chalk.white(body);
   const fieldsText = hasFields ? ` ${chalk.dim(safeStringify(fields))}` : '';
 
   console.log(`${timestampText} ${levelText} ${bodyText}${fieldsText}`);
@@ -76,19 +76,19 @@ export function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink 
 }
 
 function formatLevel(level: LogLevel): string {
-  const label = `[${level}]`;
+  const label = level;
 
   switch (level) {
     case 'INFO':
-      return chalk.bold.hex('#38bdf8')(label);
+      return chalk.hex('#38bdf8')(label);
     case 'WARN':
-      return chalk.bold.hex('#fb923c')(label);
+      return chalk.hex('#fb923c')(label);
     case 'ERROR':
-      return chalk.bold.hex('#ef4444')(label);
+      return chalk.hex('#ef4444')(label);
     case 'SUCC':
-      return chalk.bold.hex('#22c55e')(label);
+      return chalk.hex('#22c55e')(label);
     default:
-      return chalk.bold(label);
+      return label;
   }
 }
 
