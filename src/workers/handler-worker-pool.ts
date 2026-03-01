@@ -520,8 +520,13 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       }
 
       if (transfer.length > 0) {
-        worker.postMessage(message, transfer);
-        return;
+        try {
+          worker.postMessage(message, transfer);
+          return;
+        } catch {
+          worker.postMessage(message);
+          return;
+        }
       }
 
       worker.postMessage(message);

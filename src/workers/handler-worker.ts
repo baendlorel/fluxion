@@ -201,6 +201,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Runtime guard for promise-like handler return values.
+ */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === 'function'
+  );
+}
+
+/**
  * Parses default export into handler + metadata shape.
  */
 function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedModuleDefault {
@@ -578,14 +589,13 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Resul
     const entry = await loadHandler(payload.filePath, payload.version);
     const request = createIncomingRequest(payload);
     const response = new MemoryServerResponse(maxResponseBytes) as unknown as http.ServerResponse;
+    const execution = entry.handler(request, response, createHandlerContext(entry.meta));
 
-    await Promise.resolve(entry.handler(request, response, createHandlerContext(entry.meta)));
-
-    const writableResponse = response as unknown as MemoryServerResponse;
-    if (!writableResponse.writableEnded) {
-      writableResponse.end();
+    if (isPromiseLike(execution)) {
+      await execution;
     }
 
+    const writableResponse = response as unknown as MemoryServerResponse;
     if (!writableResponse.writableFinished) {
       await new Promise<void>((resolve, reject) => {
         writableResponse.once('finish', resolve);

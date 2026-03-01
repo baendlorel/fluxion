@@ -118,6 +118,10 @@ export interface FileRuntimeOptions {
    * Base runtime option overrides applied to worker pools.
    */
   workerOptions?: Partial<ExecutorOptions>;
+  /**
+   * Maximum request body bytes accepted by dynamic handlers.
+   */
+  maxRequestBytes?: number;
 }
 
 /**
@@ -218,6 +222,35 @@ interface HandlerMetaCacheEntry {
 function getContentType(filePath: string): string {
   const extension = path.extname(filePath).toLowerCase();
   return STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+}
+
+/**
+ * Creates a typed request-body-too-large runtime error.
+ */
+function createRequestBodyTooLargeError(receivedBytes: number, maxBytes: number): Error {
+  const sizeError = new Error(`request body too large: ${receivedBytes} bytes exceeds ${maxBytes} bytes`);
+  (sizeError as NodeJS.ErrnoException).code = 'REQUEST_BODY_TOO_LARGE';
+  return sizeError;
+}
+
+/**
+ * Validates max request body option.
+ */
+function resolveMaxRequestBytes(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(value)) {
+    throw new Error('Invalid maxRequestBytes: must be a finite number');
+  }
+
+  const normalized = Math.floor(value);
+  if (normalized <= 0) {
+    throw new Error('Invalid maxRequestBytes: must be greater than 0');
+  }
+
+  return normalized;
 }
 
 /**
@@ -623,7 +656,11 @@ function normalizeHeaders(headers: http.IncomingHttpHeaders): protocol.Headers {
  * Reads request body once before worker execution.
  * ! Body stream is consumable; do not read it elsewhere first.
  */
-async function readRequestBody(req: http.IncomingMessage, method: string): Promise<Uint8Array | undefined> {
+async function readRequestBody(
+  req: http.IncomingMessage,
+  method: string,
+  maxBytes: number | undefined,
+): Promise<Uint8Array | undefined> {
   if (method === 'GET' || method === 'HEAD') {
     return undefined;
   }
@@ -632,8 +669,20 @@ async function readRequestBody(req: http.IncomingMessage, method: string): Promi
     return undefined;
   }
 
+  if (maxBytes !== undefined) {
+    const contentLengthHeader = req.headers['content-length'];
+    if (contentLengthHeader !== undefined) {
+      const declaredBytes = Number.parseInt(contentLengthHeader, 10);
+      if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+        throw createRequestBodyTooLargeError(declaredBytes, maxBytes);
+      }
+    }
+  }
+
   return new Promise<Uint8Array | undefined>((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    let settled = false;
 
     const cleanup = (): void => {
       req.off('data', onData);
@@ -642,29 +691,58 @@ async function readRequestBody(req: http.IncomingMessage, method: string): Promi
       req.off('aborted', onAborted);
     };
 
+    const settle = (action: () => void): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      action();
+    };
+
     const onData = (chunk: Buffer | string): void => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += bufferChunk.byteLength;
+
+      if (maxBytes !== undefined && totalBytes > maxBytes) {
+        cleanup();
+        req.resume();
+        settle(() => {
+          reject(createRequestBodyTooLargeError(totalBytes, maxBytes));
+        });
+        return;
+      }
+
+      chunks.push(bufferChunk);
     };
 
     const onEnd = (): void => {
       cleanup();
 
       if (chunks.length === 0) {
-        resolve(undefined);
+        settle(() => {
+          resolve(undefined);
+        });
         return;
       }
 
-      resolve(Buffer.concat(chunks));
+      settle(() => {
+        resolve(Buffer.concat(chunks));
+      });
     };
 
     const onError = (error: Error): void => {
       cleanup();
-      reject(error);
+      settle(() => {
+        reject(error);
+      });
     };
 
     const onAborted = (): void => {
       cleanup();
-      reject(new Error('request aborted while reading body'));
+      settle(() => {
+        reject(new Error('request aborted while reading body'));
+      });
     };
 
     req.on('data', onData);
@@ -713,6 +791,11 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
    * Database names declared by user options.
    */
   const databaseNames = normalizeDbSet(options.databaseNames);
+
+  /**
+   * Maximum request body bytes accepted by dynamic handlers.
+   */
+  const maxRequestBytes = resolveMaxRequestBytes(options.maxRequestBytes);
 
   /**
    * Static worker definitions resolved from strategy.
@@ -854,7 +937,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       method: normalized.method,
       url: req.url ?? `${normalized.url.pathname}${normalized.url.search}`,
       headers: normalizeHeaders(req.headers),
-      body: await readRequestBody(req, normalized.method),
+      body: await readRequestBody(req, normalized.method, maxRequestBytes),
       ip: normalized.ip,
     });
 

@@ -103,6 +103,23 @@ describe('file-runtime', () => {
     expect(await secondResponse.text()).toBe('v2-reloaded');
   });
 
+  it('waits for callback-style async handlers to end the response', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-callback-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'delayed.mjs'),
+      "export default function handler(_req, res) { setTimeout(() => res.end('delayed-ok'), 20); }",
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/delayed`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('delayed-ok');
+  });
+
   it('serves static .js files and blocks underscore directories', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-runtime-static-');
     tempDirectories.push(dynamicDirectory);

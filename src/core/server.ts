@@ -55,6 +55,12 @@ export interface FluxionOptions {
    * Base worker runtime option overrides.
    */
   workerOptions?: Partial<ExecutorOptions>;
+
+  /**
+   * Maximum request body bytes accepted by dynamic handlers.
+   * Requests larger than this limit will return 413.
+   */
+  maxRequestBytes?: number;
 }
 
 /**
@@ -100,6 +106,7 @@ export function fluxion(options: FluxionOptions): http.Server {
     databaseNames,
     workerStrategy: options.workerStrategy,
     workerOptions: options.workerOptions,
+    maxRequestBytes: options.maxRequestBytes,
   });
   const metaApi = createMetaApi({
     dir,
@@ -194,6 +201,11 @@ export function fluxion(options: FluxionOptions): http.Server {
       })
       .catch((error) => {
         logJsonl('ERROR', 'request_failed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
+
+        if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
+          safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
+          return;
+        }
 
         safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       });
