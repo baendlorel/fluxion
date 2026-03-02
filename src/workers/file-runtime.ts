@@ -533,6 +533,25 @@ function buildHandlerCandidates(dynamicDirectory: string, segments: readonly str
 }
 
 /**
+ * Builds ordered static file candidates for one route.
+ */
+function buildStaticCandidates(dynamicDirectory: string, segments: readonly string[]): string[] {
+  if (segments.length === 0) {
+    return [path.resolve(dynamicDirectory, 'index.html')];
+  }
+
+  const routePath = path.resolve(dynamicDirectory, ...segments);
+  const candidates = [routePath];
+  const lastSegment = segments[segments.length - 1];
+
+  if (path.extname(lastSegment).length === 0) {
+    candidates.push(path.resolve(routePath, 'index.html'));
+  }
+
+  return candidates;
+}
+
+/**
  * Streams static file to response.
  */
 async function streamStaticFile(
@@ -893,38 +912,40 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       return HandlerResult.NotFound;
     }
 
-    if (parsedPath.segments.length === 0) {
-      return HandlerResult.NotFound;
-    }
+    const candidates = buildStaticCandidates(dir, parsedPath.segments);
 
-    const filePath = path.resolve(dir, ...parsedPath.segments);
+    for (let i = 0; i < candidates.length; i++) {
+      const filePath = candidates[i];
 
-    if (!isUnderDirectory(filePath, dir)) {
-      return HandlerResult.NotFound;
-    }
-
-    if (path.extname(filePath).toLowerCase() === '.mjs') {
-      return HandlerResult.NotFound;
-    }
-
-    try {
-      const stat = await fs.promises.stat(filePath);
-
-      if (!stat.isFile()) {
-        return HandlerResult.NotFound;
+      if (!isUnderDirectory(filePath, dir)) {
+        continue;
       }
 
-      await streamStaticFile(filePath, stat, method, res);
-      return HandlerResult.Handled;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-
-      if (code === 'ENOENT' || code === 'ENOTDIR') {
-        return HandlerResult.NotFound;
+      if (path.extname(filePath).toLowerCase() === '.mjs') {
+        continue;
       }
 
-      throw error;
+      try {
+        const stat = await fs.promises.stat(filePath);
+
+        if (!stat.isFile()) {
+          continue;
+        }
+
+        await streamStaticFile(filePath, stat, method, res);
+        return HandlerResult.Handled;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+
+        if (code === 'ENOENT' || code === 'ENOTDIR') {
+          continue;
+        }
+
+        throw error;
+      }
     }
+
+    return HandlerResult.NotFound;
   };
 
   /**

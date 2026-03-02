@@ -169,6 +169,33 @@ describe('file-runtime', () => {
     expect(await hiddenStaticResponse.text()).toBe('not_found');
   });
 
+  it('falls back to route index.html when direct file is not matched', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-static-index-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'docs', 'index.html'),
+      '<html><body><h1>docs-home</h1></body></html>',
+    );
+    await writeFile(
+      path.join(dynamicDirectory, 'index.html'),
+      '<html><body><h1>root-home</h1></body></html>',
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
+    servers.push(server);
+
+    const docsResponse = await fetch(`${baseUrl}/docs`);
+    expect(docsResponse.status).toBe(200);
+    expect(docsResponse.headers.get('content-type')).toContain('text/html');
+    expect(await docsResponse.text()).toContain('docs-home');
+
+    const rootResponse = await fetch(`${baseUrl}/`);
+    expect(rootResponse.status).toBe(200);
+    expect(rootResponse.headers.get('content-type')).toContain('text/html');
+    expect(await rootResponse.text()).toContain('root-home');
+  });
+
   it('creates route snapshot from .mjs handlers and static files', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-runtime-snapshot-');
     tempDirectories.push(dynamicDirectory);
