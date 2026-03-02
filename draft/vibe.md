@@ -44,3 +44,7 @@ worker优化：
 1、直接从worker返回你说的buffer来限制大小、判定,减少拷贝传输成本避免内存膨胀；
 2、mjs编写的时候可以选择自己需要远程的什么对象，比如{handler,db:['pg','xxxDB']}等；handler里会传入第三个入参context来包含这些功能;
 3、实现workerstrategy这个方案。
+
+---
+
+现在，请你把db config的interface保留下来。我已经删除了pg和mysql2依赖，因为它们不应该这样写，它们应该在用户npm install fluxion后由用户自行安装引入，fluxion只做配置传递。为不失一般性，mjs返回的不再是db:{key:value}，而是modules:[{module:'mysql2',injectKey:"mydb",factory:(...)=>{ 这里返回最终注入context的对象}}]。而这个modules数组将会传输到worker，其中，factory因为是函数，所以会tostring后传输，传输到worker内部后再new Function的形式绕回来,而最终这个数据库链接实例会出现在context.mydb。
