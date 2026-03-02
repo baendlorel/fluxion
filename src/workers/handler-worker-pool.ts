@@ -44,10 +44,6 @@ interface WorkerPoolMeta {
    * Marks the auto-added all-db fallback worker.
    */
   isFallbackAllDb: boolean;
-  /**
-   * Normalized db configs available in this worker.
-   */
-  dbConfigMap: protocol.WorkerDbConfigMap;
 }
 
 /**
@@ -76,10 +72,6 @@ export interface HandlerExecuteResult {
    * Serialized HTTP response.
    */
   response: protocol.SerializedResponse;
-  /**
-   * Resolved handler metadata.
-   */
-  meta: protocol.HandlerMeta;
 }
 
 /**
@@ -212,10 +204,6 @@ export interface HandlerWorkerPool {
    */
   execute(payload: protocol.Payload): Promise<HandlerExecuteResult>;
   /**
-   * Resolves handler metadata in worker.
-   */
-  inspect(filePath: string, version: string): Promise<protocol.HandlerMeta>;
-  /**
    * Clears tracked state and rotates worker.
    */
   clearCache(): Promise<void>;
@@ -233,26 +221,12 @@ export interface HandlerWorkerPool {
  * Pending execute request state.
  */
 interface ExecuteInflightRequest {
-  kind: 'execute';
   resolve: (result: HandlerExecuteResult) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
 }
 
-/**
- * Pending inspect request state.
- */
-interface InspectInflightRequest {
-  kind: 'inspect';
-  resolve: (meta: protocol.HandlerMeta) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
-}
-
-/**
- * Union of pending request state.
- */
-type InflightRequest = ExecuteInflightRequest | InspectInflightRequest;
+type InflightRequest = ExecuteInflightRequest;
 
 /**
  * Creates a worker pool using merged runtime defaults.
@@ -350,7 +324,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       id: meta.id,
       dbSet: [...meta.dbSet],
       isFallbackAllDb: meta.isFallbackAllDb,
-      dbConfigMap: { ...meta.dbConfigMap },
     };
     this.options = options;
     this.logger = logger;
@@ -362,13 +335,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
    */
   async execute(payload: protocol.Payload): Promise<HandlerExecuteResult> {
     return this.executeWithRetry(payload, false);
-  }
-
-  /**
-   * Resolves handler metadata and retries once on version mismatch.
-   */
-  async inspect(filePath: string, version: string): Promise<protocol.HandlerMeta> {
-    return this.inspectWithRetry(filePath, version, false);
   }
 
   /**
@@ -470,25 +436,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   }
 
   /**
-   * Inspects handler metadata with retry path for stale worker cache.
-   */
-  private async inspectWithRetry(filePath: string, version: string, retried: boolean): Promise<protocol.HandlerMeta> {
-    try {
-      return await this.inspectOnce(filePath, version);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-
-      if (!retried && code === 'WORKER_VERSION_MISMATCH') {
-        await this.restart('worker_version_mismatch');
-        this.versionsByFilePath.set(filePath, version);
-        return this.inspectWithRetry(filePath, version, true);
-      }
-
-      throw error;
-    }
-  }
-
-  /**
    * Enqueues a request into worker with timeout protection.
    */
   private async executeOnce(payload: protocol.Payload): Promise<HandlerExecuteResult> {
@@ -520,7 +467,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       }, this.options.requestTimeoutMs);
 
       const inflight: ExecuteInflightRequest = {
-        kind: 'execute',
         resolve,
         reject,
         timer,
@@ -553,51 +499,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
   }
 
   /**
-   * Sends inspect command to worker with timeout protection.
-   */
-  private async inspectOnce(filePath: string, version: string): Promise<protocol.HandlerMeta> {
-    this.assertExecutable();
-
-    this.assertKnownVersion(filePath, version);
-    this.versionsByFilePath.set(filePath, version);
-
-    const worker = this.ensureWorker();
-
-    return new Promise<protocol.HandlerMeta>((resolve, reject) => {
-      const id = this.nextRequestId();
-
-      const timer = setTimeout(() => {
-        this.inflight.delete(id);
-
-        const timeoutError = new Error(`runtime worker timeout after ${this.options.requestTimeoutMs}ms`);
-        (timeoutError as NodeJS.ErrnoException).code = 'WORKER_TIMEOUT';
-
-        reject(timeoutError);
-        void this.restart('inspect_timeout');
-      }, this.options.requestTimeoutMs);
-
-      const inflight: InspectInflightRequest = {
-        kind: 'inspect',
-        resolve,
-        reject,
-        timer,
-      };
-      this.inflight.set(id, inflight);
-
-      const message: protocol.InspectMessage = {
-        type: 'inspect',
-        id,
-        payload: {
-          filePath,
-          version,
-        },
-      };
-
-      worker.postMessage(message);
-    });
-  }
-
-  /**
    * Starts worker on demand and wires supervisor hooks.
    */
   private ensureWorker(): Worker {
@@ -611,7 +512,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         maxResponseBytes: this.options.maxResponseBytes,
         workerId: this.meta.id,
         dbSet: this.meta.dbSet,
-        dbConfigMap: this.meta.dbConfigMap,
       },
       resourceLimits: {
         maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,
@@ -687,11 +587,6 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
     clearTimeout(inflight.timer);
 
     if (message.type === 'result') {
-      if (inflight.kind !== 'execute') {
-        inflight.reject(new Error('runtime worker result type mismatch'));
-        return;
-      }
-
       if (!message.ok) {
         inflight.reject(new WorkerRuntimeError(message.error ?? { name: 'Error', message: 'Unknown worker error' }));
         return;
@@ -704,27 +599,8 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
 
       inflight.resolve({
         response: message.response,
-        meta: message.meta ?? { db: [] },
       });
-      return;
     }
-
-    if (inflight.kind !== 'inspect') {
-      inflight.reject(new Error('runtime worker inspect type mismatch'));
-      return;
-    }
-
-    if (!message.ok) {
-      inflight.reject(new WorkerRuntimeError(message.error ?? { name: 'Error', message: 'Unknown worker error' }));
-      return;
-    }
-
-    if (message.meta === undefined) {
-      inflight.reject(new Error('runtime worker missing inspect metadata'));
-      return;
-    }
-
-    inflight.resolve(message.meta);
   }
 
   /**

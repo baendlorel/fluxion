@@ -41,16 +41,6 @@ export namespace protocol {
   export type Headers = Record<string, HeaderValue>;
 
   /**
-   * Handler runtime metadata.
-   */
-  export interface HandlerMeta {
-    /**
-     * Databases declared by handler metadata.
-     */
-    db: string[];
-  }
-
-  /**
    * Execute payload sent to worker.
    */
   export interface Payload {
@@ -94,27 +84,6 @@ export namespace protocol {
      */
     id: string;
     payload: Payload;
-  }
-
-  /**
-   * Main -> worker inspect command.
-   */
-  export interface InspectMessage {
-    type: 'inspect';
-    /**
-     * Correlation id for this request.
-     */
-    id: string;
-    payload: {
-      /**
-       * Absolute path of the handler file.
-       */
-      filePath: string;
-      /**
-       * Version token generated from file metadata.
-       */
-      version: string;
-    };
   }
 
   /**
@@ -178,31 +147,7 @@ export namespace protocol {
      * Heap used when result is produced.
      */
     heapUsed: number;
-    /**
-     * Resolved handler metadata.
-     */
-    meta?: HandlerMeta;
     response?: SerializedResponse;
-    error?: SerializedError;
-  }
-
-  /**
-   * Worker -> main inspect result event.
-   */
-  export interface InspectResultMessage {
-    type: 'inspect_result';
-    /**
-     * Correlation id matching InspectMessage.id.
-     */
-    id: string;
-    /**
-     * Whether inspect succeeded.
-     */
-    ok: boolean;
-    /**
-     * Resolved handler metadata.
-     */
-    meta?: HandlerMeta;
     error?: SerializedError;
   }
 
@@ -232,10 +177,10 @@ export namespace protocol {
   /**
    * Union of commands accepted by worker.
    */
-  export type InboundMessage = ExecuteMessage | InspectMessage;
+  export type InboundMessage = ExecuteMessage;
 
   /**
    * Union of events emitted by worker.
    */
-  export type OutboundMessage = ResultMessage | InspectResultMessage | MemoryMessage;
+  export type OutboundMessage = ResultMessage | MemoryMessage;
 }

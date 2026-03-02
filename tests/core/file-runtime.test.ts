@@ -191,25 +191,20 @@ describe('file-runtime', () => {
       path.join(dynamicDirectory, 'ctx.mjs'),
       [
         'export default {',
-        "  db: ['main'],",
         '  handler(_req, res, context) {',
         "    res.setHeader('x-worker-id', context.worker.id);",
-        "    res.setHeader('x-db-list', Object.keys(context.db).join(','));",
-        "    res.end(context.hasDb('main') ? 'context-ok' : 'context-missing');",
+        "    res.end(typeof context.worker?.id === 'string' ? 'context-ok' : 'context-missing');",
         '  },',
         '};',
       ].join('\n'),
     );
 
-    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
-      databaseNames: ['main'],
-    });
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
     servers.push(server);
 
     const response = await fetch(`${baseUrl}/ctx`);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('context-ok');
-    expect(response.headers.get('x-db-list')).toBe('main');
     expect(response.headers.get('x-worker-id')).toContain('fluxion-worker-all');
   });
 
@@ -253,7 +248,7 @@ describe('file-runtime', () => {
     expect(response.headers.get('x-ready')).toBe('true');
   });
 
-  it('rejects handler-level db object config and requires db name arrays', async () => {
+  it('rejects legacy handler-level db declaration', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-runtime-db-shape-');
     tempDirectories.push(dynamicDirectory);
 
@@ -261,9 +256,7 @@ describe('file-runtime', () => {
       path.join(dynamicDirectory, 'invalid-db-shape.mjs'),
       [
         'export default {',
-        '  db: {',
-        "    main: { driver: 'pg' },",
-        '  },',
+        "  db: ['main'],",
         '  handler(_req, res) {',
         "    res.end('never');",
         '  },',
@@ -271,62 +264,42 @@ describe('file-runtime', () => {
       ].join('\n'),
     );
 
-    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
-      databaseNames: ['main'],
-    });
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
     servers.push(server);
 
     const response = await fetch(`${baseUrl}/invalid-db-shape`);
     expect(response.status).toBe(500);
-    expect(await response.text()).toContain('Invalid db declaration');
+    expect(await response.text()).toContain('Legacy db declaration is no longer supported');
   });
 
-  it('routes handlers to minimal matching worker and keeps all-db fallback', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-runtime-strategy-');
+  it('rejects modules declaration when injectKey is reserved', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-module-reserved-');
     tempDirectories.push(dynamicDirectory);
 
     await writeFile(
-      path.join(dynamicDirectory, 'small.mjs'),
+      path.join(dynamicDirectory, 'invalid-inject-key.mjs'),
       [
         'export default {',
-        "  db: ['db1'],",
-        '  handler(_req, res, context) {',
-        '    res.end(context.worker.id);',
+        '  modules: [',
+        '    {',
+        "      module: 'node:crypto',",
+        "      injectKey: 'worker',",
+        '      factory: () => ({})',
+        '    },',
+        '  ],',
+        '  handler(_req, res) {',
+        "    res.end('never');",
         '  },',
         '};',
       ].join('\n'),
     );
 
-    await writeFile(
-      path.join(dynamicDirectory, 'wide.mjs'),
-      [
-        'export default {',
-        "  db: ['db1', 'db2'],",
-        '  handler(_req, res, context) {',
-        '    res.end(context.worker.id);',
-        '  },',
-        '};',
-      ].join('\n'),
-    );
-
-    const { server, baseUrl, runtime } = await startRuntimeServer(dynamicDirectory, {
-      databaseNames: ['db1', 'db2'],
-      workerStrategy: [{ id: 'worker-db1', db: ['db1'] }],
-    });
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
     servers.push(server);
 
-    const snapshot = runtime.getWorkerSnapshot();
-    expect(snapshot.workers.length).toBe(2);
-    expect(snapshot.workers.some((worker) => worker.id === 'worker-db1')).toBe(true);
-    expect(snapshot.workers.some((worker) => worker.isFallbackAllDb)).toBe(true);
-
-    const smallResponse = await fetch(`${baseUrl}/small`);
-    expect(smallResponse.status).toBe(200);
-    expect(await smallResponse.text()).toBe('worker-db1');
-
-    const wideResponse = await fetch(`${baseUrl}/wide`);
-    expect(wideResponse.status).toBe(200);
-    expect(await wideResponse.text()).toContain('fluxion-worker-all');
+    const response = await fetch(`${baseUrl}/invalid-inject-key`);
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain('injectKey "worker" is reserved');
   });
 
   it('fails request when worker response exceeds maxResponseBytes', async () => {

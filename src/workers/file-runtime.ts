@@ -197,10 +197,6 @@ interface WorkerBinding {
    */
   dbSet: string[];
   /**
-   * DB lookup set for subset checks.
-   */
-  dbNameSet: Set<string>;
-  /**
    * Marks auto-added all-db worker.
    */
   isFallbackAllDb: boolean;
@@ -208,20 +204,6 @@ interface WorkerBinding {
    * Worker pool handle.
    */
   pool: HandlerWorkerPool;
-}
-
-/**
- * Cached handler metadata keyed by file path.
- */
-interface HandlerMetaCacheEntry {
-  /**
-   * File version token.
-   */
-  version: string;
-  /**
-   * Parsed metadata returned by worker inspect/execute.
-   */
-  meta: protocol.HandlerMeta;
 }
 
 /**
@@ -296,26 +278,6 @@ function normalizeDbSet(input: readonly string[] | undefined): string[] {
 }
 
 /**
- * Picks db configs for one worker by its db capability set.
- */
-function selectWorkerDbConfigMap(
-  dbConfigMap: protocol.WorkerDbConfigMap,
-  dbSet: readonly string[],
-): protocol.WorkerDbConfigMap {
-  const selected: protocol.WorkerDbConfigMap = {};
-
-  for (let i = 0; i < dbSet.length; i++) {
-    const dbName = dbSet[i];
-    const config = dbConfigMap[dbName];
-    if (config !== undefined) {
-      selected[dbName] = config;
-    }
-  }
-
-  return selected;
-}
-
-/**
  * Determines whether two normalized db sets are equal.
  */
 function isSameDbSet(left: readonly string[], right: readonly string[]): boolean {
@@ -325,19 +287,6 @@ function isSameDbSet(left: readonly string[], right: readonly string[]): boolean
 
   for (let i = 0; i < left.length; i++) {
     if (left[i] !== right[i]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
- * Checks whether `required` is subset of `available`.
- */
-function isDbSubset(required: readonly string[], available: Set<string>): boolean {
-  for (let i = 0; i < required.length; i++) {
-    if (!available.has(required[i])) {
       return false;
     }
   }
@@ -434,54 +383,33 @@ function resolveWorkerDefinitions(
 }
 
 /**
- * Selects one worker for metadata inspect.
+ * Picks the best execution worker by current load and stable id tie-break.
  */
-function resolveInspectWorker(workers: readonly WorkerBinding[], allDbSet: readonly string[]): WorkerBinding;
-function resolveInspectWorker(workers: readonly WorkerBinding[], allDbSet: readonly string[]): WorkerBinding {
-  const fallback = workers.find((worker) => worker.isFallbackAllDb);
-  if (fallback !== undefined) {
-    return fallback;
+function selectExecutionWorker(workers: readonly WorkerBinding[]): WorkerBinding {
+  if (workers.length === 0) {
+    throw new Error('No worker can handle request');
   }
 
-  const allDbWorker = workers.find((worker) => isSameDbSet(worker.dbSet, allDbSet));
-  if (allDbWorker !== undefined) {
-    return allDbWorker;
-  }
+  let best = workers[0];
+  let bestInflight = best.pool.getSnapshot().inflight;
 
-  return workers[0];
-}
+  for (let i = 1; i < workers.length; i++) {
+    const candidate = workers[i];
+    const candidateInflight = candidate.pool.getSnapshot().inflight;
 
-/**
- * Picks worker by minimal superset matching for handler db requirements.
- */
-function matchWorkerByDbRequirement(requiredDb: readonly string[], workers: readonly WorkerBinding[]): WorkerBinding {
-  const normalizedRequiredDb = normalizeDbSet(requiredDb);
-
-  const candidates = workers
-    .filter((worker) => isDbSubset(normalizedRequiredDb, worker.dbNameSet))
-    .map((worker) => ({
-      worker,
-      inflight: worker.pool.getSnapshot().inflight,
-      dbSize: worker.dbSet.length,
-    }));
-
-  if (candidates.length === 0) {
-    throw new Error(`No worker can satisfy handler db requirement: [${normalizedRequiredDb.join(', ')}]`);
-  }
-
-  candidates.sort((left, right) => {
-    if (left.dbSize !== right.dbSize) {
-      return left.dbSize - right.dbSize;
+    if (candidateInflight < bestInflight) {
+      best = candidate;
+      bestInflight = candidateInflight;
+      continue;
     }
 
-    if (left.inflight !== right.inflight) {
-      return left.inflight - right.inflight;
+    if (candidateInflight === bestInflight && candidate.id.localeCompare(best.id) < 0) {
+      best = candidate;
+      bestInflight = candidateInflight;
     }
+  }
 
-    return left.worker.id.localeCompare(right.worker.id);
-  });
-
-  return candidates[0].worker;
+  return best;
 }
 
 /**
@@ -816,19 +744,9 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   const handlerVersions = new Map<string, string>();
 
   /**
-   * Cached handler metadata for worker routing.
-   */
-  const handlerMetaCache = new Map<string, HandlerMetaCacheEntry>();
-
-  /**
    * Database names declared by user options.
    */
   const databaseNames = normalizeDbSet(options.databaseNames);
-
-  /**
-   * Main-thread normalized db config map.
-   */
-  const databaseConfigMap = options.databaseConfigMap ?? {};
 
   /**
    * Maximum request body bytes accepted by dynamic handlers.
@@ -846,14 +764,12 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   const workerBindings: WorkerBinding[] = workerDefinitions.map((definition) => ({
     id: definition.id,
     dbSet: [...definition.dbSet],
-    dbNameSet: new Set(definition.dbSet),
     isFallbackAllDb: definition.isFallbackAllDb,
     pool: createHandlerWorkerPool({
       meta: {
         id: definition.id,
         dbSet: definition.dbSet,
         isFallbackAllDb: definition.isFallbackAllDb,
-        dbConfigMap: selectWorkerDbConfigMap(databaseConfigMap, definition.dbSet),
       },
       overrides: definition.overrides,
       logger,
@@ -863,11 +779,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   if (workerBindings.length === 0) {
     throw new Error('No worker pools were created for runtime');
   }
-
-  /**
-   * Worker used to inspect handler metadata.
-   */
-  const inspectWorker = resolveInspectWorker(workerBindings, databaseNames);
 
   /**
    * Writes load/reload logs for handlers.
@@ -894,37 +805,14 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   };
 
   /**
-   * Resolves cached or fresh handler metadata from worker inspect API.
+   * Selects target worker for handler execution.
    */
-  const resolveHandlerMeta = async (filePath: string, version: string): Promise<protocol.HandlerMeta> => {
-    const cached = handlerMetaCache.get(filePath);
-    if (cached !== undefined && cached.version === version) {
-      return cached.meta;
-    }
-
-    const inspected = await inspectWorker.pool.inspect(filePath, version);
-    const normalizedMeta: protocol.HandlerMeta = {
-      db: normalizeDbSet(inspected.db),
-    };
-
-    handlerMetaCache.set(filePath, {
-      version,
-      meta: normalizedMeta,
-    });
-
-    return normalizedMeta;
-  };
-
-  /**
-   * Selects target worker by handler db requirements.
-   */
-  const resolveExecutionWorker = async (filePath: string, version: string): Promise<WorkerBinding> => {
+  const resolveExecutionWorker = async (_filePath: string, _version: string): Promise<WorkerBinding> => {
     if (workerBindings.length === 1) {
       return workerBindings[0];
     }
 
-    const meta = await resolveHandlerMeta(filePath, version);
-    return matchWorkerByDbRequirement(meta.db, workerBindings);
+    return selectExecutionWorker(workerBindings);
   };
 
   /**
@@ -977,13 +865,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       headers: normalizeHeaders(req.headers),
       body: await readRequestBody(req, normalized.method, maxRequestBytes),
       ip: normalized.ip,
-    });
-
-    handlerMetaCache.set(resolved.filePath, {
-      version: resolved.version,
-      meta: {
-        db: normalizeDbSet(executeResult.meta.db),
-      },
     });
 
     applyWorkerResponse(res, executeResult.response);
@@ -1140,7 +1021,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
      */
     clearCache() {
       handlerVersions.clear();
-      handlerMetaCache.clear();
 
       for (let i = 0; i < workerBindings.length; i++) {
         void workerBindings[i].pool.clearCache();

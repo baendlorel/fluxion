@@ -132,10 +132,9 @@ describe('server options', () => {
       path.join(dynamicDirectory, 'ctx.mjs'),
       [
         'export default {',
-        "  db: ['main'],",
         '  handler(_req, res, context) {',
-        "    const ready = context.hasDb('main');",
-        "    res.end(ready ? 'db-ready' : 'db-missing');",
+        "    const ready = typeof context.worker?.id === 'string';",
+        "    res.end(ready ? 'worker-ready' : 'worker-missing');",
         '  },',
         '};',
       ].join('\n'),
@@ -161,7 +160,7 @@ describe('server options', () => {
 
     const response = await fetch(`${baseUrl}/ctx`);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('db-ready');
+    expect(await response.text()).toBe('worker-ready');
   });
 
   it('supports json-line logger mode', async () => {
