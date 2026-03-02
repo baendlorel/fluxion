@@ -120,6 +120,28 @@ describe('file-runtime', () => {
     expect(await response.text()).toBe('delayed-ok');
   });
 
+  it('serializes handler return value as json response', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-return-json-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'return-json.mjs'),
+      [
+        'export default async function handler() {',
+        '  return { ok: true, count: 1 };',
+        '}',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/return-json`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect((await response.json()) as Record<string, unknown>).toEqual({ ok: true, count: 1 });
+  });
+
   it('serves static .js files and blocks underscore directories', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-runtime-static-');
     tempDirectories.push(dynamicDirectory);

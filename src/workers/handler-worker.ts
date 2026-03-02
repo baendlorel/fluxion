@@ -819,6 +819,14 @@ function toBuffer(chunk: unknown, encoding?: BufferEncoding): Buffer {
 }
 
 /**
+ * Serializes handler return value as JSON response body.
+ */
+function toJsonResponseBody(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 'null' : serialized;
+}
+
+/**
  * Builds a synthetic IncomingMessage from protocol payload.
  */
 function createIncomingRequest(payload: protocol.Payload): http.IncomingMessage {
@@ -901,13 +909,22 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Resul
     const entry = await loadHandler(payload.filePath, payload.version);
     const request = createIncomingRequest(payload);
     const response = new MemoryServerResponse(maxResponseBytes) as unknown as http.ServerResponse;
-    const execution = entry.handler(request, response, createHandlerContext(entry.modules));
+    let execution = entry.handler(request, response, createHandlerContext(entry.modules));
 
     if (isPromiseLike(execution)) {
-      await execution;
+      execution = await execution;
     }
 
     const writableResponse = response as unknown as MemoryServerResponse;
+    if (execution !== undefined && !writableResponse.writableEnded) {
+      if (writableResponse.getHeader('content-type') === undefined) {
+        writableResponse.setHeader('content-type', 'application/json; charset=utf-8');
+      }
+
+      writableResponse.statusCode = 200;
+      writableResponse.end(toJsonResponseBody(execution));
+    }
+
     if (!writableResponse.writableFinished) {
       await new Promise<void>((resolve, reject) => {
         writableResponse.once('finish', resolve);
