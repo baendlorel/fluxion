@@ -42,6 +42,7 @@ export type FluxionDatabaseRuntimeConfigInput =
   | (Record<string, unknown> & {
       driver?: string;
       type?: string;
+      contextKey?: string;
       options?: Record<string, unknown>;
     });
 
@@ -140,6 +141,9 @@ function normalizeDatabaseRuntimeConfigItem(
     throw new Error(`Missing db driver for "${dbName}" in ${source}`);
   }
 
+  const rawContextKey = typeof input.contextKey === 'string' ? input.contextKey.trim() : undefined;
+  const contextKey = rawContextKey === undefined || rawContextKey.length === 0 ? undefined : rawContextKey;
+
   const options: Record<string, unknown> = {};
 
   if (input.options !== undefined) {
@@ -172,6 +176,7 @@ function normalizeDatabaseRuntimeConfigItem(
 
   return {
     driver: normalizeDbDriver(rawDriver, source, dbName),
+    contextKey,
     options,
   };
 }
@@ -276,20 +281,15 @@ function normalizeDatabaseNames(
 function selectDeclaredDatabaseConfigMap(
   databaseNames: readonly string[],
   databaseConfigMap: protocol.WorkerDbConfigMap,
-  sourcePath: string,
 ): protocol.WorkerDbConfigMap {
   const selected: protocol.WorkerDbConfigMap = {};
 
   for (let i = 0; i < databaseNames.length; i++) {
     const name = databaseNames[i];
     const config = databaseConfigMap[name];
-    if (config === undefined) {
-      throw new Error(
-        `Missing db config for "${name}". Add it to ${sourcePath} or remove it from databases.`,
-      );
+    if (config !== undefined) {
+      selected[name] = config;
     }
-
-    selected[name] = config;
   }
 
   return selected;
@@ -300,7 +300,7 @@ export function fluxion(options: FluxionOptions): http.Server {
   const dbConfigPath = resolveDbConfigPath(options.dbConfigPath);
   const loadedDatabaseConfigMap = loadDatabaseConfigMapFromFile(dbConfigPath);
   const databaseNames = normalizeDatabaseNames(options.databases, Object.keys(loadedDatabaseConfigMap));
-  const databaseConfigMap = selectDeclaredDatabaseConfigMap(databaseNames, loadedDatabaseConfigMap, dbConfigPath);
+  const databaseConfigMap = selectDeclaredDatabaseConfigMap(databaseNames, loadedDatabaseConfigMap);
   const logger = createLogger(options.logger);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

@@ -124,7 +124,7 @@ describe('server options', () => {
     ).toThrow('Invalid maxRequestBytes');
   });
 
-  it('loads db config from private file path and injects db client into handler context', async () => {
+  it('loads db config from private file path', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-server-db-config-');
     tempDirectories.push(dynamicDirectory);
 
@@ -134,7 +134,7 @@ describe('server options', () => {
         'export default {',
         "  db: ['main'],",
         '  handler(_req, res, context) {',
-        "    const ready = typeof context.db.main?.query === 'function';",
+        "    const ready = context.hasDb('main');",
         "    res.end(ready ? 'db-ready' : 'db-missing');",
         '  },',
         '};',
@@ -155,7 +155,6 @@ describe('server options', () => {
     );
 
     const { server, baseUrl } = await startServer(dynamicDirectory, {
-      databases: ['main'],
       dbConfigPath: privateConfigPath,
     });
     servers.push(server);

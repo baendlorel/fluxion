@@ -3,11 +3,6 @@ import { pathToFileURL } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { Readable, Writable } from 'node:stream';
 
-import mysql2 from 'mysql2/promise';
-import type { Pool as Mysql2Pool, PoolOptions as Mysql2PoolOptions } from 'mysql2/promise';
-import { Pool as PgPoolClient } from 'pg';
-import type { Pool as PgPool, PoolConfig as PgPoolConfig } from 'pg';
-
 import type { protocol } from './protocol.js';
 
 /**
@@ -37,41 +32,43 @@ interface WorkerBootstrapData {
 }
 
 /**
- * Supported database drivers in worker runtime.
+ * Worker-local connected db client entry.
  */
-type SupportedDbDriver = 'pg' | 'mysql2';
-
-/**
- * Connected database client types exposed to handlers.
- */
-type HandlerDbClient = PgPool | Mysql2Pool | undefined;
-
-/**
- * Normalized database connection config from handler metadata.
- */
-interface NormalizedDbConnectionConfig {
+interface WorkerModuleConnection {
   /**
-   * Selected db driver.
+   * Value injected into handler context.
    */
-  driver: SupportedDbDriver;
+  value: unknown;
   /**
-   * Driver-specific pool options.
+   * Stable module signature used for conflict detection.
    */
-  options: Record<string, unknown>;
+  signature: string;
+  /**
+   * Optional teardown hook for worker shutdown.
+   */
+  close?(): Promise<void>;
 }
 
 /**
- * Worker-local connected db client entry.
+ * Module declaration parsed from handler export.
  */
-interface WorkerDbConnection {
+interface ParsedHandlerModuleDeclaration {
   /**
-   * Connected driver pool object.
+   * Module id used by dynamic import.
    */
-  client: Exclude<HandlerDbClient, undefined>;
+  module: string;
   /**
-   * Closes underlying driver pool.
+   * Context key where the created value will be injected.
    */
-  close(): Promise<void>;
+  injectKey: string;
+  /**
+   * Serialized factory function source.
+   */
+  factorySource: string;
+  /**
+   * Optional factory options.
+   */
+  options?: unknown;
 }
 
 /**
@@ -80,9 +77,9 @@ interface WorkerDbConnection {
 interface HandlerContext {
   /**
    * Database slots declared by handler metadata.
-   * & Values are injected from worker-local db connections.
+   * & Reserved for worker strategy routing metadata.
    */
-  db: Record<string, HandlerDbClient>;
+  db: Record<string, undefined>;
   /**
    * Checks whether current worker can access a database name.
    */
@@ -100,6 +97,10 @@ interface HandlerContext {
      */
     dbSet: string[];
   };
+  /**
+   * Runtime can inject extra module instances by `injectKey`.
+   */
+  [key: string]: unknown;
 }
 
 /**
@@ -123,6 +124,10 @@ interface ModuleDefaultHandlerObject {
    * Required database names (`string | string[]`).
    */
   db?: unknown;
+  /**
+   * Dynamic module injection declarations.
+   */
+  modules?: unknown;
 }
 
 /**
@@ -137,6 +142,10 @@ interface ParsedModuleDefault {
    * Handler metadata used by worker routing.
    */
   meta: protocol.HandlerMeta;
+  /**
+   * Dynamic module declarations.
+   */
+  modules: ParsedHandlerModuleDeclaration[];
 }
 
 /**
@@ -191,14 +200,9 @@ const workerDbSet = normalizeDbList(bootstrapData?.dbSet);
 const workerDbNameSet = new Set(workerDbSet);
 
 /**
- * Worker-level normalized db config map.
- */
-const workerDbConfigMap = normalizeWorkerDbConfigMap(bootstrapData?.dbConfigMap);
-
-/**
  * Worker-local db connection registry.
  */
-const workerDbConnections = new Map<string, WorkerDbConnection>();
+const workerModuleConnections = new Map<string, WorkerModuleConnection>();
 
 /**
  * Converts unknown errors to protocol error payload.
@@ -258,68 +262,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Normalizes one db config item injected from main thread.
+ * Converts values into stable JSON-compatible structure for signature generation.
  */
-function normalizeWorkerDbConnectionConfig(
-  dbName: string,
-  input: unknown,
-): NormalizedDbConnectionConfig {
-  if (!isRecord(input)) {
-    throw new Error(`Invalid db config for "${dbName}" in worker bootstrap`);
+function toStableJsonValue(value: unknown): unknown {
+  if (value instanceof Date) {
+    return value.toISOString();
   }
 
-  const rawDriver = typeof input.driver === 'string' ? input.driver : undefined;
-  if (rawDriver !== 'pg' && rawDriver !== 'mysql2') {
-    throw new Error(`Unsupported db driver for "${dbName}" in worker bootstrap: ${String(rawDriver)}`);
+  if (Array.isArray(value)) {
+    return value.map((item) => toStableJsonValue(item));
   }
 
-  if (!isRecord(input.options)) {
-    throw new Error(`Invalid db options for "${dbName}" in worker bootstrap`);
-  }
+  if (isRecord(value)) {
+    const keys = Object.keys(value).sort((left, right) => left.localeCompare(right));
+    const normalized: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
 
-  const options: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  const optionKeys = Object.keys(input.options);
-  for (let i = 0; i < optionKeys.length; i++) {
-    const key = optionKeys[i];
-    const value = input.options[key];
-    if (value !== undefined) {
-      options[key] = value;
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const child = toStableJsonValue(value[key]);
+      if (child !== undefined) {
+        normalized[key] = child;
+      }
     }
+
+    return normalized;
   }
 
-  return {
-    driver: rawDriver,
-    options,
-  };
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (typeof value === 'function' || typeof value === 'symbol' || value === undefined) {
+    return undefined;
+  }
+
+  return value;
 }
 
 /**
- * Normalizes worker bootstrap db config map.
+ * Builds stable signature string for module conflict detection.
  */
-function normalizeWorkerDbConfigMap(input: unknown): Record<string, NormalizedDbConnectionConfig> {
-  if (input === undefined || input === null) {
-    return Object.create(null) as Record<string, NormalizedDbConnectionConfig>;
-  }
-
-  if (!isRecord(input)) {
-    throw new Error('Invalid worker db config map');
-  }
-
-  const normalized: Record<string, NormalizedDbConnectionConfig> =
-    Object.create(null) as Record<string, NormalizedDbConnectionConfig>;
-  const rawNames = Object.keys(input);
-
-  for (let i = 0; i < rawNames.length; i++) {
-    const rawName = rawNames[i];
-    const name = rawName.trim();
-    if (name.length === 0) {
-      throw new Error('Invalid worker db config map: empty database name');
-    }
-
-    normalized[name] = normalizeWorkerDbConnectionConfig(name, input[rawName]);
-  }
-
-  return normalized;
+function toModuleSignature(definition: ParsedHandlerModuleDeclaration): string {
+  return JSON.stringify({
+    module: definition.module,
+    injectKey: definition.injectKey,
+    factorySource: definition.factorySource,
+    options: toStableJsonValue(definition.options),
+  });
 }
 
 /**
@@ -330,76 +319,249 @@ function parseHandlerDbList(input: unknown, filePath: string): string[] {
     return normalizeDbList(input);
   }
 
-  throw new TypeError(
-    `Invalid db declaration in ${filePath}: use db: string | string[] and move connection config to main process`,
-  );
+  throw new TypeError(`Invalid db declaration in ${filePath}: use db: string | string[]`);
 }
 
 /**
- * Creates one worker-local db connection from normalized config.
+ * Validates module declaration list from handler export.
  */
-function createDbConnection(config: NormalizedDbConnectionConfig): WorkerDbConnection {
-  if (config.driver === 'pg') {
-    const client = new PgPoolClient(config.options as PgPoolConfig);
-    return {
-      client,
-      async close(): Promise<void> {
-        await client.end();
-      },
+function parseHandlerModuleDeclarations(input: unknown, filePath: string): ParsedHandlerModuleDeclaration[] {
+  if (input === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(input)) {
+    throw new TypeError(`Invalid modules declaration in ${filePath}: modules must be an array`);
+  }
+
+  const declarations: ParsedHandlerModuleDeclaration[] = [];
+  const seenInjectKeys = new Set<string>();
+
+  for (let i = 0; i < input.length; i++) {
+    const item = input[i];
+    if (!isRecord(item)) {
+      throw new TypeError(`Invalid modules[${i}] in ${filePath}: expected object`);
+    }
+
+    const rawModule = typeof item.module === 'string' ? item.module.trim() : '';
+    if (rawModule.length === 0) {
+      throw new TypeError(`Invalid modules[${i}] in ${filePath}: module is required`);
+    }
+
+    const rawInjectKey = typeof item.injectKey === 'string' ? item.injectKey.trim() : '';
+    if (rawInjectKey.length === 0) {
+      throw new TypeError(`Invalid modules[${i}] in ${filePath}: injectKey is required`);
+    }
+
+    if (rawInjectKey === 'db' || rawInjectKey === 'worker' || rawInjectKey === 'hasDb') {
+      throw new TypeError(`Invalid modules[${i}] in ${filePath}: injectKey "${rawInjectKey}" is reserved`);
+    }
+
+    if (seenInjectKeys.has(rawInjectKey)) {
+      throw new TypeError(`Duplicate injectKey "${rawInjectKey}" in ${filePath}`);
+    }
+
+    const factory = item.factory;
+    if (typeof factory !== 'function') {
+      throw new TypeError(`Invalid modules[${i}] in ${filePath}: factory must be a function`);
+    }
+
+    seenInjectKeys.add(rawInjectKey);
+    declarations.push({
+      module: rawModule,
+      injectKey: rawInjectKey,
+      factorySource: factory.toString(),
+      options: item.options,
+    });
+  }
+
+  return declarations;
+}
+
+/**
+ * Re-hydrates a serialized module factory source.
+ */
+function createModuleFactory(
+  factorySource: string,
+  filePath: string,
+  injectKey: string,
+): (...args: unknown[]) => unknown {
+  let factory: unknown;
+  const sourceCandidates = [factorySource];
+
+  const methodPattern = /^(async\s+)?[A-Za-z_$][A-Za-z0-9_$]*\s*\(/;
+  if (methodPattern.test(factorySource)) {
+    const asyncPrefix = factorySource.startsWith('async ') ? 'async ' : '';
+    const parenIndex = factorySource.indexOf('(');
+    sourceCandidates.push(`${asyncPrefix}function ${factorySource.slice(parenIndex)}`);
+  }
+
+  let restoreError: unknown;
+  for (let i = 0; i < sourceCandidates.length; i++) {
+    try {
+      factory = new Function(`return (${sourceCandidates[i]});`)();
+      restoreError = undefined;
+      break;
+    } catch (error) {
+      restoreError = error;
+    }
+  }
+
+  if (factory === undefined || restoreError !== undefined) {
+    const reviveError = new Error(
+      `Failed to revive module factory for "${injectKey}" in ${filePath}: ${
+        restoreError instanceof Error ? restoreError.message : String(restoreError)
+      }`,
+    );
+    (reviveError as NodeJS.ErrnoException).code = 'WORKER_MODULE_FACTORY_RESTORE_FAILED';
+    throw reviveError;
+  }
+
+  if (typeof factory !== 'function') {
+    const typeError = new Error(`Module factory for "${injectKey}" in ${filePath} did not restore to a function`);
+    (typeError as NodeJS.ErrnoException).code = 'WORKER_MODULE_FACTORY_RESTORE_FAILED';
+    throw typeError;
+  }
+
+  return factory as (...args: unknown[]) => unknown;
+}
+
+/**
+ * Resolves close hook from one injected module value.
+ */
+function resolveModuleCloseHook(value: unknown): (() => Promise<void>) | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const dispose = value['dispose'];
+  if (typeof dispose === 'function') {
+    return async (): Promise<void> => {
+      await dispose.call(value);
     };
   }
 
-  const client = mysql2.createPool(config.options as Mysql2PoolOptions);
+  const close = value['close'];
+  if (typeof close === 'function') {
+    return async (): Promise<void> => {
+      await close.call(value);
+    };
+  }
+
+  const end = value['end'];
+  if (typeof end === 'function') {
+    return async (): Promise<void> => {
+      await end.call(value);
+    };
+  }
+
+  const destroy = value['destroy'];
+  if (typeof destroy === 'function') {
+    return async (): Promise<void> => {
+      await destroy.call(value);
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Creates one worker-local module injection value.
+ */
+async function createModuleConnection(
+  definition: ParsedHandlerModuleDeclaration,
+  filePath: string,
+): Promise<WorkerModuleConnection> {
+  let importedModule: unknown;
+
+  try {
+    importedModule = await import(definition.module);
+  } catch (error) {
+    const importError = new Error(
+      `Failed to import module "${definition.module}" for "${definition.injectKey}" in ${filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    (importError as NodeJS.ErrnoException).code = 'WORKER_MODULE_IMPORT_FAILED';
+    throw importError;
+  }
+
+  const factory = createModuleFactory(definition.factorySource, filePath, definition.injectKey);
+
+  let createdValue: unknown;
+  try {
+    createdValue = factory(importedModule, definition.options, {
+      filePath,
+      workerId,
+      workerDbSet: [...workerDbSet],
+      injectKey: definition.injectKey,
+      moduleId: definition.module,
+    });
+  } catch (error) {
+    const factoryError = new Error(
+      `Module factory threw for "${definition.injectKey}" in ${filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    (factoryError as NodeJS.ErrnoException).code = 'WORKER_MODULE_FACTORY_FAILED';
+    throw factoryError;
+  }
+
+  if (isPromiseLike(createdValue)) {
+    createdValue = await createdValue;
+  }
+
   return {
-    client,
-    async close(): Promise<void> {
-      await client.end();
-    },
+    value: createdValue,
+    signature: toModuleSignature(definition),
+    close: resolveModuleCloseHook(createdValue),
   };
 }
 
 /**
- * Ensures worker has initialized db clients for handler-required db names.
+ * Ensures worker has initialized modules declared by current handler.
  */
-function ensureWorkerDbConnections(filePath: string, dbNames: readonly string[]): void {
-  for (let i = 0; i < dbNames.length; i++) {
-    const dbName = dbNames[i];
-    if (workerDbConnections.has(dbName)) {
+async function ensureWorkerModuleConnections(
+  filePath: string,
+  definitions: readonly ParsedHandlerModuleDeclaration[],
+): Promise<void> {
+  for (let i = 0; i < definitions.length; i++) {
+    const definition = definitions[i];
+    const signature = toModuleSignature(definition);
+    const existing = workerModuleConnections.get(definition.injectKey);
+
+    if (existing !== undefined) {
+      if (existing.signature !== signature) {
+        const conflictError = new Error(
+          `Conflicting module declaration for injectKey "${definition.injectKey}" in worker "${workerId}": ${filePath}`,
+        );
+        (conflictError as NodeJS.ErrnoException).code = 'WORKER_MODULE_CONFLICT';
+        throw conflictError;
+      }
+
       continue;
     }
 
-    const config = workerDbConfigMap[dbName];
-    if (config === undefined) {
-      const missingError = new Error(
-        `Missing db config for "${dbName}" in worker "${workerId}" while loading ${filePath}`,
-      );
-      (missingError as NodeJS.ErrnoException).code = 'WORKER_DB_CONFIG_MISSING';
-      throw missingError;
-    }
-
-    try {
-      workerDbConnections.set(dbName, createDbConnection(config));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const initError = new Error(
-        `Failed to initialize db "${dbName}" in worker "${workerId}": ${message}`,
-      );
-      (initError as NodeJS.ErrnoException).code = 'WORKER_DB_INIT_FAILED';
-      throw initError;
-    }
+    const connection = await createModuleConnection(definition, filePath);
+    workerModuleConnections.set(definition.injectKey, connection);
   }
 }
 
 /**
- * Closes all worker-local db connections.
+ * Closes all worker-local module connections.
  */
-async function closeWorkerDbConnections(): Promise<void> {
-  const connections = Array.from(workerDbConnections.values());
-  workerDbConnections.clear();
+async function closeWorkerModuleConnections(): Promise<void> {
+  const connections = Array.from(workerModuleConnections.values());
+  workerModuleConnections.clear();
 
   for (let i = 0; i < connections.length; i++) {
+    const close = connections[i].close;
+    if (close === undefined) {
+      continue;
+    }
+
     try {
-      await connections[i].close();
+      await close();
     } catch {
       // ignore close error during worker teardown
     }
@@ -425,6 +587,7 @@ function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedMod
     return {
       handler: defaultExport as ModuleDefaultHandler,
       meta: { db: [] },
+      modules: [],
     };
   }
 
@@ -432,7 +595,7 @@ function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedMod
     const objectExport = defaultExport as Partial<ModuleDefaultHandlerObject>;
     if (typeof objectExport.handler !== 'function') {
       throw new TypeError(
-        `Default export must be a function or { handler, db? }: ${filePath}`,
+        `Default export must be a function or { handler, db?, modules? }: ${filePath}`,
       );
     }
 
@@ -441,11 +604,12 @@ function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedMod
       meta: {
         db: parseHandlerDbList(objectExport.db, filePath),
       },
+      modules: parseHandlerModuleDeclarations(objectExport.modules, filePath),
     };
   }
 
   throw new TypeError(
-    `Default export must be a function or { handler, db? }: ${filePath}`,
+    `Default export must be a function or { handler, db?, modules? }: ${filePath}`,
   );
 }
 
@@ -468,14 +632,17 @@ function assertWorkerDbCapability(filePath: string, meta: protocol.HandlerMeta):
 /**
  * Builds request context passed as third arg to handler.
  */
-function createHandlerContext(meta: protocol.HandlerMeta): HandlerContext {
-  const db: Record<string, HandlerDbClient> = Object.create(null) as Record<string, HandlerDbClient>;
+function createHandlerContext(
+  meta: protocol.HandlerMeta,
+  modules: readonly ParsedHandlerModuleDeclaration[],
+): HandlerContext {
+  const db: Record<string, undefined> = Object.create(null) as Record<string, undefined>;
 
   for (let i = 0; i < meta.db.length; i++) {
-    db[meta.db[i]] = workerDbConnections.get(meta.db[i])?.client;
+    db[meta.db[i]] = undefined;
   }
 
-  return {
+  const context: HandlerContext = {
     db,
     hasDb(name: string): boolean {
       return workerDbNameSet.has(name);
@@ -485,6 +652,16 @@ function createHandlerContext(meta: protocol.HandlerMeta): HandlerContext {
       dbSet: [...workerDbSet],
     },
   };
+
+  for (let i = 0; i < modules.length; i++) {
+    const moduleDeclaration = modules[i];
+    const connection = workerModuleConnections.get(moduleDeclaration.injectKey);
+    if (connection !== undefined) {
+      context[moduleDeclaration.injectKey] = connection.value;
+    }
+  }
+
+  return context;
 }
 
 /**
@@ -773,12 +950,13 @@ async function loadHandler(filePath: string, version: string): Promise<HandlerCa
   const parsed = parseModuleDefault(loaded.default as unknown, filePath);
 
   assertWorkerDbCapability(filePath, parsed.meta);
-  ensureWorkerDbConnections(filePath, parsed.meta.db);
+  await ensureWorkerModuleConnections(filePath, parsed.modules);
 
   const entry: HandlerCacheEntry = {
     handler: parsed.handler,
     version,
     meta: parsed.meta,
+    modules: parsed.modules,
   };
 
   handlerCache.set(filePath, entry);
@@ -796,7 +974,7 @@ async function execute(message: protocol.ExecuteMessage): Promise<protocol.Resul
     const entry = await loadHandler(payload.filePath, payload.version);
     const request = createIncomingRequest(payload);
     const response = new MemoryServerResponse(maxResponseBytes) as unknown as http.ServerResponse;
-    const execution = entry.handler(request, response, createHandlerContext(entry.meta));
+    const execution = entry.handler(request, response, createHandlerContext(entry.meta, entry.modules));
 
     if (isPromiseLike(execution)) {
       await execution;
@@ -900,16 +1078,16 @@ const memoryReporter = setInterval(() => {
 memoryReporter.unref();
 
 /**
- * Idempotent db teardown promise.
+ * Idempotent module teardown promise.
  */
 let dbClosePromise: Promise<void> | undefined;
 
 /**
- * Closes worker db connections once.
+ * Closes worker module connections once.
  */
 function disposeDbConnections(): Promise<void> {
   if (dbClosePromise === undefined) {
-    dbClosePromise = closeWorkerDbConnections();
+    dbClosePromise = closeWorkerModuleConnections();
   }
 
   return dbClosePromise;

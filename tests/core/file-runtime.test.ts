@@ -203,12 +203,6 @@ describe('file-runtime', () => {
 
     const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
       databaseNames: ['main'],
-      databaseConfigMap: {
-        main: {
-          driver: 'pg',
-          options: {},
-        },
-      },
     });
     servers.push(server);
 
@@ -219,7 +213,7 @@ describe('file-runtime', () => {
     expect(response.headers.get('x-worker-id')).toContain('fluxion-worker-all');
   });
 
-  it('initializes pg/mysql2 db pools from runtime db config and injects into context', async () => {
+  it('injects module instances into context via modules declarations', async () => {
     const dynamicDirectory = await createTempDirectory('fluxion-runtime-db-config-');
     tempDirectories.push(dynamicDirectory);
 
@@ -227,38 +221,36 @@ describe('file-runtime', () => {
       path.join(dynamicDirectory, 'dbctx.mjs'),
       [
         'export default {',
-        "  db: ['main', 'reporting'],",
+        '  modules: [',
+        '    {',
+        "      module: 'node:crypto',",
+        "      injectKey: 'mydb',",
+        '      factory: (cryptoModule) => {',
+        '        return {',
+        '          query(sql) {',
+        "            return cryptoModule.createHash('sha1').update(String(sql)).digest('hex');",
+        '          },',
+        '        };',
+        '      },',
+        '    },',
+        '  ],',
         '  handler(_req, res, context) {',
-        "    const mainReady = typeof context.db.main?.query === 'function';",
-        "    const reportingReady = typeof context.db.reporting?.query === 'function';",
-        "    res.setHeader('x-main-ready', String(mainReady));",
-        "    res.setHeader('x-reporting-ready', String(reportingReady));",
-        "    res.end(mainReady && reportingReady ? 'db-connected' : 'db-missing');",
+        "    const ready = typeof context.mydb?.query === 'function';",
+        "    const sample = ready ? context.mydb.query('select 1') : '';",
+        "    res.setHeader('x-ready', String(ready));",
+        '    res.end(ready && sample.length > 0 ? "module-connected" : "module-missing");',
         '  },',
         '};',
       ].join('\n'),
     );
 
-    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
-      databaseNames: ['main', 'reporting'],
-      databaseConfigMap: {
-        main: {
-          driver: 'pg',
-          options: {},
-        },
-        reporting: {
-          driver: 'mysql2',
-          options: {},
-        },
-      },
-    });
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory);
     servers.push(server);
 
     const response = await fetch(`${baseUrl}/dbctx`);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('db-connected');
-    expect(response.headers.get('x-main-ready')).toBe('true');
-    expect(response.headers.get('x-reporting-ready')).toBe('true');
+    expect(await response.text()).toBe('module-connected');
+    expect(response.headers.get('x-ready')).toBe('true');
   });
 
   it('rejects handler-level db object config and requires db name arrays', async () => {
@@ -281,12 +273,6 @@ describe('file-runtime', () => {
 
     const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
       databaseNames: ['main'],
-      databaseConfigMap: {
-        main: {
-          driver: 'pg',
-          options: {},
-        },
-      },
     });
     servers.push(server);
 
@@ -325,16 +311,6 @@ describe('file-runtime', () => {
 
     const { server, baseUrl, runtime } = await startRuntimeServer(dynamicDirectory, {
       databaseNames: ['db1', 'db2'],
-      databaseConfigMap: {
-        db1: {
-          driver: 'pg',
-          options: {},
-        },
-        db2: {
-          driver: 'pg',
-          options: {},
-        },
-      },
       workerStrategy: [{ id: 'worker-db1', db: ['db1'] }],
     });
     servers.push(server);

@@ -16,6 +16,10 @@ export namespace protocol {
      */
     driver: DbDriver;
     /**
+     * Optional target context key for db module injection.
+     */
+    contextKey?: string;
+    /**
      * Driver-specific pool options.
      */
     options: Record<string, unknown>;
