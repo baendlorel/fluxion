@@ -1,6 +1,8 @@
+import fs, { existsSync } from 'node:fs';
 import { expect } from '@/common/expect.js';
-import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOptions } from './types.js';
 import { createLogger } from '@/common/logger.js';
+
+import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOptions } from './types.js';
 
 /**
  * Resolves runtime options with framework defaults.
@@ -20,15 +22,10 @@ export function resolveWorkerOptions(overrides: Partial<WorkerOptions>): WorkerO
 }
 
 export function normalizeOptions(options: FluxionOptions): ResolvedFluxionOptions {
-  let {
-    dir,
-    host,
-    port,
-    injections = [],
-    workerOptions = {},
-    maxRequestBytes = 8_000_000,
-    logger = 'one-line',
-  } = Object(options) as FluxionOptions;
+  expect.isObject(options, 'FluxionOptions must be an object');
+
+  let { dir, host, port, injections = [], workerOptions = {}, maxRequestBytes = 8_000_000 } = options as FluxionOptions;
+  const logger = createLogger(options.logger); // & assertion of logger options lies within createLogger
 
   expect.isString(dir, 'FluxionOptions.dir must be a string');
   expect.isString(host, 'FluxionOptions.host must be a string');
@@ -37,12 +34,9 @@ export function normalizeOptions(options: FluxionOptions): ResolvedFluxionOption
   expect.isObject(workerOptions, 'FluxionOptions.workerOptions must be an object');
   expect.isPositiveInteger(maxRequestBytes, 'FluxionOptions.maxRequestBytes must be a positive integer');
 
-  if (typeof logger === 'string') {
-    if (logger !== 'one-line' && logger !== 'json-line') {
-      throw new Error('FluxionOptions.logger string value must be either "one-line" or "json-line"');
-    }
-  } else if (typeof logger !== 'function') {
-    throw new Error('FluxionOptions.logger must be "one-line", "json-line" or a factory function');
+  if (!existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    logger.info('DynamicDirectoryCreated', { directory: dir });
   }
 
   return {
@@ -52,6 +46,6 @@ export function normalizeOptions(options: FluxionOptions): ResolvedFluxionOption
     injections,
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
-    logger: createLogger(logger),
+    logger,
   };
 }

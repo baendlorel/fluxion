@@ -38,15 +38,6 @@ const safeStringify = (value: unknown): string => {
   }
 };
 
-const omitReservedFields = (entry: LogEntry): Record<string, unknown> => {
-  const fields: Record<string, unknown> = { ...entry };
-  delete fields.timestamp;
-  delete fields.level;
-  delete fields.event;
-  delete fields.message;
-  return fields;
-};
-
 const ColoredLevels: Record<LogLevel, string> = {
   INFO: chalk.hex('#0386e3')('INFO'),
   WARN: chalk.hex('#fb923c')('WARN'),
@@ -58,19 +49,21 @@ const ColoredLevels: Record<LogLevel, string> = {
 const TimestampColor = chalk.hex('#166534');
 
 function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
-  if (option === 'json-line') {
-    return (entry: LogEntry) => console.log(safeStringify(entry));
-  }
-
   if (option === undefined || option === 'one-line') {
     return (entry: LogEntry) => {
-      const fields = omitReservedFields(entry);
-      const timestamp = TimestampColor(`[${entry.timestamp}]`);
-      const level = ColoredLevels[entry.level] ?? entry.level;
-      const body = entry.message ?? entry.event;
+      const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
+
+      const timestamp = TimestampColor(`[${rawTimestamp}]`);
+      const level = ColoredLevels[rawLevel] ?? rawLevel;
+      const body = rawMessage ?? rawEvent;
       const fieldsText = $keys(fields).length > 0 ? ` ${chalk.dim(safeStringify(fields))}` : '';
+
       console.log(`${timestamp} ${level} ${body}${fieldsText}`);
     };
+  }
+
+  if (option === 'json-line') {
+    return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
   if (typeof option === 'function') {
