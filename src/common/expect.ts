@@ -23,6 +23,12 @@ export namespace expect {
     }
   }
 
+  export function isPositiveInteger(n: unknown, message: string): asserts n is number {
+    if (typeof n !== 'number' || n <= 0 || !Number.isSafeInteger(n)) {
+      throw new Error(message);
+    }
+  }
+
   export function isObjectArray<T = Record<string, unknown>>(arr: unknown, message: string): asserts arr is T[] {
     if (!Array.isArray(arr) || arr.some((item) => typeof item !== 'object' || item === null)) {
       throw new Error(message);

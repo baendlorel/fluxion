@@ -1,5 +1,4 @@
-import type { LoggerOption } from '@/common/logger.ts';
-import type { ExecutorOptions } from '@/workers/options.ts';
+import type { FluxionLogger, LoggerOption } from '@/common/logger.ts';
 import type { protocol } from '@/workers/protocol.js';
 
 export interface NormalizedRequest {
@@ -53,6 +52,48 @@ export interface InjectionConfig {
   factory: () => Promise<unknown>;
 }
 
+/**
+ * Worker runtime tuning options.
+ */
+export interface WorkerOptions {
+  /**
+   * Request timeout in milliseconds.
+   */
+  requestTimeoutMs: number;
+  /**
+   * Maximum concurrent requests allowed in the pool.
+   */
+  maxInflight: number;
+  /**
+   * Soft heap threshold in MB. Idle worker may restart after crossing it.
+   */
+  memorySoftLimitMb: number;
+  /**
+   * ! Hard heap threshold in MB. Worker is restarted once reached.
+   */
+  memoryHardLimitMb: number;
+  /**
+   * Memory telemetry interval in milliseconds.
+   */
+  memorySampleIntervalMs: number;
+  /**
+   * ! V8 old-generation limit per worker in MB.
+   */
+  maxOldGenerationSizeMb: number;
+  /**
+   * ! V8 young-generation limit per worker in MB.
+   */
+  maxYoungGenerationSizeMb: number;
+  /**
+   * Worker stack size in MB.
+   */
+  stackSizeMb: number;
+  /**
+   * ! Maximum response payload bytes allowed from worker to main thread.
+   */
+  maxResponseBytes: number;
+}
+
 export interface FluxionOptions {
   /**
    * The directory where dynamic files (e.g. uploaded files) will be stored. It will be created if it doesn't exist.
@@ -69,7 +110,7 @@ export interface FluxionOptions {
   /**
    * Base worker runtime option overrides.
    */
-  workerOptions?: Partial<ExecutorOptions>;
+  workerOptions?: Partial<WorkerOptions>;
 
   /**
    * Maximum request body bytes accepted by dynamic handlers.
@@ -82,4 +123,14 @@ export interface FluxionOptions {
    * Defaults to `one-line`.
    */
   logger?: LoggerOption;
+}
+
+export interface ResolvedFluxionOptions {
+  dir: string;
+  host: string;
+  port: number;
+  injections: InjectionConfig[];
+  workerOptions: WorkerOptions;
+  maxRequestBytes: number;
+  logger: FluxionLogger;
 }

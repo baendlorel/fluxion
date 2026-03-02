@@ -1,3 +1,5 @@
+import { otherstring } from '@/global.js';
+
 /**
  * IPC protocol between main thread and runtime worker.
  */
@@ -5,7 +7,7 @@ export namespace protocol {
   /**
    * Supported runtime db drivers.
    */
-  export type DataBaseDriver = 'pg' | 'mysql2' | 'sqlite3' | 'better-sqlite3' | (string & {});
+  export type DataBaseDriver = 'pg' | 'mysql2' | 'sqlite3' | 'better-sqlite3' | otherstring;
 
   /**
    * Normalized db connection config pushed from main thread to workers.

@@ -1,4 +1,5 @@
-import { fluxion, type FluxionOptions } from './core/server.js';
+import { fluxion } from './core/server.js';
+import { FluxionOptions } from './core/types.js';
 
 export { fluxion, type FluxionOptions };
 

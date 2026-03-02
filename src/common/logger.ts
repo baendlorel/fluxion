@@ -1,8 +1,9 @@
 import chalk from 'chalk';
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
+import { otherstring } from '@/global.js';
 
-type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE';
+type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
 
 interface LogEntry {
   timestamp: string;
@@ -21,6 +22,12 @@ export interface FluxionLogger {
    * [WARN] We assert that `fields` is an object or undefined.
    */
   write(level: LogLevel, event: string, fields?: Record<string, unknown>): void;
+  info(event: string, fields?: Record<string, unknown>): void;
+  warn(event: string, fields?: Record<string, unknown>): void;
+  error(event: string, fields?: Record<string, unknown>): void;
+  succ(event: string, fields?: Record<string, unknown>): void;
+  debug(event: string, fields?: Record<string, unknown>): void;
+  verbose(event: string, fields?: Record<string, unknown>): void;
 }
 
 const safeStringify = (value: unknown): string => {
@@ -90,6 +97,24 @@ export function createLogger(option: LoggerOption | undefined = 'one-line'): Flu
       } catch {
         // Ignore logger sink failures to avoid breaking request handling.
       }
+    },
+    info(event: string, fields?: Record<string, unknown>): void {
+      this.write('INFO', event, fields);
+    },
+    warn(event: string, fields?: Record<string, unknown>): void {
+      this.write('WARN', event, fields);
+    },
+    error(event: string, fields?: Record<string, unknown>): void {
+      this.write('ERROR', event, fields);
+    },
+    succ(event: string, fields?: Record<string, unknown>): void {
+      this.write('SUCC', event, fields);
+    },
+    debug(event: string, fields?: Record<string, unknown>): void {
+      this.write('DEBUG', event, fields);
+    },
+    verbose(event: string, fields?: Record<string, unknown>): void {
+      this.write('VERBOSE', event, fields);
     },
   };
 }
