@@ -3,6 +3,11 @@ import { pathToFileURL } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { Readable, Writable } from 'node:stream';
 
+import mysql2 from 'mysql2/promise';
+import type { Pool as Mysql2Pool, PoolOptions as Mysql2PoolOptions } from 'mysql2/promise';
+import { Pool as PgPoolClient } from 'pg';
+import type { Pool as PgPool, PoolConfig as PgPoolConfig } from 'pg';
+
 import type { protocol } from './protocol.js';
 
 /**
@@ -25,6 +30,48 @@ interface WorkerBootstrapData {
    * Database names available in this worker.
    */
   dbSet?: string[];
+  /**
+   * Normalized db configs available for this worker.
+   */
+  dbConfigMap?: protocol.WorkerDbConfigMap;
+}
+
+/**
+ * Supported database drivers in worker runtime.
+ */
+type SupportedDbDriver = 'pg' | 'mysql2';
+
+/**
+ * Connected database client types exposed to handlers.
+ */
+type HandlerDbClient = PgPool | Mysql2Pool | undefined;
+
+/**
+ * Normalized database connection config from handler metadata.
+ */
+interface NormalizedDbConnectionConfig {
+  /**
+   * Selected db driver.
+   */
+  driver: SupportedDbDriver;
+  /**
+   * Driver-specific pool options.
+   */
+  options: Record<string, unknown>;
+}
+
+/**
+ * Worker-local connected db client entry.
+ */
+interface WorkerDbConnection {
+  /**
+   * Connected driver pool object.
+   */
+  client: Exclude<HandlerDbClient, undefined>;
+  /**
+   * Closes underlying driver pool.
+   */
+  close(): Promise<void>;
 }
 
 /**
@@ -33,9 +80,9 @@ interface WorkerBootstrapData {
 interface HandlerContext {
   /**
    * Database slots declared by handler metadata.
-   * & Reserved for adapter injection while keeping current API stable.
+   * & Values are injected from worker-local db connections.
    */
-  db: Record<string, undefined>;
+  db: Record<string, HandlerDbClient>;
   /**
    * Checks whether current worker can access a database name.
    */
@@ -73,9 +120,9 @@ interface ModuleDefaultHandlerObject {
    */
   handler: ModuleDefaultHandler;
   /**
-   * Required database names.
+   * Required database names (`string | string[]`).
    */
-  db?: string | string[];
+  db?: unknown;
 }
 
 /**
@@ -144,6 +191,16 @@ const workerDbSet = normalizeDbList(bootstrapData?.dbSet);
 const workerDbNameSet = new Set(workerDbSet);
 
 /**
+ * Worker-level normalized db config map.
+ */
+const workerDbConfigMap = normalizeWorkerDbConfigMap(bootstrapData?.dbConfigMap);
+
+/**
+ * Worker-local db connection registry.
+ */
+const workerDbConnections = new Map<string, WorkerDbConnection>();
+
+/**
  * Converts unknown errors to protocol error payload.
  */
 function toWorkerError(error: unknown): protocol.SerializedError {
@@ -201,6 +258,155 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Normalizes one db config item injected from main thread.
+ */
+function normalizeWorkerDbConnectionConfig(
+  dbName: string,
+  input: unknown,
+): NormalizedDbConnectionConfig {
+  if (!isRecord(input)) {
+    throw new Error(`Invalid db config for "${dbName}" in worker bootstrap`);
+  }
+
+  const rawDriver = typeof input.driver === 'string' ? input.driver : undefined;
+  if (rawDriver !== 'pg' && rawDriver !== 'mysql2') {
+    throw new Error(`Unsupported db driver for "${dbName}" in worker bootstrap: ${String(rawDriver)}`);
+  }
+
+  if (!isRecord(input.options)) {
+    throw new Error(`Invalid db options for "${dbName}" in worker bootstrap`);
+  }
+
+  const options: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const optionKeys = Object.keys(input.options);
+  for (let i = 0; i < optionKeys.length; i++) {
+    const key = optionKeys[i];
+    const value = input.options[key];
+    if (value !== undefined) {
+      options[key] = value;
+    }
+  }
+
+  return {
+    driver: rawDriver,
+    options,
+  };
+}
+
+/**
+ * Normalizes worker bootstrap db config map.
+ */
+function normalizeWorkerDbConfigMap(input: unknown): Record<string, NormalizedDbConnectionConfig> {
+  if (input === undefined || input === null) {
+    return Object.create(null) as Record<string, NormalizedDbConnectionConfig>;
+  }
+
+  if (!isRecord(input)) {
+    throw new Error('Invalid worker db config map');
+  }
+
+  const normalized: Record<string, NormalizedDbConnectionConfig> =
+    Object.create(null) as Record<string, NormalizedDbConnectionConfig>;
+  const rawNames = Object.keys(input);
+
+  for (let i = 0; i < rawNames.length; i++) {
+    const rawName = rawNames[i];
+    const name = rawName.trim();
+    if (name.length === 0) {
+      throw new Error('Invalid worker db config map: empty database name');
+    }
+
+    normalized[name] = normalizeWorkerDbConnectionConfig(name, input[rawName]);
+  }
+
+  return normalized;
+}
+
+/**
+ * Validates handler db declaration shape.
+ */
+function parseHandlerDbList(input: unknown, filePath: string): string[] {
+  if (input === undefined || typeof input === 'string' || Array.isArray(input)) {
+    return normalizeDbList(input);
+  }
+
+  throw new TypeError(
+    `Invalid db declaration in ${filePath}: use db: string | string[] and move connection config to main process`,
+  );
+}
+
+/**
+ * Creates one worker-local db connection from normalized config.
+ */
+function createDbConnection(config: NormalizedDbConnectionConfig): WorkerDbConnection {
+  if (config.driver === 'pg') {
+    const client = new PgPoolClient(config.options as PgPoolConfig);
+    return {
+      client,
+      async close(): Promise<void> {
+        await client.end();
+      },
+    };
+  }
+
+  const client = mysql2.createPool(config.options as Mysql2PoolOptions);
+  return {
+    client,
+    async close(): Promise<void> {
+      await client.end();
+    },
+  };
+}
+
+/**
+ * Ensures worker has initialized db clients for handler-required db names.
+ */
+function ensureWorkerDbConnections(filePath: string, dbNames: readonly string[]): void {
+  for (let i = 0; i < dbNames.length; i++) {
+    const dbName = dbNames[i];
+    if (workerDbConnections.has(dbName)) {
+      continue;
+    }
+
+    const config = workerDbConfigMap[dbName];
+    if (config === undefined) {
+      const missingError = new Error(
+        `Missing db config for "${dbName}" in worker "${workerId}" while loading ${filePath}`,
+      );
+      (missingError as NodeJS.ErrnoException).code = 'WORKER_DB_CONFIG_MISSING';
+      throw missingError;
+    }
+
+    try {
+      workerDbConnections.set(dbName, createDbConnection(config));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const initError = new Error(
+        `Failed to initialize db "${dbName}" in worker "${workerId}": ${message}`,
+      );
+      (initError as NodeJS.ErrnoException).code = 'WORKER_DB_INIT_FAILED';
+      throw initError;
+    }
+  }
+}
+
+/**
+ * Closes all worker-local db connections.
+ */
+async function closeWorkerDbConnections(): Promise<void> {
+  const connections = Array.from(workerDbConnections.values());
+  workerDbConnections.clear();
+
+  for (let i = 0; i < connections.length; i++) {
+    try {
+      await connections[i].close();
+    } catch {
+      // ignore close error during worker teardown
+    }
+  }
+}
+
+/**
  * Runtime guard for promise-like handler return values.
  */
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
@@ -233,7 +439,7 @@ function parseModuleDefault(defaultExport: unknown, filePath: string): ParsedMod
     return {
       handler: objectExport.handler,
       meta: {
-        db: normalizeDbList(objectExport.db),
+        db: parseHandlerDbList(objectExport.db, filePath),
       },
     };
   }
@@ -263,10 +469,10 @@ function assertWorkerDbCapability(filePath: string, meta: protocol.HandlerMeta):
  * Builds request context passed as third arg to handler.
  */
 function createHandlerContext(meta: protocol.HandlerMeta): HandlerContext {
-  const db: Record<string, undefined> = Object.create(null) as Record<string, undefined>;
+  const db: Record<string, HandlerDbClient> = Object.create(null) as Record<string, HandlerDbClient>;
 
   for (let i = 0; i < meta.db.length; i++) {
-    db[meta.db[i]] = undefined;
+    db[meta.db[i]] = workerDbConnections.get(meta.db[i])?.client;
   }
 
   return {
@@ -567,6 +773,7 @@ async function loadHandler(filePath: string, version: string): Promise<HandlerCa
   const parsed = parseModuleDefault(loaded.default as unknown, filePath);
 
   assertWorkerDbCapability(filePath, parsed.meta);
+  ensureWorkerDbConnections(filePath, parsed.meta.db);
 
   const entry: HandlerCacheEntry = {
     handler: parsed.handler,
@@ -691,6 +898,26 @@ const memoryReporter = setInterval(() => {
 }, memorySampleIntervalMs);
 
 memoryReporter.unref();
+
+/**
+ * Idempotent db teardown promise.
+ */
+let dbClosePromise: Promise<void> | undefined;
+
+/**
+ * Closes worker db connections once.
+ */
+function disposeDbConnections(): Promise<void> {
+  if (dbClosePromise === undefined) {
+    dbClosePromise = closeWorkerDbConnections();
+  }
+
+  return dbClosePromise;
+}
+
+process.once('beforeExit', () => {
+  void disposeDbConnections();
+});
 
 /**
  * Main worker message loop.

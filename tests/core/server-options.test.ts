@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fluxion } from '@/core/server.js';
+import type { FluxionDatabaseInput } from '@/core/server.js';
 import type { LogEntry, LoggerOption } from '@/common/logger.js';
 
 import { closeServer, createTempDirectory, removeDirectory, writeFile } from '../helpers/test-utils.js';
@@ -12,6 +13,8 @@ import { closeServer, createTempDirectory, removeDirectory, writeFile } from '..
 interface StartServerOptions {
   maxRequestBytes?: number;
   logger?: LoggerOption;
+  databases?: FluxionDatabaseInput[];
+  dbConfigPath?: string;
 }
 
 async function startServer(
@@ -24,6 +27,8 @@ async function startServer(
     port: 0,
     maxRequestBytes: options.maxRequestBytes,
     logger: options.logger,
+    databases: options.databases,
+    dbConfigPath: options.dbConfigPath,
   });
 
   if (!server.listening) {
@@ -117,6 +122,47 @@ describe('server options', () => {
         maxRequestBytes: 0,
       }),
     ).toThrow('Invalid maxRequestBytes');
+  });
+
+  it('loads db config from private file path and injects db client into handler context', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-server-db-config-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'ctx.mjs'),
+      [
+        'export default {',
+        "  db: ['main'],",
+        '  handler(_req, res, context) {',
+        "    const ready = typeof context.db.main?.query === 'function';",
+        "    res.end(ready ? 'db-ready' : 'db-missing');",
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const privateConfigPath = path.join(dynamicDirectory, '.fluxion-private', 'db.config.cjs');
+    await writeFile(
+      privateConfigPath,
+      [
+        'module.exports = {',
+        "  main: {",
+        "    driver: 'pg',",
+        '    options: {},',
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl } = await startServer(dynamicDirectory, {
+      databases: ['main'],
+      dbConfigPath: privateConfigPath,
+    });
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/ctx`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('db-ready');
   });
 
   it('supports json-line logger mode', async () => {

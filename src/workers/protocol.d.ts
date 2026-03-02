@@ -3,6 +3,30 @@
  */
 export namespace protocol {
   /**
+   * Supported runtime db drivers.
+   */
+  export type DbDriver = 'pg' | 'mysql2';
+
+  /**
+   * Normalized db connection config pushed from main thread to workers.
+   */
+  export interface WorkerDbConnectionConfig {
+    /**
+     * Driver used to initialize the connection pool.
+     */
+    driver: DbDriver;
+    /**
+     * Driver-specific pool options.
+     */
+    options: Record<string, unknown>;
+  }
+
+  /**
+   * Worker db config map keyed by database name.
+   */
+  export type WorkerDbConfigMap = Record<string, WorkerDbConnectionConfig>;
+
+  /**
    * HTTP header value.
    */
   export type HeaderValue = string | string[];

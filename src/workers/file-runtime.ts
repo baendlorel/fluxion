@@ -111,6 +111,10 @@ export interface FileRuntimeOptions {
    */
   databaseNames?: string[];
   /**
+   * Normalized db config map injected into worker pools.
+   */
+  databaseConfigMap?: protocol.WorkerDbConfigMap;
+  /**
    * Worker strategy selector.
    */
   workerStrategy?: WorkerStrategy;
@@ -289,6 +293,26 @@ function normalizeDbSet(input: readonly string[] | undefined): string[] {
 
   normalized.sort((left, right) => left.localeCompare(right));
   return normalized;
+}
+
+/**
+ * Picks db configs for one worker by its db capability set.
+ */
+function selectWorkerDbConfigMap(
+  dbConfigMap: protocol.WorkerDbConfigMap,
+  dbSet: readonly string[],
+): protocol.WorkerDbConfigMap {
+  const selected: protocol.WorkerDbConfigMap = {};
+
+  for (let i = 0; i < dbSet.length; i++) {
+    const dbName = dbSet[i];
+    const config = dbConfigMap[dbName];
+    if (config !== undefined) {
+      selected[dbName] = config;
+    }
+  }
+
+  return selected;
 }
 
 /**
@@ -802,6 +826,11 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   const databaseNames = normalizeDbSet(options.databaseNames);
 
   /**
+   * Main-thread normalized db config map.
+   */
+  const databaseConfigMap = options.databaseConfigMap ?? {};
+
+  /**
    * Maximum request body bytes accepted by dynamic handlers.
    */
   const maxRequestBytes = resolveMaxRequestBytes(options.maxRequestBytes);
@@ -824,6 +853,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
         id: definition.id,
         dbSet: definition.dbSet,
         isFallbackAllDb: definition.isFallbackAllDb,
+        dbConfigMap: selectWorkerDbConfigMap(databaseConfigMap, definition.dbSet),
       },
       overrides: definition.overrides,
       logger,

@@ -44,6 +44,10 @@ interface WorkerPoolMeta {
    * Marks the auto-added all-db fallback worker.
    */
   isFallbackAllDb: boolean;
+  /**
+   * Normalized db configs available in this worker.
+   */
+  dbConfigMap: protocol.WorkerDbConfigMap;
 }
 
 /**
@@ -346,6 +350,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
       id: meta.id,
       dbSet: [...meta.dbSet],
       isFallbackAllDb: meta.isFallbackAllDb,
+      dbConfigMap: { ...meta.dbConfigMap },
     };
     this.options = options;
     this.logger = logger;
@@ -606,6 +611,7 @@ class HandlerWorkerPoolImpl implements HandlerWorkerPool {
         maxResponseBytes: this.options.maxResponseBytes,
         workerId: this.meta.id,
         dbSet: this.meta.dbSet,
+        dbConfigMap: this.meta.dbConfigMap,
       },
       resourceLimits: {
         maxOldGenerationSizeMb: this.options.maxOldGenerationSizeMb,

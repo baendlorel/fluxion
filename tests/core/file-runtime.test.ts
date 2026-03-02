@@ -203,6 +203,12 @@ describe('file-runtime', () => {
 
     const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
       databaseNames: ['main'],
+      databaseConfigMap: {
+        main: {
+          driver: 'pg',
+          options: {},
+        },
+      },
     });
     servers.push(server);
 
@@ -211,6 +217,82 @@ describe('file-runtime', () => {
     expect(await response.text()).toBe('context-ok');
     expect(response.headers.get('x-db-list')).toBe('main');
     expect(response.headers.get('x-worker-id')).toContain('fluxion-worker-all');
+  });
+
+  it('initializes pg/mysql2 db pools from runtime db config and injects into context', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-db-config-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'dbctx.mjs'),
+      [
+        'export default {',
+        "  db: ['main', 'reporting'],",
+        '  handler(_req, res, context) {',
+        "    const mainReady = typeof context.db.main?.query === 'function';",
+        "    const reportingReady = typeof context.db.reporting?.query === 'function';",
+        "    res.setHeader('x-main-ready', String(mainReady));",
+        "    res.setHeader('x-reporting-ready', String(reportingReady));",
+        "    res.end(mainReady && reportingReady ? 'db-connected' : 'db-missing');",
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
+      databaseNames: ['main', 'reporting'],
+      databaseConfigMap: {
+        main: {
+          driver: 'pg',
+          options: {},
+        },
+        reporting: {
+          driver: 'mysql2',
+          options: {},
+        },
+      },
+    });
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/dbctx`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('db-connected');
+    expect(response.headers.get('x-main-ready')).toBe('true');
+    expect(response.headers.get('x-reporting-ready')).toBe('true');
+  });
+
+  it('rejects handler-level db object config and requires db name arrays', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-runtime-db-shape-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(
+      path.join(dynamicDirectory, 'invalid-db-shape.mjs'),
+      [
+        'export default {',
+        '  db: {',
+        "    main: { driver: 'pg' },",
+        '  },',
+        '  handler(_req, res) {',
+        "    res.end('never');",
+        '  },',
+        '};',
+      ].join('\n'),
+    );
+
+    const { server, baseUrl } = await startRuntimeServer(dynamicDirectory, {
+      databaseNames: ['main'],
+      databaseConfigMap: {
+        main: {
+          driver: 'pg',
+          options: {},
+        },
+      },
+    });
+    servers.push(server);
+
+    const response = await fetch(`${baseUrl}/invalid-db-shape`);
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain('Invalid db declaration');
   });
 
   it('routes handlers to minimal matching worker and keeps all-db fallback', async () => {
@@ -243,6 +325,16 @@ describe('file-runtime', () => {
 
     const { server, baseUrl, runtime } = await startRuntimeServer(dynamicDirectory, {
       databaseNames: ['db1', 'db2'],
+      databaseConfigMap: {
+        db1: {
+          driver: 'pg',
+          options: {},
+        },
+        db2: {
+          driver: 'pg',
+          options: {},
+        },
+      },
       workerStrategy: [{ id: 'worker-db1', db: ['db1'] }],
     });
     servers.push(server);

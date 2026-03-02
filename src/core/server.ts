@@ -1,12 +1,14 @@
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
 import { createLogger, getErrorMessage, type LoggerOption } from '@/common/logger.js';
 import { createFileRuntime } from '@/workers/file-runtime.js';
 import type { ExecutorOptions, WorkerStrategy } from '@/workers/options.js';
+import type { protocol } from '@/workers/protocol.js';
 
 import { createMetaApi } from './meta-api.js';
 
@@ -14,6 +16,8 @@ import type { NormalizedRequest } from './types.js';
 import { safeSendJson } from './utils/send-json.js';
 import { getRealIp } from './utils/headers.js';
 import { createBodyPreviewCapture, parseQuery, toURL } from './utils/request.js';
+
+const nodeRequire = createRequire(import.meta.url);
 
 /**
  * Database config item accepted by server options.
@@ -30,6 +34,17 @@ export interface FluxionDatabaseConfig {
  */
 export type FluxionDatabaseInput = string | FluxionDatabaseConfig;
 
+/**
+ * Raw database config item loaded from private config file.
+ */
+export type FluxionDatabaseRuntimeConfigInput =
+  | protocol.DbDriver
+  | (Record<string, unknown> & {
+      driver?: string;
+      type?: string;
+      options?: Record<string, unknown>;
+    });
+
 export interface FluxionOptions {
   /**
    * The directory where dynamic files (e.g. uploaded files) will be stored. It will be created if it doesn't exist.
@@ -45,6 +60,12 @@ export interface FluxionOptions {
    * Declared database names used by worker strategy routing.
    */
   databases?: FluxionDatabaseInput[];
+
+  /**
+   * Optional path to private db config file.
+   * Defaults to `./.fluxion-private/db.config.cjs`.
+   */
+  dbConfigPath?: string;
 
   /**
    * Worker routing strategy.
@@ -70,11 +91,160 @@ export interface FluxionOptions {
 }
 
 /**
- * Normalizes database config into unique non-empty names.
+ * Runtime guard for plain object values.
  */
-function normalizeDatabaseNames(databases: FluxionDatabaseInput[] | undefined): string[] {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Normalizes db driver aliases to runtime-supported values.
+ */
+function normalizeDbDriver(input: string, source: string, dbName: string): protocol.DbDriver {
+  const normalized = input.trim().toLowerCase();
+
+  if (normalized === 'pg' || normalized === 'postgres' || normalized === 'postgresql') {
+    return 'pg';
+  }
+
+  if (normalized === 'mysql2' || normalized === 'mysql') {
+    return 'mysql2';
+  }
+
+  throw new Error(`Unsupported db driver "${input}" for "${dbName}" in ${source}`);
+}
+
+/**
+ * Normalizes one raw db config item.
+ */
+function normalizeDatabaseRuntimeConfigItem(
+  dbName: string,
+  input: FluxionDatabaseRuntimeConfigInput,
+  source: string,
+): protocol.WorkerDbConnectionConfig {
+  if (typeof input === 'string') {
+    return {
+      driver: normalizeDbDriver(input, source, dbName),
+      options: {},
+    };
+  }
+
+  const rawDriver =
+    typeof input.driver === 'string'
+      ? input.driver
+      : typeof input.type === 'string'
+        ? input.type
+        : undefined;
+
+  if (rawDriver === undefined) {
+    throw new Error(`Missing db driver for "${dbName}" in ${source}`);
+  }
+
+  const options: Record<string, unknown> = {};
+
+  if (input.options !== undefined) {
+    if (!isRecord(input.options)) {
+      throw new Error(`Invalid db options for "${dbName}" in ${source}: options must be an object`);
+    }
+
+    const optionKeys = Object.keys(input.options);
+    for (let i = 0; i < optionKeys.length; i++) {
+      const key = optionKeys[i];
+      const value = input.options[key];
+      if (value !== undefined) {
+        options[key] = value;
+      }
+    }
+  } else {
+    const keys = Object.keys(input);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key === 'driver' || key === 'type' || key === 'options') {
+        continue;
+      }
+
+      const value = input[key];
+      if (value !== undefined) {
+        options[key] = value;
+      }
+    }
+  }
+
+  return {
+    driver: normalizeDbDriver(rawDriver, source, dbName),
+    options,
+  };
+}
+
+/**
+ * Normalizes private db config file exports.
+ */
+function normalizeDatabaseConfigMap(input: unknown, source: string): protocol.WorkerDbConfigMap {
+  if (input === undefined || input === null) {
+    return {};
+  }
+
+  if (!isRecord(input)) {
+    throw new Error(`Invalid db config file "${source}": expected object export`);
+  }
+
+  const normalized: protocol.WorkerDbConfigMap = {};
+  const rawNames = Object.keys(input);
+
+  for (let i = 0; i < rawNames.length; i++) {
+    const rawName = rawNames[i];
+    const name = rawName.trim();
+
+    if (name.length === 0) {
+      throw new Error(`Invalid db config in "${source}": empty database name`);
+    }
+
+    const rawConfig = input[rawName];
+    if (typeof rawConfig !== 'string' && !isRecord(rawConfig)) {
+      throw new Error(`Invalid db config for "${name}" in "${source}"`);
+    }
+
+    normalized[name] = normalizeDatabaseRuntimeConfigItem(
+      name,
+      rawConfig as FluxionDatabaseRuntimeConfigInput,
+      source,
+    );
+  }
+
+  return normalized;
+}
+
+/**
+ * Resolves private db config path.
+ */
+function resolveDbConfigPath(input: string | undefined): string {
+  return path.resolve(input ?? path.join('.fluxion-private', 'db.config.cjs'));
+}
+
+/**
+ * Loads db config module from private file.
+ */
+function loadDatabaseConfigMapFromFile(filePath: string): protocol.WorkerDbConfigMap {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+
+  const requiredModule = nodeRequire(filePath) as unknown;
+  const exported = isRecord(requiredModule) && 'default' in requiredModule ? requiredModule.default : requiredModule;
+  return normalizeDatabaseConfigMap(exported, filePath);
+}
+
+/**
+ * Normalizes database names with private config fallback.
+ */
+function normalizeDatabaseNames(
+  databases: FluxionDatabaseInput[] | undefined,
+  fallbackNames: readonly string[],
+): string[] {
   if (databases === undefined || databases.length === 0) {
-    return [];
+    const names = [...fallbackNames];
+    names.sort((left, right) => left.localeCompare(right));
+    return names;
   }
 
   const names: string[] = [];
@@ -100,9 +270,37 @@ function normalizeDatabaseNames(databases: FluxionDatabaseInput[] | undefined): 
   return names;
 }
 
+/**
+ * Selects declared db configs for worker bootstrap.
+ */
+function selectDeclaredDatabaseConfigMap(
+  databaseNames: readonly string[],
+  databaseConfigMap: protocol.WorkerDbConfigMap,
+  sourcePath: string,
+): protocol.WorkerDbConfigMap {
+  const selected: protocol.WorkerDbConfigMap = {};
+
+  for (let i = 0; i < databaseNames.length; i++) {
+    const name = databaseNames[i];
+    const config = databaseConfigMap[name];
+    if (config === undefined) {
+      throw new Error(
+        `Missing db config for "${name}". Add it to ${sourcePath} or remove it from databases.`,
+      );
+    }
+
+    selected[name] = config;
+  }
+
+  return selected;
+}
+
 export function fluxion(options: FluxionOptions): http.Server {
   const dir = path.resolve(options.dir);
-  const databaseNames = normalizeDatabaseNames(options.databases);
+  const dbConfigPath = resolveDbConfigPath(options.dbConfigPath);
+  const loadedDatabaseConfigMap = loadDatabaseConfigMapFromFile(dbConfigPath);
+  const databaseNames = normalizeDatabaseNames(options.databases, Object.keys(loadedDatabaseConfigMap));
+  const databaseConfigMap = selectDeclaredDatabaseConfigMap(databaseNames, loadedDatabaseConfigMap, dbConfigPath);
   const logger = createLogger(options.logger);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -111,6 +309,7 @@ export function fluxion(options: FluxionOptions): http.Server {
 
   const fileRuntime = createFileRuntime(dir, {
     databaseNames,
+    databaseConfigMap,
     workerStrategy: options.workerStrategy,
     workerOptions: options.workerOptions,
     maxRequestBytes: options.maxRequestBytes,

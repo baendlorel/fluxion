@@ -3,6 +3,7 @@
 .draft/.**
 .rollup.cache
 dynamicDirectory
+.fluxion-private/
 
 # Logs
 logs
