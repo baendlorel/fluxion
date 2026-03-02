@@ -3,4 +3,4 @@ import { bumpVersion } from './bump-version';
 
 bumpVersion();
 execSync('pnpm build', { stdio: 'inherit' });
-execSync('pnpm publish --access public', { stdio: 'inherit' });
+execSync('pnpm publish --access public --no-git-checks', { stdio: 'inherit' });
