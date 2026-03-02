@@ -1,9 +1,10 @@
 import chalk from 'chalk';
 import { dtm } from './dtm.js';
+import { $keys, $stringify } from './native.js';
 
-export type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC';
+type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE';
 
-export interface LogEntry {
+interface LogEntry {
   timestamp: string;
   level: LogLevel;
   event: string;
@@ -11,60 +12,58 @@ export interface LogEntry {
   [key: string]: unknown;
 }
 
-export type LoggerSink = (entry: LogEntry) => void;
+type LoggerSink = (entry: LogEntry) => void;
+
 export type LoggerOption = 'one-line' | 'json-line' | LoggerSink;
 
 export interface FluxionLogger {
+  /**
+   * [WARN] We assert that `fields` is an object or undefined.
+   */
   write(level: LogLevel, event: string, fields?: Record<string, unknown>): void;
 }
 
-function safeStringify(value: unknown): string {
+const safeStringify = (value: unknown): string => {
   try {
-    return JSON.stringify(value);
+    return $stringify(value);
   } catch {
     return '[unserializable]';
   }
-}
+};
 
-function omitReservedFields(entry: LogEntry): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-  const keys = Object.keys(entry);
-
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    if (key === 'timestamp' || key === 'level' || key === 'event' || key === 'message') {
-      continue;
-    }
-
-    fields[key] = entry[key];
-  }
-
+const omitReservedFields = (entry: LogEntry): Record<string, unknown> => {
+  const fields: Record<string, unknown> = { ...entry };
+  delete fields.timestamp;
+  delete fields.level;
+  delete fields.event;
+  delete fields.message;
   return fields;
-}
+};
 
-function writeOneLine(entry: LogEntry): void {
-  const fields = omitReservedFields(entry);
-  const hasFields = Object.keys(fields).length > 0;
-  const timestampText = chalk.hex('#166534')(`[${entry.timestamp}]`);
-  const levelText = formatLevel(entry.level);
-  const body = entry.message ?? entry.event;
-  const bodyText = chalk.white(body);
-  const fieldsText = hasFields ? ` ${chalk.dim(safeStringify(fields))}` : '';
+const ColoredLevels: Record<LogLevel, string> = {
+  INFO: chalk.hex('#0386e3')('INFO'),
+  WARN: chalk.hex('#fb923c')('WARN'),
+  ERROR: chalk.hex('#ef4444')('ERROR'),
+  SUCC: chalk.hex('#22c55e')('SUCC'),
+  DEBUG: chalk.hex('#d327e0')('DEBUG'),
+  VERBOSE: chalk.hex('#36ffeb')('SUCC'),
+};
+const TimestampColor = chalk.hex('#166534');
 
-  console.log(`${timestampText} ${levelText} ${bodyText}${fieldsText}`);
-}
-
-function writeJsonLine(entry: LogEntry): void {
-  console.log(safeStringify(entry));
-}
-
-export function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
-  if (option === undefined || option === 'one-line') {
-    return writeOneLine;
+function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
+  if (option === 'json-line') {
+    return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  if (option === 'json-line') {
-    return writeJsonLine;
+  if (option === undefined || option === 'one-line') {
+    return (entry: LogEntry) => {
+      const fields = omitReservedFields(entry);
+      const timestamp = TimestampColor(`[${entry.timestamp}]`);
+      const level = ColoredLevels[entry.level] ?? entry.level;
+      const body = entry.message ?? entry.event;
+      const fieldsText = $keys(fields).length > 0 ? ` ${chalk.dim(safeStringify(fields))}` : '';
+      console.log(`${timestamp} ${level} ${body}${fieldsText}`);
+    };
   }
 
   if (typeof option === 'function') {
@@ -74,44 +73,17 @@ export function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink 
   throw new Error('Invalid logger option: expected function | "one-line" | "json-line"');
 }
 
-function formatLevel(level: LogLevel): string {
-  const label = level;
-
-  switch (level) {
-    case 'INFO':
-      return chalk.hex('#38bdf8')(label);
-    case 'WARN':
-      return chalk.hex('#fb923c')(label);
-    case 'ERROR':
-      return chalk.hex('#ef4444')(label);
-    case 'SUCC':
-      return chalk.hex('#22c55e')(label);
-    default:
-      return label;
-  }
-}
-
 export function createLogger(option: LoggerOption | undefined = 'one-line'): FluxionLogger {
   const sink = resolveLoggerSink(option);
 
   return {
     write(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
       const entry: LogEntry = {
+        ...fields,
         timestamp: dtm(),
         level,
         event,
       };
-
-      const keys = Object.keys(fields);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-
-        if (key === 'timestamp' || key === 'level' || key === 'event') {
-          continue;
-        }
-
-        entry[key] = fields[key];
-      }
 
       try {
         sink(entry);
@@ -122,23 +94,7 @@ export function createLogger(option: LoggerOption | undefined = 'one-line'): Flu
   };
 }
 
-export function getErrorMessage(error: unknown): string {
-  // ! Error.isError needs Node.js 24
-  return Error.isError(error) ? error.message : String(error);
-}
-
-const defaultLogger = createLogger('one-line');
-
 /**
- * Compatibility helper for existing call sites. Prefer `createLogger().write`.
+ * ! Error.isError needs Node.js 24
  */
-export function logJsonl(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
-  defaultLogger.write(level, event, fields);
-}
-
-/**
- * Compatibility helper for existing call sites. Prefer structured events.
- */
-export function log(level: LogLevel, message: string, fields: Record<string, unknown> = {}): void {
-  defaultLogger.write(level, 'Message', { message, ...fields });
-}
+export const getErrorMessage = (error: unknown): string => (Error.isError(error) ? error.message : String(error));
