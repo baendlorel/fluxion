@@ -30,6 +30,7 @@
     "doc:build": "vite build --config document/vite.config.ts",
     "image": "tsx ./scripts/build-image.ts",
     "build": "rollup -c",
+    "pub": "tsx ./scripts/publish.ts",
     "test": "vitest",
     "lint": "oxlint ."
   },
