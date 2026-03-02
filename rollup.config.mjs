@@ -45,7 +45,9 @@ export default async (_commandLineArgs) => {
 
 // #region replace options
 
-export const globalDefines = {};
+export const globalDefines = {
+  'process.env.NODE_ENV': '"production"',
+};
 
 export function replaceOpts(packagePath) {
   const pkg = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json'), 'utf-8'));
