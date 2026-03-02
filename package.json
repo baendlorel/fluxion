@@ -27,6 +27,7 @@
     "lines": "tsx ./scripts/lines.ts",
     "doc:dev": "vite --config document/vite.config.ts",
     "doc:build": "vite build --config document/vite.config.ts",
+    "image": "tsx ./scripts/build-image.ts",
     "build": "rollup -c",
     "test": "vitest",
     "lint": "oxlint ."

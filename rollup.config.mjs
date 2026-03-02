@@ -32,13 +32,13 @@ export default async (_commandLineArgs) => {
         replace(replaceOpts(libPath)),
         void terser(),
       ].filter(Boolean),
-      external: [/^@ktjs\//, /^@babel\//],
+      external: [/^node:/],
     },
     {
       input: path.join(libPath, 'src', 'index.ts'),
       output: [{ file: path.join(libPath, 'dist', 'index.d.ts'), format: 'es' }],
       plugins: [dts({ tsconfig: './tsconfig.json' })],
-      external: [/^@ktjs/],
+      external: [/^node:/],
     },
   ];
 };
