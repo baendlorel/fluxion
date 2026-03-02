@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fluxion } from '@/core/server.js';
 
-import { createTarBuffer } from '../helpers/archive-utils.js';
 import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writeFile } from '../helpers/test-utils.js';
 
 async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Server; client: AxiosInstance }> {
@@ -222,76 +221,5 @@ describe('fluxion e2e', () => {
       routesResponse.data.routes.staticFiles.some((item: { file: string }) => item.file.startsWith('_lib/'));
 
     expect(hasHiddenRoute).toBe(false);
-  });
-
-  it('uploads tar archives and handles invalid upload payloads', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-upload-');
-    tempDirectories.push(dynamicDirectory);
-
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
-
-    const flatArchive = await createTarBuffer({
-      'ping.mjs': "export default function handler(_req, res) { res.end('flat-upload-ok'); }",
-      'public/app.js': "console.log('flat');",
-    });
-
-    const flatUploadResponse = await client.post('/_fluxion/upload?filename=tar-demo.tar', flatArchive, {
-      headers: {
-        'content-type': 'application/octet-stream',
-      },
-    });
-
-    expect(flatUploadResponse.status).toBe(200);
-    expect(flatUploadResponse.data).toMatchObject({
-      module: 'tar-demo',
-      layout: 'flat',
-    });
-
-    const flatRouteResponse = await client.get('/tar-demo/ping');
-    expect(flatRouteResponse.status).toBe(200);
-    expect(flatRouteResponse.data).toBe('flat-upload-ok');
-
-    const nestedArchive = await createTarBuffer({
-      'tar-module/ping.mjs': "export default function handler(_req, res) { res.end('nested-upload-ok'); }",
-    });
-
-    const nestedUploadResponse = await client.post('/_fluxion/upload?filename=anything.tar', nestedArchive, {
-      headers: {
-        'content-type': 'application/octet-stream',
-      },
-    });
-
-    expect(nestedUploadResponse.status).toBe(200);
-    expect(nestedUploadResponse.data).toMatchObject({
-      module: 'tar-module',
-      layout: 'nested',
-    });
-
-    const nestedRouteResponse = await client.get('/tar-module/ping');
-    expect(nestedRouteResponse.status).toBe(200);
-    expect(nestedRouteResponse.data).toBe('nested-upload-ok');
-
-    const invalidArchive = await createTarBuffer({
-      '__MACOSX/.DS_Store': 'broken',
-    });
-
-    const invalidUploadResponse = await client.post('/_fluxion/upload?filename=broken.tar', invalidArchive, {
-      headers: {
-        'content-type': 'application/octet-stream',
-      },
-    });
-
-    expect(invalidUploadResponse.status).toBe(400);
-    expect(invalidUploadResponse.data?.message).toContain('Invalid archive structure');
-
-    const unsupportedUploadResponse = await client.post('/_fluxion/upload?filename=broken.zip', invalidArchive, {
-      headers: {
-        'content-type': 'application/octet-stream',
-      },
-    });
-
-    expect(unsupportedUploadResponse.status).toBe(400);
-    expect(unsupportedUploadResponse.data?.message).toContain('Unsupported archive format');
   });
 });
