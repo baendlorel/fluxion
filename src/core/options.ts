@@ -21,6 +21,9 @@ export function resolveWorkerOptions(overrides: Partial<WorkerOptions>): WorkerO
   };
 }
 
+/**
+ * Normalize options and create necessary resources like the dynamic directory and logger.
+ */
 export function normalizeOptions(options: FluxionOptions): ResolvedFluxionOptions {
   expect.isObject(options, 'FluxionOptions must be an object');
 

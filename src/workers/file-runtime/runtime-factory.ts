@@ -29,7 +29,7 @@ import { createWorkerBindings, selectExecutionWorker } from './worker-bindings.j
 /**
  * @param dir Dynamic directory set in `FluxionOptions`
  */
-export function createFileRuntime(dir: string, options: FileRuntimeOptions = {}): FileRuntime {
+export function createFileRuntime(dir: string, options: FileRuntimeOptions): FileRuntime {
   /**
    * Runtime logger.
    */

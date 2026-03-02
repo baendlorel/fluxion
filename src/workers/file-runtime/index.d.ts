@@ -4,7 +4,6 @@ import type { HandlerResult } from '@/common/consts.js';
 import type { FluxionLogger } from '@/common/logger.js';
 import type { InjectionConfig, NormalizedRequest } from '@/core/types.js';
 import type { HandlerWorkerPool, HandlerWorkerSnapshot } from '@/workers/handler-worker-pool.js';
-import type { ExecutorOptions } from '@/workers/options.js';
 
 /**
  * Parsed and validated request path.
@@ -108,22 +107,22 @@ export interface FileRuntimeOptions {
   /**
    * Injections to be applied to `context` of all workers.
    */
-  injections?: InjectionConfig[];
+  injections: InjectionConfig[];
 
   /**
    * Base runtime option overrides applied to worker pools.
    */
-  workerOptions?: Partial<ExecutorOptions>;
+  workerOptions: WorkerOptions;
 
   /**
    * Maximum request body bytes accepted by dynamic handlers.
    */
-  maxRequestBytes?: number;
+  maxRequestBytes: number;
 
   /**
    * Runtime logger implementation.
    */
-  logger?: FluxionLogger;
+  logger: FluxionLogger;
 }
 
 /**

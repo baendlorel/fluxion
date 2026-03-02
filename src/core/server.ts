@@ -1,10 +1,8 @@
 import http from 'node:http';
-import path from 'node:path';
-import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
-import { createLogger, getErrorMessage } from '@/common/logger.js';
+import { getErrorMessage } from '@/common/logger.js';
 import { createFileRuntime } from '@/workers/file-runtime/runtime-factory.js';
 
 import { createMetaApi } from './meta-api.js';
@@ -13,20 +11,22 @@ import type { FluxionOptions, NormalizedRequest } from './types.js';
 import { safeSendJson } from './utils/send-json.js';
 import { getRealIp } from './utils/headers.js';
 import { createBodyPreviewCapture, parseQuery, toURL } from './utils/request.js';
+import { normalizeOptions } from './options.js';
 
-export function fluxion(options: FluxionOptions): http.Server {
-  const dir = path.resolve(options.dir);
-  const logger = createLogger(options.logger);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    logger.write('INFO', 'DynamicDirectoryCreated', { directory: dir });
-  }
+export function fluxion(options: FluxionOptions): http.Server;
+export function fluxion(rawOptions: FluxionOptions): http.Server {
+  const options = normalizeOptions(rawOptions);
+
+  const dir = options.dir;
+  const logger = options.logger;
 
   const fileRuntime = createFileRuntime(dir, {
+    // ?? 这里的workeroptions是什么？
     workerOptions: options.workerOptions,
     maxRequestBytes: options.maxRequestBytes,
     logger,
   });
+
   const metaApi = createMetaApi({
     dir,
     getRouteSnapshot: fileRuntime.getRouteSnapshot,
@@ -39,20 +39,20 @@ export function fluxion(options: FluxionOptions): http.Server {
       const handlerCount = snapshot.handlers.length;
       const staticFileCount = snapshot.staticFiles.length;
 
-      logger.write('INFO', 'DynamicDirectoryLoaded', {
+      logger.info('DynamicDirectoryLoaded', {
         dir,
         handlerCount,
         staticFileCount,
       });
 
       if (handlerCount === 0) {
-        logger.write('INFO', 'DynamicHandlersLoaded', { count: 0 });
+        logger.info('DynamicHandlersLoaded', { count: 0 });
         return;
       }
 
       for (let i = 0; i < snapshot.handlers.length; i++) {
         const handler = snapshot.handlers[i];
-        logger.write('INFO', 'HandlerLoaded', {
+        logger.info('HandlerLoaded', {
           route: handler.route,
           file: handler.file,
           version: handler.version,
@@ -60,7 +60,7 @@ export function fluxion(options: FluxionOptions): http.Server {
       }
     })
     .catch((error) => {
-      logger.write('ERROR', 'DynamicDirectoryLoadFailed', {
+      logger.error('DynamicDirectoryLoadFailed', {
         dir,
         error: getErrorMessage(error),
       });
@@ -84,7 +84,7 @@ export function fluxion(options: FluxionOptions): http.Server {
 
     const bodyCapture = createBodyPreviewCapture(req);
 
-    logger.write('INFO', 'Req', { method, ip, path: url.pathname });
+    logger.info('Req', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -107,7 +107,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         fields.bodyTruncated = bodyPreview.truncated;
       }
 
-      logger.write('INFO', 'Res', fields);
+      logger.info('Res', fields);
     });
 
     void metaApi
@@ -123,7 +123,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         }
       })
       .catch((error) => {
-        logger.write('ERROR', 'RequestFailed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
+        logger.error('RequestFailed', { method, ip, path: url.pathname, error: getErrorMessage(error) });
 
         if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
           safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
@@ -136,22 +136,22 @@ export function fluxion(options: FluxionOptions): http.Server {
 
   server.on('close', () => {
     void fileRuntime.close();
-    logger.write('INFO', 'ServerClosed', {
+    logger.info('ServerClosed', {
       host: options.host,
       port: options.port,
     });
   });
 
   server.listen(options.port, options.host, () => {
-    logger.write('INFO', 'ServerStarted', {
+    logger.info('ServerStarted', {
       host: options.host,
       port: options.port,
     });
-    logger.write('INFO', 'DynamicDirectory', { directory: dir });
+    logger.info('DynamicDirectory', { directory: dir });
   });
 
   server.on('error', (error) => {
-    logger.write('ERROR', 'ServerError', {
+    logger.error('ServerError', {
       error: getErrorMessage(error),
     });
   });
