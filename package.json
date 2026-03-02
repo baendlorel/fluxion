@@ -1,7 +1,6 @@
 {
   "name": "fluxion-ts",
-  "version": "0.0.2",
-  "private": true,
+  "version": "0.0.5",
   "author": {
     "name": "Kasukabe Tsumugi",
     "email": "futami16237@gmail.com"
