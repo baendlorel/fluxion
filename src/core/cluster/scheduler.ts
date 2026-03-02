@@ -10,12 +10,12 @@ import {
 } from './types.js';
 
 export const enum PrimaryToWorkerMessageType {
-  Ping,
+  Ping = 100,
   RunTask,
 }
 
 export const enum WorkerToPrimaryMessageType {
-  Ready,
+  Ready = 200,
   Pong,
   TaskResult,
 }
@@ -56,17 +56,7 @@ function isWorkerToPrimaryMessage(value: unknown): value is WorkerToPrimaryMessa
   return false;
 }
 
-function sendToWorker(worker: Worker, message: PrimaryToWorkerMessage): void {
-  worker.send(message);
-}
-
-function sendToPrimary(message: WorkerToPrimaryMessage): void {
-  if (process.send === undefined) {
-    return;
-  }
-
-  process.send(message);
-}
+const sendToPrimary = (message: WorkerToPrimaryMessage) => process.send?.(message);
 
 function runFakeTask(payload: number): number {
   let checksum = 0;
@@ -105,8 +95,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
           taskId: createTaskId(worker.id),
           payload: 150_000,
         };
-
-        sendToWorker(worker, taskMessage);
+        worker.send(taskMessage);
         return;
       }
 
@@ -143,7 +132,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
 
     for (const worker of workers.values()) {
       if (worker.isConnected()) {
-        sendToWorker(worker, ping);
+        worker.send(ping);
       }
     }
   }, pingIntervalMs);
@@ -172,12 +161,12 @@ function startWorker(): void {
     pid: process.pid,
   });
 
-  // ?? 这里为什么不是worker on？
   process.on('message', (rawMessage: unknown) => {
     if (!isPrimaryToWorkerMessage(rawMessage)) {
       return;
     }
 
+    console.log(`[worker ${process.pid}] received message`, rawMessage);
     if (rawMessage.type === PrimaryToWorkerMessageType.Ping) {
       sendToPrimary({
         type: WorkerToPrimaryMessageType.Pong,
@@ -201,8 +190,9 @@ function startWorker(): void {
 export function runClusterSchedulerDemo(options: ClusterSchedulerDemoOptions = {}): void {
   if (cluster.isPrimary) {
     startPrimary(options);
-    return;
+  } else {
+    startWorker();
   }
-
-  startWorker();
 }
+
+runClusterSchedulerDemo();
