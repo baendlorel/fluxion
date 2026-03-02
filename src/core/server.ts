@@ -131,11 +131,7 @@ function normalizeDatabaseRuntimeConfigItem(
   }
 
   const rawDriver =
-    typeof input.driver === 'string'
-      ? input.driver
-      : typeof input.type === 'string'
-        ? input.type
-        : undefined;
+    typeof input.driver === 'string' ? input.driver : typeof input.type === 'string' ? input.type : undefined;
 
   if (rawDriver === undefined) {
     throw new Error(`Missing db driver for "${dbName}" in ${source}`);
@@ -209,11 +205,7 @@ function normalizeDatabaseConfigMap(input: unknown, source: string): protocol.Wo
       throw new Error(`Invalid db config for "${name}" in "${source}"`);
     }
 
-    normalized[name] = normalizeDatabaseRuntimeConfigItem(
-      name,
-      rawConfig as FluxionDatabaseRuntimeConfigInput,
-      source,
-    );
+    normalized[name] = normalizeDatabaseRuntimeConfigItem(name, rawConfig as FluxionDatabaseRuntimeConfigInput, source);
   }
 
   return normalized;
@@ -372,7 +364,7 @@ export function fluxion(options: FluxionOptions): http.Server {
 
     const bodyCapture = createBodyPreviewCapture(req);
 
-    logger.write('INFO', 'RequestReceived', { method, ip, path: url.pathname });
+    logger.write('INFO', 'Req', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -395,7 +387,7 @@ export function fluxion(options: FluxionOptions): http.Server {
         fields.bodyTruncated = bodyPreview.truncated;
       }
 
-      logger.write('INFO', 'RequestCompleted', fields);
+      logger.write('INFO', 'Res', fields);
     });
 
     void metaApi
