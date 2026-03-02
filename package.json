@@ -1,6 +1,6 @@
 {
   "name": "fluxion",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "private": true,
   "author": {
     "name": "Kasukabe Tsumugi",
@@ -61,9 +61,6 @@
   },
   "dependencies": {
     "chalk": "^5.6.2",
-    "find-my-way": "^9.5.0",
-    "mysql2": "^3.18.2",
-    "pg": "^8.19.0",
-    "tar": "^7.5.9"
+    "find-my-way": "^9.5.0"
   }
 }
