@@ -3,7 +3,6 @@ import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
-import { createFileRuntime } from '@/workers/file-runtime/runtime-factory.js';
 
 import { createMetaApi } from './meta-api.js';
 
@@ -32,39 +31,6 @@ export function fluxion(rawOptions: FluxionOptions): http.Server {
     getRouteSnapshot: fileRuntime.getRouteSnapshot,
     getWorkerSnapshot: fileRuntime.getWorkerSnapshot,
   });
-
-  void fileRuntime
-    .getRouteSnapshot()
-    .then((snapshot) => {
-      const handlerCount = snapshot.handlers.length;
-      const staticFileCount = snapshot.staticFiles.length;
-
-      logger.info('DynamicDirectoryLoaded', {
-        dir,
-        handlerCount,
-        staticFileCount,
-      });
-
-      if (handlerCount === 0) {
-        logger.info('DynamicHandlersLoaded', { count: 0 });
-        return;
-      }
-
-      for (let i = 0; i < snapshot.handlers.length; i++) {
-        const handler = snapshot.handlers[i];
-        logger.info('HandlerLoaded', {
-          route: handler.route,
-          file: handler.file,
-          version: handler.version,
-        });
-      }
-    })
-    .catch((error) => {
-      logger.error('DynamicDirectoryLoadFailed', {
-        dir,
-        error: getErrorMessage(error),
-      });
-    });
 
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
