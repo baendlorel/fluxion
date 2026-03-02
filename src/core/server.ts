@@ -1,13 +1,12 @@
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
 import { HandlerResult, HttpCode } from '@/common/consts.js';
 import { createLogger, getErrorMessage, type LoggerOption } from '@/common/logger.js';
 import { createFileRuntime } from '@/workers/file-runtime.js';
-import type { ExecutorOptions, WorkerStrategy } from '@/workers/options.js';
+import type { ExecutorOptions } from '@/workers/options.js';
 import type { protocol } from '@/workers/protocol.js';
 
 import { createMetaApi } from './meta-api.js';
@@ -16,8 +15,6 @@ import type { NormalizedRequest } from './types.js';
 import { safeSendJson } from './utils/send-json.js';
 import { getRealIp } from './utils/headers.js';
 import { createBodyPreviewCapture, parseQuery, toURL } from './utils/request.js';
-
-const nodeRequire = createRequire(import.meta.url);
 
 /**
  * Database config item accepted by server options.

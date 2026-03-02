@@ -7,8 +7,9 @@ import { createLogger, type FluxionLogger } from '@/common/logger.js';
 import type { NormalizedRequest } from '@/core/types.js';
 import type { InjectionConfig } from '@/core/server.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
+
 import type { HandlerWorkerPool, HandlerWorkerSnapshot } from './handler-worker-pool.js';
-import type { ExecutorOptions, WorkerStrategy } from './options.js';
+import type { ExecutorOptions } from './options.js';
 import type { protocol } from './protocol.js';
 
 import { createHandlerWorkerPool } from './handler-worker-pool.js';
@@ -20,6 +21,7 @@ interface ParsedPath {
    * Original pathname.
    */
   pathname: string;
+
   /**
    * Safe decoded path segments.
    */
@@ -34,6 +36,7 @@ interface ResolvedHandlerFile {
    * Absolute handler path.
    */
   filePath: string;
+
   /**
    * Current handler version token.
    */
@@ -48,6 +51,7 @@ interface RouteEntryBase {
    * Relative file path.
    */
   file: string;
+
   /**
    * Version token derived from file metadata.
    */
@@ -82,6 +86,7 @@ export interface FileRouteSnapshot {
    * Dynamic handler routes.
    */
   handlers: HandlerRouteEntry[];
+
   /**
    * Static file routes.
    */
@@ -96,6 +101,7 @@ export interface FileWorkerSnapshot {
    * Dynamic directory absolute path.
    */
   dir: string;
+
   /**
    * Worker supervisor snapshots.
    */
@@ -107,21 +113,20 @@ export interface FileWorkerSnapshot {
  */
 export interface FileRuntimeOptions {
   /**
-   * Normalized db config map injected into worker pools.
+   * Injections to be applied to `context` of all workers.
    */
-  databaseConfigs?: protocol.WorkerDbConfigMap;
-  /**
-   * Worker strategy selector.
-   */
-  workerStrategy?: WorkerStrategy;
+  injections?: InjectionConfig[];
+
   /**
    * Base runtime option overrides applied to worker pools.
    */
   workerOptions?: Partial<ExecutorOptions>;
+
   /**
    * Maximum request body bytes accepted by dynamic handlers.
    */
   maxRequestBytes?: number;
+
   /**
    * Runtime logger implementation.
    */
@@ -136,18 +141,22 @@ export interface FileRuntime {
    * Clears runtime caches.
    */
   clearCache(): void;
+
   /**
    * Closes runtime resources.
    */
   close(): Promise<void>;
+
   /**
    * Builds route snapshot from filesystem.
    */
   getRouteSnapshot(): Promise<FileRouteSnapshot>;
+
   /**
    * Returns worker diagnostics snapshot.
    */
   getWorkerSnapshot(): FileWorkerSnapshot;
+
   /**
    * Handles request by dynamic handler or static file fallback.
    */
@@ -186,14 +195,7 @@ interface WorkerBinding {
    * Stable worker id.
    */
   id: string;
-  /**
-   * Database names this worker can access.
-   */
-  dbSet: string[];
-  /**
-   * Marks auto-added all-db worker.
-   */
-  isFallbackAllDb: boolean;
+
   /**
    * Worker pool handle.
    */
@@ -300,75 +302,6 @@ function extractWorkerOverrides(
     ...baseOverrides,
     ...customOverrides,
   };
-}
-
-/**
- * ! Resolves worker strategy into concrete worker definitions.
- */
-function resolveWorkerDefinitions(
-  workerStrategy: WorkerStrategy | undefined,
-  baseOverrides: Partial<ExecutorOptions> | undefined,
-): ResolvedWorkerDefinition[] {
-  if (workerStrategy === undefined || workerStrategy === 'all') {
-    return [
-      {
-        id: 'fluxion-worker-all',
-        overrides: baseOverrides,
-      },
-    ];
-  }
-
-  const declaredDbSet = new Set(allDbSet);
-  const definitions: ResolvedWorkerDefinition[] = [];
-  const idSet = new Set<string>();
-
-  for (let i = 0; i < workerStrategy.length; i++) {
-    const item = workerStrategy[i];
-    const id = item.id.trim();
-
-    if (id.length === 0) {
-      throw new Error(`Invalid workerStrategy item at index ${i}: id is empty`);
-    }
-
-    if (idSet.has(id)) {
-      throw new Error(`Duplicate workerStrategy id: ${id}`);
-    }
-
-    const dbSet = normalizeDbSet(item.db);
-    const unknownDb = dbSet.find((name) => !declaredDbSet.has(name));
-    if (unknownDb !== undefined) {
-      throw new Error(`Unknown database in workerStrategy (${id}): ${unknownDb}`);
-    }
-
-    definitions.push({
-      id,
-      dbSet,
-      isFallbackAllDb: false,
-      overrides: extractWorkerOverrides(baseOverrides, item),
-    });
-    idSet.add(id);
-  }
-
-  const hasAllDbWorker = definitions.some((item) => isSameDbSet(item.dbSet, allDbSet));
-  if (hasAllDbWorker) {
-    return definitions;
-  }
-
-  let fallbackId = 'fluxion-worker-all';
-  let suffix = 1;
-  while (idSet.has(fallbackId)) {
-    fallbackId = `fluxion-worker-all-${suffix}`;
-    suffix += 1;
-  }
-
-  definitions.push({
-    id: fallbackId,
-    dbSet: allDbSet,
-    isFallbackAllDb: true,
-    overrides: baseOverrides,
-  });
-
-  return definitions;
 }
 
 /**
@@ -756,31 +689,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
   const maxRequestBytes = resolveMaxRequestBytes(options.maxRequestBytes);
 
   /**
-   * Static worker definitions resolved from strategy.
-   */
-  const workerDefinitions = resolveWorkerDefinitions(databaseNames, options.workerStrategy, options.workerOptions);
-
-  /**
-   * Worker pool bindings used for request routing.
-   */
-  const workerBindings: WorkerBinding[] = workerDefinitions.map((definition) => ({
-    id: definition.id,
-    dbSet: [...definition.dbSet],
-    isFallbackAllDb: definition.isFallbackAllDb,
-    pool: createHandlerWorkerPool({
-      meta: {
-        id: definition.id,
-      },
-      overrides: definition.overrides,
-      logger,
-    }),
-  }));
-
-  if (workerBindings.length === 0) {
-    throw new Error('No worker pools were created for runtime');
-  }
-
-  /**
    * Writes load/reload logs for handlers.
    */
   const logHandlerLoad = (filePath: string, version: string, previousVersion?: string): void => {
@@ -802,17 +710,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       previousVersion,
       version,
     });
-  };
-
-  /**
-   * Selects target worker for handler execution.
-   */
-  const resolveExecutionWorker = async (_filePath: string, _version: string): Promise<WorkerBinding> => {
-    if (workerBindings.length === 1) {
-      return workerBindings[0];
-    }
-
-    return selectExecutionWorker(workerBindings);
   };
 
   /**
@@ -855,6 +752,7 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
       return HandlerResult.NotFound;
     }
 
+    // todo 要重新编写worker创建逻辑
     const worker = await resolveExecutionWorker(resolved.filePath, resolved.version);
 
     const executeResult = await worker.pool.execute({
