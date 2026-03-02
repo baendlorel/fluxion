@@ -38,13 +38,30 @@ export type FluxionDatabaseInput = string | FluxionDatabaseConfig;
  * Raw database config item loaded from private config file.
  */
 export type FluxionDatabaseRuntimeConfigInput =
-  | protocol.DbDriver
+  | protocol.DataBaseDriver
   | (Record<string, unknown> & {
       driver?: string;
       type?: string;
       contextKey?: string;
       options?: Record<string, unknown>;
     });
+
+export interface InjectionConfig {
+  /**
+   * Name that you can use to refer to this database in your handlers.
+   * It should be unique across all databases and should not contain leading or trailing whitespace.
+   * It is recommended to use simple and descriptive names, such as "mainDb" or "redisCache".
+   */
+  name: string;
+
+  /**
+   * Worker will use this to create instance for the injection into context.
+   * - You can use it to initialize database connection or any other shared resource that your handlers need.
+   * - You should use `const xxx = await import()`
+   * - The factory function will be transfer to worker threads by using `.toString()`, so it should not rely on any closure variable or external state. You should put all the necessary code and dependencies inside the factory function itself.
+   */
+  factory: () => Promise<unknown>;
+}
 
 export interface FluxionOptions {
   /**
@@ -57,21 +74,7 @@ export interface FluxionOptions {
 
   port: number;
 
-  /**
-   * Declared database names used by worker strategy routing.
-   */
-  databases?: FluxionDatabaseInput[];
-
-  /**
-   * Optional path to private db config file.
-   * Defaults to `./.fluxion-private/db.config.cjs`.
-   */
-  dbConfigPath?: string;
-
-  /**
-   * Worker routing strategy.
-   */
-  workerStrategy?: WorkerStrategy;
+  injections?: InjectionConfig[];
 
   /**
    * Base worker runtime option overrides.
@@ -91,208 +94,8 @@ export interface FluxionOptions {
   logger?: LoggerOption;
 }
 
-/**
- * Runtime guard for plain object values.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/**
- * Normalizes db driver aliases to runtime-supported values.
- */
-function normalizeDbDriver(input: string, source: string, dbName: string): protocol.DbDriver {
-  const normalized = input.trim().toLowerCase();
-
-  if (normalized === 'pg' || normalized === 'postgres' || normalized === 'postgresql') {
-    return 'pg';
-  }
-
-  if (normalized === 'mysql2' || normalized === 'mysql') {
-    return 'mysql2';
-  }
-
-  throw new Error(`Unsupported db driver "${input}" for "${dbName}" in ${source}`);
-}
-
-/**
- * Normalizes one raw db config item.
- */
-function normalizeDatabaseRuntimeConfigItem(
-  dbName: string,
-  input: FluxionDatabaseRuntimeConfigInput,
-  source: string,
-): protocol.WorkerDbConnectionConfig {
-  if (typeof input === 'string') {
-    return {
-      driver: normalizeDbDriver(input, source, dbName),
-      options: {},
-    };
-  }
-
-  const rawDriver =
-    typeof input.driver === 'string' ? input.driver : typeof input.type === 'string' ? input.type : undefined;
-
-  if (rawDriver === undefined) {
-    throw new Error(`Missing db driver for "${dbName}" in ${source}`);
-  }
-
-  const rawContextKey = typeof input.contextKey === 'string' ? input.contextKey.trim() : undefined;
-  const contextKey = rawContextKey === undefined || rawContextKey.length === 0 ? undefined : rawContextKey;
-
-  const options: Record<string, unknown> = {};
-
-  if (input.options !== undefined) {
-    if (!isRecord(input.options)) {
-      throw new Error(`Invalid db options for "${dbName}" in ${source}: options must be an object`);
-    }
-
-    const optionKeys = Object.keys(input.options);
-    for (let i = 0; i < optionKeys.length; i++) {
-      const key = optionKeys[i];
-      const value = input.options[key];
-      if (value !== undefined) {
-        options[key] = value;
-      }
-    }
-  } else {
-    const keys = Object.keys(input);
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
-      if (key === 'driver' || key === 'type' || key === 'options') {
-        continue;
-      }
-
-      const value = input[key];
-      if (value !== undefined) {
-        options[key] = value;
-      }
-    }
-  }
-
-  return {
-    driver: normalizeDbDriver(rawDriver, source, dbName),
-    contextKey,
-    options,
-  };
-}
-
-/**
- * Normalizes private db config file exports.
- */
-function normalizeDatabaseConfigMap(input: unknown, source: string): protocol.WorkerDbConfigMap {
-  if (input === undefined || input === null) {
-    return {};
-  }
-
-  if (!isRecord(input)) {
-    throw new Error(`Invalid db config file "${source}": expected object export`);
-  }
-
-  const normalized: protocol.WorkerDbConfigMap = {};
-  const rawNames = Object.keys(input);
-
-  for (let i = 0; i < rawNames.length; i++) {
-    const rawName = rawNames[i];
-    const name = rawName.trim();
-
-    if (name.length === 0) {
-      throw new Error(`Invalid db config in "${source}": empty database name`);
-    }
-
-    const rawConfig = input[rawName];
-    if (typeof rawConfig !== 'string' && !isRecord(rawConfig)) {
-      throw new Error(`Invalid db config for "${name}" in "${source}"`);
-    }
-
-    normalized[name] = normalizeDatabaseRuntimeConfigItem(name, rawConfig as FluxionDatabaseRuntimeConfigInput, source);
-  }
-
-  return normalized;
-}
-
-/**
- * Resolves private db config path.
- */
-function resolveDbConfigPath(input: string | undefined): string {
-  return path.resolve(input ?? path.join('.fluxion-private', 'db.config.cjs'));
-}
-
-/**
- * Loads db config module from private file.
- */
-function loadDatabaseConfigMapFromFile(filePath: string): protocol.WorkerDbConfigMap {
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-
-  const requiredModule = nodeRequire(filePath) as unknown;
-  const exported = isRecord(requiredModule) && 'default' in requiredModule ? requiredModule.default : requiredModule;
-  return normalizeDatabaseConfigMap(exported, filePath);
-}
-
-/**
- * Normalizes database names with private config fallback.
- */
-function normalizeDatabaseNames(
-  databases: FluxionDatabaseInput[] | undefined,
-  fallbackNames: readonly string[],
-): string[] {
-  if (databases === undefined || databases.length === 0) {
-    const names = [...fallbackNames];
-    names.sort((left, right) => left.localeCompare(right));
-    return names;
-  }
-
-  const names: string[] = [];
-  const seen = new Set<string>();
-
-  for (let i = 0; i < databases.length; i++) {
-    const item = databases[i];
-    const rawName = typeof item === 'string' ? item : item.name;
-    const name = rawName.trim();
-
-    if (name.length === 0) {
-      throw new Error(`Invalid databases[${i}]: empty name`);
-    }
-
-    if (seen.has(name)) {
-      throw new Error(`Duplicate database name: ${name}`);
-    }
-
-    seen.add(name);
-    names.push(name);
-  }
-
-  return names;
-}
-
-/**
- * Selects declared db configs for worker bootstrap.
- */
-function selectDeclaredDatabaseConfigMap(
-  databaseNames: readonly string[],
-  databaseConfigMap: protocol.WorkerDbConfigMap,
-): protocol.WorkerDbConfigMap {
-  const selected: protocol.WorkerDbConfigMap = {};
-
-  for (let i = 0; i < databaseNames.length; i++) {
-    const name = databaseNames[i];
-    const config = databaseConfigMap[name];
-    if (config !== undefined) {
-      selected[name] = config;
-    }
-  }
-
-  return selected;
-}
-
 export function fluxion(options: FluxionOptions): http.Server {
   const dir = path.resolve(options.dir);
-  const dbConfigPath = resolveDbConfigPath(options.dbConfigPath);
-  const loadedDatabaseConfigMap = loadDatabaseConfigMapFromFile(dbConfigPath);
-  const databaseNames = normalizeDatabaseNames(options.databases, Object.keys(loadedDatabaseConfigMap));
-  const databaseConfigMap = selectDeclaredDatabaseConfigMap(databaseNames, loadedDatabaseConfigMap);
   const logger = createLogger(options.logger);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -300,9 +103,6 @@ export function fluxion(options: FluxionOptions): http.Server {
   }
 
   const fileRuntime = createFileRuntime(dir, {
-    databaseNames,
-    databaseConfigMap,
-    workerStrategy: options.workerStrategy,
     workerOptions: options.workerOptions,
     maxRequestBytes: options.maxRequestBytes,
     logger,

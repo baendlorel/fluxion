@@ -5,7 +5,7 @@ export namespace protocol {
   /**
    * Supported runtime db drivers.
    */
-  export type DbDriver = 'pg' | 'mysql2';
+  export type DataBaseDriver = 'pg' | 'mysql2' | 'sqlite3' | 'better-sqlite3' | (string & {});
 
   /**
    * Normalized db connection config pushed from main thread to workers.
@@ -14,7 +14,7 @@ export namespace protocol {
     /**
      * Driver used to initialize the connection pool.
      */
-    driver: DbDriver;
+    driver: DataBaseDriver;
     /**
      * Optional target context key for db module injection.
      */
@@ -28,7 +28,7 @@ export namespace protocol {
   /**
    * Worker db config map keyed by database name.
    */
-  export type WorkerDbConfigMap = Record<string, WorkerDbConnectionConfig>;
+  export type WorkerDbConfigMap = Map<string, WorkerDbConnectionConfig>;
 
   /**
    * HTTP header value.

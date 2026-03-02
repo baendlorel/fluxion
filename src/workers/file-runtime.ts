@@ -5,13 +5,13 @@ import type http from 'node:http';
 import { HandlerResult, STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import { createLogger, type FluxionLogger } from '@/common/logger.js';
 import type { NormalizedRequest } from '@/core/types.js';
+import type { InjectionConfig } from '@/core/server.js';
 import { parseQuery, toURL } from '@/core/utils/request.js';
-
-import { createHandlerWorkerPool } from './handler-worker-pool.js';
 import type { HandlerWorkerPool, HandlerWorkerSnapshot } from './handler-worker-pool.js';
 import type { ExecutorOptions, WorkerStrategy } from './options.js';
 import type { protocol } from './protocol.js';
 
+import { createHandlerWorkerPool } from './handler-worker-pool.js';
 /**
  * Parsed and validated request path.
  */
@@ -107,13 +107,9 @@ export interface FileWorkerSnapshot {
  */
 export interface FileRuntimeOptions {
   /**
-   * Declared database names for worker strategy routing.
-   */
-  databaseNames?: string[];
-  /**
    * Normalized db config map injected into worker pools.
    */
-  databaseConfigMap?: protocol.WorkerDbConfigMap;
+  databaseConfigs?: protocol.WorkerDbConfigMap;
   /**
    * Worker strategy selector.
    */
@@ -170,14 +166,12 @@ interface ResolvedWorkerDefinition {
    * Stable worker id.
    */
   id: string;
+
   /**
-   * Database names this worker can access.
+   * Injections.
    */
-  dbSet: string[];
-  /**
-   * Marks auto-added all-db worker.
-   */
-  isFallbackAllDb: boolean;
+  injections: InjectionConfig[];
+
   /**
    * Optional runtime overrides for this worker.
    */
@@ -312,18 +306,13 @@ function extractWorkerOverrides(
  * ! Resolves worker strategy into concrete worker definitions.
  */
 function resolveWorkerDefinitions(
-  databaseNames: readonly string[],
   workerStrategy: WorkerStrategy | undefined,
   baseOverrides: Partial<ExecutorOptions> | undefined,
 ): ResolvedWorkerDefinition[] {
-  const allDbSet = normalizeDbSet(databaseNames);
-
   if (workerStrategy === undefined || workerStrategy === 'all') {
     return [
       {
         id: 'fluxion-worker-all',
-        dbSet: allDbSet,
-        isFallbackAllDb: false,
         overrides: baseOverrides,
       },
     ];
@@ -761,12 +750,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
    * Main-thread view of loaded handler versions.
    */
   const handlerVersions = new Map<string, string>();
-
-  /**
-   * Database names declared by user options.
-   */
-  const databaseNames = normalizeDbSet(options.databaseNames);
-
   /**
    * Maximum request body bytes accepted by dynamic handlers.
    */
@@ -787,8 +770,6 @@ export function createFileRuntime(dir: string, options: FileRuntimeOptions = {})
     pool: createHandlerWorkerPool({
       meta: {
         id: definition.id,
-        dbSet: definition.dbSet,
-        isFallbackAllDb: definition.isFallbackAllDb,
       },
       overrides: definition.overrides,
       logger,
