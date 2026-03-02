@@ -2,8 +2,7 @@ import type http from 'node:http';
 
 import type { HandlerResult } from '@/common/consts.js';
 import type { FluxionLogger } from '@/common/logger.js';
-import type { InjectionConfig } from '@/core/server.js';
-import type { NormalizedRequest } from '@/core/types.js';
+import type { InjectionConfig, NormalizedRequest } from '@/core/types.js';
 import type { HandlerWorkerPool, HandlerWorkerSnapshot } from '@/workers/handler-worker-pool.js';
 import type { ExecutorOptions } from '@/workers/options.js';
 

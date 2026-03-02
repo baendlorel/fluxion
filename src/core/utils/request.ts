@@ -3,11 +3,6 @@ import type http from 'node:http';
 import { DUMMY_BASE_URL } from '@/common/consts.js';
 import { isTextualContentType } from './headers.js';
 
-interface ParsedRequestTarget {
-  path: string;
-  query: Record<string, string | string[]>;
-}
-
 export interface BodyPreview {
   exists: boolean;
   value?: string;

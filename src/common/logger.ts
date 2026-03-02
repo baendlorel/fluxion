@@ -11,9 +11,8 @@ export interface LogEntry {
   [key: string]: unknown;
 }
 
-export type LoggerMode = 'one-line' | 'json-line';
 export type LoggerSink = (entry: LogEntry) => void;
-export type LoggerOption = LoggerMode | LoggerSink;
+export type LoggerOption = 'one-line' | 'json-line' | LoggerSink;
 
 export interface FluxionLogger {
   write(level: LogLevel, event: string, fields?: Record<string, unknown>): void;
