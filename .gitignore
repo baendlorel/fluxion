@@ -4,6 +4,8 @@
 .rollup.cache
 dynamicDirectory
 .fluxion-private/
+.image.json
+
 
 # Logs
 logs
