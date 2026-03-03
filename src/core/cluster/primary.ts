@@ -1,10 +1,10 @@
 import os from 'node:os';
 import cluster from 'node:cluster';
-import { ResolvedFluxionOptions } from '../types.js';
+import { NormalizedFluxionOptions } from '../types.js';
 import { WorkerMessage, WorkerState } from './types.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 
-export function createPrimary(options: ResolvedFluxionOptions) {
+export function createPrimary(options: NormalizedFluxionOptions) {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }

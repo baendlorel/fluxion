@@ -1,6 +1,6 @@
 import http from 'node:http';
 
-import type { NormalizedRequest, ResolvedFluxionOptions } from '../types.js';
+import type { NormalizedRequest, NormalizedFluxionOptions } from '../types.js';
 import { $keys } from '@/common/native.js';
 import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
@@ -12,7 +12,7 @@ import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
 import { createMetaApiHandler } from './meta-api.js';
 
-export function createServer(options: ResolvedFluxionOptions): http.Server {
+export function createServer(options: NormalizedFluxionOptions): http.Server {
   const { logger, maxRequestBytes } = options;
 
   const metaApiHandler = createMetaApiHandler();

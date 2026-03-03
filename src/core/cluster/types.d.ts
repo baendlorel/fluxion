@@ -1,5 +1,5 @@
 import type cluster from 'node:cluster';
-import type { ResolvedFluxionOptions } from '../types.js';
+import type { NormalizedFluxionOptions } from '../types.js';
 import type { PrimaryAction, WorkerAction } from './consts.ts';
 
 export interface ClusterSchedulerDemoOptions {
@@ -14,7 +14,7 @@ export interface PingMessage {
 
 export interface OptionsMessage {
   type: PrimaryAction.SendFluxionOptions;
-  fluxionOptions: ResolvedFluxionOptions;
+  fluxionOptions: NormalizedFluxionOptions;
 }
 
 export type PrimaryMessage = PingMessage | OptionsMessage;

@@ -2,7 +2,7 @@ import cluster from 'node:cluster';
 
 import type { WorkerMessage, PrimaryMessage } from './types.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage } from './consts.js';
-import { createFileRuntime } from './file-runtime.js';
+import { findHandler } from './file-runtime.js';
 
 const sendToPrimary = (message: WorkerMessage) => process.send?.(message);
 
@@ -18,7 +18,7 @@ export async function createWorker() {
 
   // todo 在这里启动url2handler的监听，收到消息后直接执行对应的handler
 
-  createFileRuntime();
+  findHandler();
 
   sendToPrimary({
     type: WorkerAction.Ready,

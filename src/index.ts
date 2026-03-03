@@ -1,7 +1,7 @@
 import { fluxion } from './core/fluxion.js';
 import { FluxionOptions } from './core/types.js';
 
-export { fluxion, type FluxionOptions };
+export { fluxion, type FluxionOptions as FluxionOptions };
 
 if (process.env.NODE_ENV !== 'production') {
   window.$throw = (message: string) => {

@@ -2,7 +2,7 @@ import fs, { existsSync } from 'node:fs';
 import { expect } from '@/common/expect.js';
 import { createLogger } from '@/common/logger.js';
 
-import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOptions } from '../types.js';
+import type { WorkerOptions, FluxionOptions, InjectionConfig, NormalizedFluxionOptions } from '../types.js';
 
 /**
  * Resolves runtime options with framework defaults.
@@ -25,7 +25,7 @@ export function resolveWorkerOptions(options: Partial<WorkerOptions>): WorkerOpt
 /**
  * Normalize options and create necessary resources like the dynamic directory and logger.
  */
-export function normalizeOptions(options: FluxionOptions): ResolvedFluxionOptions {
+export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOptions {
   expect.isObject(options, 'FluxionOptions must be an object');
 
   let { dir, host, port, injections = [], workerOptions = {}, maxRequestBytes = 8_000_000 } = options as FluxionOptions;

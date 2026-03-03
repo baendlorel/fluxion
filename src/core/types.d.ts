@@ -124,7 +124,7 @@ export interface FluxionOptions {
   logger?: LoggerOption;
 }
 
-export interface ResolvedFluxionOptions {
+export interface NormalizedFluxionOptions {
   dir: string;
   host: string;
   port: number;
