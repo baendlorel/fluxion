@@ -1,15 +1,13 @@
 import cluster from 'node:cluster';
 import { ResolvedFluxionOptions } from '../types.js';
-import { WorkerToPrimaryMessage } from './types.js';
-import { WorkerToPrimaryMessageType, PrimaryToWorkerMessageType, isFromPrimary } from './consts.js';
+import { MessageToPrimary } from './types.js';
+import { ToPrimaryMessageType, ToWorkerMessageType, isToWorker } from './consts.js';
 
-const sendToPrimary = (message: WorkerToPrimaryMessage) => process.send?.(message);
+const sendToPrimary = (message: MessageToPrimary) => process.send?.(message);
 
-export async function createWorker(options: ResolvedFluxionOptions) {
-  if (cluster.isPrimary) {
-    console.error('createWorker should only be called in worker process');
-    return;
-  }
+async function createWorkerPrimarySide(options: ResolvedFluxionOptions) {}
+
+async function createWorkerChildSide(options: ResolvedFluxionOptions) {
   (
     await Promise.all(
       options.injections.map(async (v) => {
@@ -20,19 +18,19 @@ export async function createWorker(options: ResolvedFluxionOptions) {
   ).forEach((v) => Reflect.set(globalThis, v.name, v.instance));
 
   sendToPrimary({
-    type: WorkerToPrimaryMessageType.Ready,
+    type: ToPrimaryMessageType.Ready,
     pid: process.pid,
   });
 
   process.on('message', (rawMessage: unknown) => {
-    if (!isFromPrimary(rawMessage)) {
+    if (!isToWorker(rawMessage)) {
       return;
     }
 
     console.log(`[worker ${process.pid}] received message`, rawMessage);
-    if (rawMessage.type === PrimaryToWorkerMessageType.Ping) {
+    if (rawMessage.type === ToWorkerMessageType.Ping) {
       sendToPrimary({
-        type: WorkerToPrimaryMessageType.Pong,
+        type: ToPrimaryMessageType.Pong,
         pid: process.pid,
         sentAt: rawMessage.sentAt,
         receivedAt: Date.now(),
@@ -43,10 +41,18 @@ export async function createWorker(options: ResolvedFluxionOptions) {
     // todo 这里就解析url内容，找到文件来执行吧！
     const result = someTask(rawMessage.payload);
     sendToPrimary({
-      type: WorkerToPrimaryMessageType.TaskResult,
+      type: ToPrimaryMessageType.TaskResult,
       taskId: rawMessage.taskId,
       pid: process.pid,
       result,
     });
   });
+}
+
+export async function createWorker(options: ResolvedFluxionOptions) {
+  if (cluster.isPrimary) {
+    return createWorkerPrimarySide(options);
+  } else {
+    return createWorkerChildSide(options);
+  }
 }

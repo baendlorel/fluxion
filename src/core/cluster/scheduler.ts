@@ -1,9 +1,9 @@
 import cluster, { type Worker } from 'node:cluster';
 import os from 'node:os';
-import { WorkerToPrimaryMessage, ClusterSchedulerDemoOptions, RunTaskMessage, PingMessage } from './types.js';
-import { isFromPrimary, isFromWorker, PrimaryToWorkerMessageType, WorkerToPrimaryMessageType } from './consts.js';
+import { MessageToPrimary, ClusterSchedulerDemoOptions, RunTaskMessage, PingMessage } from './types.js';
+import { isToWorker, isToPrimary, ToWorkerMessageType, ToPrimaryMessageType } from './consts.js';
 
-const sendToPrimary = (message: WorkerToPrimaryMessage) => process.send?.(message);
+const sendToPrimary = (message: MessageToPrimary) => process.send?.(message);
 
 function runFakeTask(payload: number): number {
   let checksum = 0;
@@ -32,13 +32,13 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
     workers.set(worker.id, worker);
 
     worker.on('message', (rawMessage: unknown) => {
-      if (!isFromWorker(rawMessage)) {
+      if (!isToPrimary(rawMessage)) {
         return;
       }
 
-      if (rawMessage.type === WorkerToPrimaryMessageType.Ready) {
+      if (rawMessage.type === ToPrimaryMessageType.Ready) {
         const taskMessage: RunTaskMessage = {
-          type: PrimaryToWorkerMessageType.RunTask,
+          type: ToWorkerMessageType.RunTask,
           taskId: createTaskId(worker.id),
           payload: 150_000,
         };
@@ -46,7 +46,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
         return;
       }
 
-      if (rawMessage.type === WorkerToPrimaryMessageType.Pong) {
+      if (rawMessage.type === ToPrimaryMessageType.Pong) {
         const rtt = Date.now() - rawMessage.sentAt;
         console.info(
           `[primary ${process.pid}] pong from worker ${rawMessage.pid}, rtt=${rtt}ms, workerTime=${rawMessage.receivedAt}`,
@@ -73,7 +73,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
 
   const pingTimer = setInterval(() => {
     const ping: PingMessage = {
-      type: PrimaryToWorkerMessageType.Ping,
+      type: ToWorkerMessageType.Ping,
       sentAt: Date.now(),
     };
 
@@ -104,19 +104,19 @@ function startWorker(): void {
   console.info(`[worker ${process.pid}] boot`);
 
   sendToPrimary({
-    type: WorkerToPrimaryMessageType.Ready,
+    type: ToPrimaryMessageType.Ready,
     pid: process.pid,
   });
 
   process.on('message', (rawMessage: unknown) => {
-    if (!isFromPrimary(rawMessage)) {
+    if (!isToWorker(rawMessage)) {
       return;
     }
 
     console.log(`[worker ${process.pid}] received message`, rawMessage);
-    if (rawMessage.type === PrimaryToWorkerMessageType.Ping) {
+    if (rawMessage.type === ToWorkerMessageType.Ping) {
       sendToPrimary({
-        type: WorkerToPrimaryMessageType.Pong,
+        type: ToPrimaryMessageType.Pong,
         pid: process.pid,
         sentAt: rawMessage.sentAt,
         receivedAt: Date.now(),
@@ -126,7 +126,7 @@ function startWorker(): void {
 
     const result = runFakeTask(rawMessage.payload);
     sendToPrimary({
-      type: WorkerToPrimaryMessageType.TaskResult,
+      type: ToPrimaryMessageType.TaskResult,
       taskId: rawMessage.taskId,
       pid: process.pid,
       result,
