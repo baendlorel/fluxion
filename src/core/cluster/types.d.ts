@@ -1,3 +1,4 @@
+import type cluster from 'node:cluster';
 import type { ToWorkerType, ToPrimaryType } from './consts.ts';
 
 export interface ClusterSchedulerDemoOptions {
@@ -39,3 +40,8 @@ export interface TaskResultMessage {
 }
 
 export type ToPrimaryMessage = ReadyMessage | PongMessage | TaskResultMessage;
+
+export interface WorkerState {
+  isReady: boolean;
+  instance: cluster.Worker;
+}

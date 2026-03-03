@@ -2,7 +2,7 @@ import os from 'node:os';
 import cluster from 'node:cluster';
 
 import type { ResolvedFluxionOptions } from '../types.js';
-import type { RunTaskMessage, ToPrimaryMessage, ToWorkerMessage } from './types.js';
+import type { RunTaskMessage, ToPrimaryMessage, ToWorkerMessage, WorkerState } from './types.js';
 import { ToPrimaryType, ToWorkerType, isToPrimary, isToWorker } from './consts.js';
 
 const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
@@ -58,10 +58,11 @@ export function createWorkerManager(options: ResolvedFluxionOptions) {
 
   logger.info(`[primary ${process.pid}] start cluster, workers=${workerCount}`);
 
-  const workers = new Map<number, cluster.Worker>();
+  const workers = new Map<number, WorkerState>();
 
   const attachWorker = (worker: cluster.Worker): void => {
-    workers.set(worker.id, worker);
+    const workerInfo: WorkerState = { isReady: false, instance: worker };
+    workers.set(worker.id, workerInfo);
 
     worker.on('message', (rawMessage: ToPrimaryMessage) => {
       if (!isToPrimary(rawMessage)) {
@@ -69,12 +70,7 @@ export function createWorkerManager(options: ResolvedFluxionOptions) {
       }
 
       if (rawMessage.type === ToPrimaryType.Ready) {
-        const taskMessage: RunTaskMessage = {
-          type: ToWorkerType.RunTask,
-          taskId: createTaskId(worker.id),
-          payload: 150_000,
-        };
-        worker.send(taskMessage);
+        workerInfo.isReady = true; // & only when worker is ready, we can send task to it
         return;
       }
 
