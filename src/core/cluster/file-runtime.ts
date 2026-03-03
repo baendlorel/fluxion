@@ -60,6 +60,7 @@ export async function findHandler(url: URL): Promise<FluxionHandler> {
   if (cluster.isPrimary) {
     $throw('createFileRuntime should only be called in worker process');
   }
+  // todo 改为使用全局状态？
   const { rawPath, filename } = parsePathname(fluxion.dir, url.pathname);
 
   if (fs.existsSync(rawPath)) {

@@ -11,7 +11,8 @@ const inject = async (options: NormalizedFluxionOptions) => {
   const o = {} as any;
   Reflect.set(globalThis, INJECTION_KEY, o);
   for (let i = 0; i < options.injections.length; i++) {
-    const { name, factory } = options.injections[i];
+    const { name, modulePath } = options.injections[i];
+    const factory = await import(modulePath).then((m) => m.default);
     const instance = await Promise.try(factory);
     o[name] = instance;
   }
@@ -32,7 +33,7 @@ export async function createWorker() {
 
     if (raw.type === PrimaryAction.SendFluxionOptions) {
       // fixme function 的logger可能无法正确传输，要另想办法
-      raw.options.logger.info(`[worker ${process.pid}] received SendFluxionOptions`, raw);
+      logger.info(`[worker ${process.pid}] received SendFluxionOptions`, raw);
       initializeGlobalState(raw.options);
       inject(raw.options);
       createWorkerServer(raw.options);

@@ -1,7 +1,9 @@
 import chalk from 'chalk';
+import type { otherstring } from '@/global.js';
+import type { InjectionConfig } from '@/core/types.js';
+
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
-import { otherstring } from '@/global.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
 
@@ -15,7 +17,7 @@ interface LogEntry {
 
 type LoggerSink = (entry: LogEntry) => void;
 
-export type LoggerOption = 'one-line' | 'json-line' | LoggerSink;
+export type LoggerOption = 'one-line' | 'json-line' | InjectionConfig;
 
 export interface FluxionLogger {
   /**
@@ -48,6 +50,9 @@ const ColoredLevels: Record<LogLevel, string> = {
 };
 const TimestampColor = chalk.hex('#166534');
 
+/**
+ * & Logger Options here is checked by normalizeOptions function.
+ */
 function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
   if (option === undefined || option === 'one-line') {
     return (entry: LogEntry) => {
@@ -64,10 +69,6 @@ function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
 
   if (option === 'json-line') {
     return (entry: LogEntry) => console.log(safeStringify(entry));
-  }
-
-  if (typeof option === 'function') {
-    return option;
   }
 
   $throw('Invalid logger option: expected function | "one-line" | "json-line"');

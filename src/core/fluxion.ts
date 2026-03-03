@@ -7,31 +7,29 @@ import { createMetaApiHandler } from './meta-api.js';
 import { normalizeOptions } from './utils/options.js';
 import { createFluxionServer } from './server.js';
 
-export function fluxion(options: FluxionOptions): http.Server;
-export function fluxion(rawOptions: FluxionOptions): http.Server {
-  Reflect.set(globalThis, 'fluxionOptions', normalizeOptions(rawOptions));
-  const options = fluxionOptions;
+export function fluxion(options: FluxionOptions): http.Server {
+  const normalized = normalizeOptions(options);
 
-  const dir = options.dir;
-  const logger = options.logger;
+  const dir = normalized.dir;
+  // todo 这里的logger要另外创建？
+  const logger = normalized.logger;
 
   const server = createFluxionServer({
-    ...options,
+    ...normalized,
     handler: createMetaApiHandler(),
   });
 
   server.on('close', () => {
-    // todo 也许有用 void fileRuntime.close();
     logger.info('ServerClosed', {
-      host: options.host,
-      port: options.port,
+      host: normalized.host,
+      port: normalized.port,
     });
   });
 
-  server.listen(options.port, options.host, () => {
+  server.listen(normalized.port, normalized.host, () => {
     logger.info('ServerStarted', {
-      host: options.host,
-      port: options.port,
+      host: normalized.host,
+      port: normalized.port,
     });
     logger.info('DynamicDirectory', { directory: dir });
   });

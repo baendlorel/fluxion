@@ -33,12 +33,20 @@ export interface InjectionConfig {
   name: string;
 
   /**
-   * Worker will use this to create instance for the injection into context.
-   * - You can use it to initialize database connection or any other shared resource that your handlers need.
-   * - You should use `const xxx = await import()`
-   * - The factory function will be transfer to worker threads by using `.toString()`, so it should not rely on any closure variable or external state. You should put all the necessary code and dependencies inside the factory function itself.
+   * The `.mjs` path that exports the factory function to create the instance. The factory function should be the default export and can be async.
+   * ```typescript
+   * // .mjs can be like this:
+   * export default function createDb() {
+   *   // create and return your database instance here, e.g. a connection pool
+   * }
+   * // or async
+   * export default async function createDb() {
+   *   // create and return your database instance here, e.g. a connection pool
+   * }
+   *
+   * ```
    */
-  factory: () => Promise<unknown>;
+  modulePath: string;
 }
 
 /**
@@ -131,7 +139,7 @@ export interface NormalizedFluxionOptions {
   injections: InjectionConfig[];
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
-  logger: FluxionLogger;
+  logger: LoggerOption | InjectionConfig;
 }
 
 export type FluxionHandler<
