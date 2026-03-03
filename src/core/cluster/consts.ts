@@ -1,5 +1,7 @@
 import type { PrimaryMessage as PrimaryMessage, WorkerMessage as WorkerMessage } from './types.js';
 
+export const INJECTION_KEY = Symbol('fluxion.injection');
+
 export const enum PrimaryAction {
   /**
    * Health check message, the worker should respond with Pong and the latency information

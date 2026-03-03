@@ -1,8 +1,9 @@
 import os from 'node:os';
 import cluster from 'node:cluster';
-
 import type { NormalizedFluxionOptions } from '../types.js';
 import type { WorkerMessage, WorkerState } from './types.js';
+
+import { initializeGlobalState } from './global-state.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 
@@ -10,6 +11,7 @@ export function createPrimary(options: NormalizedFluxionOptions) {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }
+  initializeGlobalState(options);
 
   const { workerOptions, logger } = options;
   const cpuCount = Math.max(1, os.cpus().length);

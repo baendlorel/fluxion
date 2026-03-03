@@ -13,8 +13,10 @@ import { parseQuery } from '../utils/query.js';
 import { createMetaApiHandler } from './meta-api.js';
 import { findHandler } from './file-runtime.js';
 
-export function createWorkerServer(): http.Server {
+export function createWorkerServer(options: NormalizedFluxionOptions): http.Server {
   const metaApiHandler = createMetaApiHandler();
+  const { logger } = options;
+
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
@@ -71,7 +73,7 @@ export function createWorkerServer(): http.Server {
         return;
       }
 
-      const parsed = await parseBody(req, normalized.method, fluxion.maxRequestBytes);
+      const parsed = await parseBody(req, normalized.method, options.maxRequestBytes);
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
@@ -96,18 +98,18 @@ export function createWorkerServer(): http.Server {
 
   server.on('close', () => {
     logger.info('ServerClosed', {
-      host: fluxion.host,
-      port: fluxion.port,
+      host: options.host,
+      port: options.port,
     });
   });
 
-  server.listen(fluxion.port, fluxion.host, () => {
+  server.listen(options.port, options.host, () => {
     logger.info('ServerStarted', {
       pid: process.pid,
-      host: fluxion.host,
-      port: fluxion.port,
+      host: options.host,
+      port: options.port,
     });
-    logger.info('DynamicDirectory', { directory: fluxion.dir });
+    logger.info('DynamicDirectory', { directory: options.dir });
   });
 
   server.on('error', (error) => {
