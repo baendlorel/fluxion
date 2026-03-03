@@ -1,6 +1,14 @@
-import http from 'node:http';
-import { parseQuery } from './query.js';
+import type http from 'node:http';
+
 import { isTextualContentType } from './headers.js';
+import { parseQuery } from './query.js';
+
+export interface BodyPreview {
+  exists: boolean;
+  value?: string;
+  bytes: number;
+  truncated: boolean;
+}
 
 function createRequestBodyTooLargeError(receivedBytes: number, maxBytes: number): NodeJS.ErrnoException {
   const sizeError = new Error(
@@ -12,33 +20,78 @@ function createRequestBodyTooLargeError(receivedBytes: number, maxBytes: number)
   return sizeError;
 }
 
-export async function readRequestBody(
+function getHeaderValue(headerValue: string | string[] | undefined): string | undefined {
+  return Array.isArray(headerValue) ? headerValue[0] : headerValue;
+}
+
+function createEmptyPreview(): BodyPreview {
+  return {
+    exists: false,
+    bytes: 0,
+    truncated: false,
+  };
+}
+
+function createPreview(
+  previewBuffer: Buffer,
+  totalBytes: number,
+  contentType: string | undefined,
+  truncated: boolean,
+): BodyPreview {
+  if (totalBytes === 0) {
+    return createEmptyPreview();
+  }
+
+  if (isTextualContentType(contentType)) {
+    return {
+      exists: true,
+      value: previewBuffer.toString('utf8'),
+      bytes: totalBytes,
+      truncated,
+    };
+  }
+
+  return {
+    exists: true,
+    value: `<binary body: ${totalBytes} bytes>`,
+    bytes: totalBytes,
+    truncated,
+  };
+}
+
+async function readRequestBodyWithPreview(
   req: http.IncomingMessage,
   method: string,
   maxBytes: number,
-): Promise<Buffer | undefined> {
+  previewMaxBytes = 8192,
+): Promise<{ rawBody: Buffer | undefined; preview: BodyPreview }> {
   if (method === 'GET' || method === 'HEAD') {
-    return undefined;
+    return {
+      rawBody: undefined,
+      preview: createEmptyPreview(),
+    };
   }
 
   if (req.readableEnded) {
-    return undefined;
+    return {
+      rawBody: undefined,
+      preview: createEmptyPreview(),
+    };
   }
 
-  const contentLengthHeader = req.headers['content-length'];
-  const contentLengthRaw = Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader;
+  const contentLengthRaw = getHeaderValue(req.headers['content-length']);
+  const declaredBytes = contentLengthRaw !== undefined ? Number.parseInt(contentLengthRaw, 10) : NaN;
 
-  if (contentLengthRaw !== undefined) {
-    const declaredBytes = Number.parseInt(contentLengthRaw, 10);
-
-    if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
-      throw createRequestBodyTooLargeError(declaredBytes, maxBytes);
-    }
+  if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
+    throw createRequestBodyTooLargeError(declaredBytes, maxBytes);
   }
 
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
+    const rawBodyChunks: Buffer[] = [];
+    const previewChunks: Buffer[] = [];
     let totalBytes = 0;
+    let previewBytes = 0;
+    let previewTruncated = false;
     let settled = false;
 
     const cleanup = (): void => {
@@ -57,7 +110,7 @@ export async function readRequestBody(
       action();
     };
 
-    const onData = (chunk: Buffer | string): void => {
+    const onData = (chunk: Buffer | string | Uint8Array): void => {
       const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       totalBytes += bufferChunk.byteLength;
 
@@ -70,18 +123,37 @@ export async function readRequestBody(
         return;
       }
 
-      chunks.push(bufferChunk);
+      rawBodyChunks.push(bufferChunk);
+
+      if (previewBytes < previewMaxBytes) {
+        const remaining = previewMaxBytes - previewBytes;
+        const nextSlice = bufferChunk.subarray(0, remaining);
+        previewChunks.push(nextSlice);
+        previewBytes += nextSlice.length;
+
+        if (nextSlice.length < bufferChunk.length) {
+          previewTruncated = true;
+        }
+      } else {
+        previewTruncated = true;
+      }
     };
 
     const onEnd = (): void => {
       cleanup();
       settle(() => {
-        if (chunks.length === 0) {
-          resolve(undefined);
-          return;
-        }
+        const rawBody = rawBodyChunks.length > 0 ? Buffer.concat(rawBodyChunks) : undefined;
+        const previewBuffer = previewChunks.length > 0 ? Buffer.concat(previewChunks) : Buffer.alloc(0);
 
-        resolve(Buffer.concat(chunks));
+        resolve({
+          rawBody,
+          preview: createPreview(
+            previewBuffer,
+            rawBody?.byteLength ?? 0,
+            getHeaderValue(req.headers['content-type']),
+            previewTruncated,
+          ),
+        });
       });
     };
 
@@ -110,42 +182,66 @@ export async function parseBody(
   req: http.IncomingMessage,
   method: string,
   maxBytes: number,
-): Promise<Record<string, any>> {
-  const rawBody = await readRequestBody(req, method, maxBytes);
+): Promise<{ body: Record<string, any>; preview: BodyPreview }> {
+  const { rawBody, preview } = await readRequestBodyWithPreview(req, method, maxBytes);
 
   if (rawBody === undefined || rawBody.byteLength === 0) {
-    return {};
+    return {
+      body: {},
+      preview,
+    };
   }
 
-  const rawContentType = req.headers['content-type'];
-  const contentType = (Array.isArray(rawContentType) ? rawContentType[0] : rawContentType)?.toLowerCase() ?? '';
+  const contentType = getHeaderValue(req.headers['content-type'])?.toLowerCase() ?? '';
 
   if (contentType.includes('json')) {
     const textBody = rawBody.toString('utf8').trim();
+
     if (textBody.length === 0) {
-      return {};
+      return {
+        body: {},
+        preview,
+      };
     }
 
     try {
       const parsed = JSON.parse(textBody) as unknown;
 
       if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, any>;
+        return {
+          body: parsed as Record<string, any>,
+          preview,
+        };
       }
 
-      return { value: parsed };
+      return {
+        body: { value: parsed },
+        preview,
+      };
     } catch {
-      return { raw: textBody };
+      return {
+        body: { raw: textBody },
+        preview,
+      };
     }
   }
 
   if (contentType.includes('x-www-form-urlencoded')) {
-    return parseQuery(new URLSearchParams(rawBody.toString('utf8')));
+    return {
+      body: parseQuery(new URLSearchParams(rawBody.toString('utf8'))),
+      preview,
+    };
   }
 
   if (isTextualContentType(contentType)) {
-    return { raw: rawBody.toString('utf8') };
+    return {
+      body: { raw: rawBody.toString('utf8') },
+      preview,
+    };
   }
 
-  return {};
+  return {
+    body: {},
+    preview,
+  };
 }

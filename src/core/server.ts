@@ -5,9 +5,9 @@ import { getErrorMessage } from '@/common/logger.js';
 
 import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
 import { getRealIp } from './utils/headers.js';
-import { toURL, createBodyPreviewCapture } from './utils/request.js';
+import { toURL } from './utils/request.js';
 import { safeSendJson } from './utils/send-json.js';
-import { parseBody } from './utils/body.js';
+import { parseBody, type BodyPreview } from './utils/body.js';
 import { parseQuery } from './utils/query.js';
 
 export function createFluxionServer(options: ResolvedFluxionOptions & { handler: FluxionHandler }): http.Server {
@@ -30,7 +30,11 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       body: {},
     };
 
-    const bodyCapture = createBodyPreviewCapture(req);
+    let bodyPreview: BodyPreview = {
+      exists: false,
+      bytes: 0,
+      truncated: false,
+    };
 
     logger.info('Req', { method, ip, path: url.pathname });
 
@@ -49,7 +53,6 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
         fields.query = normalized.query;
       }
 
-      const bodyPreview = bodyCapture.getPreview();
       if (bodyPreview.exists) {
         fields.body = bodyPreview.value;
         fields.bodyBytes = bodyPreview.bytes;
@@ -60,7 +63,11 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
     });
 
     void parseBody(req, normalized.method, maxRequestBytes)
-      .then(() => Promise.try(handler, req, res, normalized))
+      .then((parsed) => {
+        normalized.body = parsed.body;
+        bodyPreview = parsed.preview;
+        return Promise.try(handler, req, res, normalized);
+      })
       .then((result) => safeSendJson(res, result)) // let the returned value to be sent as response
       .catch((error: NodeJS.ErrnoException) => {
         logger.error('RequestFailed', {
