@@ -1,8 +1,8 @@
 import type http from 'node:http';
 
-import type { NormalizedRequest } from './types.js';
+import type { NormalizedRequest } from '../types.js';
 import { META_PREFIX } from '@/common/consts.js';
-import { sendJson } from './utils/respond.js';
+import { sendJson } from '../utils/respond.js';
 
 export function createMetaApiHandler() {
   return async (

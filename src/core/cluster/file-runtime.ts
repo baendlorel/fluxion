@@ -1,7 +1,7 @@
 import cluster from 'node:cluster';
 import type { FluxionHandler } from '../types.js';
 import type { RunTaskMessage } from './types.js';
-import { ToPrimaryType, ToWorkerType } from './consts.js';
+import { WorkerAction, PrimaryAction } from './consts.js';
 import path from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 
@@ -39,7 +39,7 @@ export function createFileRuntime() {
   }
 
   process.on('message', async (args: RunTaskMessage) => {
-    if (args.type !== ToWorkerType.RunTask) {
+    if (args.type !== PrimaryAction.RunTask) {
       return;
     }
 
@@ -52,7 +52,7 @@ export function createFileRuntime() {
       const handler = await loadHandler(mjs);
       const result = await handler(args.payload);
       sendToPrimary({
-        type: ToPrimaryType.TaskResult,
+        type: WorkerAction.TaskResult,
         taskId,
         result,
       });

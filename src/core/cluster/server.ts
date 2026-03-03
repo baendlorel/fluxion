@@ -1,20 +1,22 @@
 import http from 'node:http';
 
-import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
+import type { NormalizedRequest, ResolvedFluxionOptions } from '../types.js';
+import { $keys } from '@/common/native.js';
 import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
 
-import { getRealIp } from './utils/headers.js';
-import { toURL } from './utils/request.js';
-import { safeSendJson } from './utils/respond.js';
-import { parseBody, type BodyPreview } from './utils/body.js';
-import { parseQuery } from './utils/query.js';
-import { $keys } from '@/common/native.js';
+import { getRealIp } from '../utils/headers.js';
+import { toURL } from '../utils/request.js';
+import { safeSendJson } from '../utils/respond.js';
+import { parseBody, type BodyPreview } from '../utils/body.js';
+import { parseQuery } from '../utils/query.js';
+import { createMetaApiHandler } from './meta-api.js';
 
-export function createFluxionServer(options: ResolvedFluxionOptions & { handler: FluxionHandler }): http.Server {
-  const { logger, handler, maxRequestBytes } = options;
+export function createServer(options: ResolvedFluxionOptions): http.Server {
+  const { logger, maxRequestBytes } = options;
 
-  const server = http.createServer((req, res) => {
+  const metaApiHandler = createMetaApiHandler();
+  const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
     const url = toURL(req.url);
@@ -63,28 +65,35 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       logger.info('Res', fields);
     });
 
-    void parseBody(req, normalized.method, maxRequestBytes)
-      .then((parsed) => {
-        normalized.body = parsed.body;
-        bodyPreview = parsed.preview;
-        return Promise.try(handler, req, res, normalized);
-      })
-      .then((result) => safeSendJson(res, result)) // let the returned value to be sent as response
-      .catch((error: NodeJS.ErrnoException) => {
-        logger.error('RequestFailed', {
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
-          error: getErrorMessage(error),
-        });
+    // * Start request handling
+    try {
+      const isMetaApiHandled = await metaApiHandler(req, res, normalized);
+      if (isMetaApiHandled) {
+        return;
+      }
 
-        if (error.code === 'REQUEST_BODY_TOO_LARGE') {
-          safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
-          return;
-        }
+      const parsed = await parseBody(req, normalized.method, maxRequestBytes);
+      normalized.body = parsed.body;
+      bodyPreview = parsed.preview;
 
-        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
+      // todo 匹配url到精确的handler
+      const result = await Promise.try(handler, req, res, normalized);
+      safeSendJson(res, result);
+    } catch (error) {
+      logger.error('RequestFailed', {
+        method: normalized.method,
+        ip: normalized.ip,
+        path: normalized.url.pathname,
+        error: getErrorMessage(error),
       });
+
+      if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
+        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
+        return;
+      }
+
+      safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
+    }
   });
 
   server.on('close', () => {

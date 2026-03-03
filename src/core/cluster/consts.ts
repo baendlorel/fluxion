@@ -1,48 +1,37 @@
-import type { ToWorkerMessage, ToPrimaryMessage } from './types.js';
+import type { PrimaryMessage as PrimaryMessage, WorkerMessage as WorkerMessage } from './types.js';
 
-export namespace ToWorkerType {
+export const enum PrimaryAction {
   /**
    * Health check message, the worker should respond with Pong and the latency information
    */
-  export const Ping = Symbol();
+  Ping = 100,
 
   /**
    * Send fluxion options to worker
    */
-  export const Options = Symbol();
-
-  /**
-   * Run a task, the payload should contain all necessary information to run the task
-   */
-  export const RunTask = Symbol();
-
-  export const List = [Ping, RunTask, Options] as const;
+  SendFluxionOptions,
 }
 
-export namespace ToPrimaryType {
+export const enum WorkerAction {
   /**
    * Just created
    */
-  export const Created = Symbol();
+  Created = 200,
 
   /**
    * Ready for tasks
    * - fluxion options are injected
    */
-  export const Ready = Symbol();
+  Ready,
 
   /**
    * Response to Ping, used for health check and latency measurement
    */
-  export const Pong = Symbol();
-
-  /**
-   * Result of a task
-   */
-  export const TaskResult = Symbol();
-
-  export const List = [Created, Ready, Pong, TaskResult] as const;
+  Pong,
 }
 
-export const isToWorker = (v: ToWorkerMessage): v is ToWorkerMessage => ToWorkerType.List.includes(v?.type);
-export const isToPrimary = (v: ToPrimaryMessage): v is ToPrimaryMessage => ToPrimaryType.List.includes(v?.type);
+export const isPrimaryMessage = (v: PrimaryMessage): v is PrimaryMessage =>
+  [PrimaryAction.Ping, PrimaryAction.SendFluxionOptions].includes(v?.type);
+
+export const isWorkerMessage = (v: WorkerMessage): v is WorkerMessage =>
+  [WorkerAction.Pong, WorkerAction.Created, WorkerAction.Ready].includes(v?.type);
