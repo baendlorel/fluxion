@@ -1,14 +1,15 @@
 import http from 'node:http';
 
+import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
 import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
 
-import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
 import { getRealIp } from './utils/headers.js';
 import { toURL } from './utils/request.js';
 import { safeSendJson } from './utils/send-json.js';
 import { parseBody, type BodyPreview } from './utils/body.js';
 import { parseQuery } from './utils/query.js';
+import { $keys } from '@/common/native.js';
 
 export function createFluxionServer(options: ResolvedFluxionOptions & { handler: FluxionHandler }): http.Server {
   const { logger, handler, maxRequestBytes } = options;
@@ -49,7 +50,7 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
         duration: (performance.now() - start).toFixed(4),
       };
 
-      if (Object.keys(normalized.query).length > 0) {
+      if ($keys(normalized.query).length > 0) {
         fields.query = normalized.query;
       }
 

@@ -1,4 +1,5 @@
 import type cluster from 'node:cluster';
+import type { ResolvedFluxionOptions } from '../types.js';
 import type { ToWorkerType, ToPrimaryType } from './consts.ts';
 
 export interface ClusterSchedulerDemoOptions {
@@ -18,7 +19,17 @@ export interface RunTaskMessage {
   pathname: string;
 }
 
-export type ToWorkerMessage = PingMessage | RunTaskMessage;
+export interface OptionsMessage {
+  type: typeof ToWorkerType.Options;
+  fluxionOptions: ResolvedFluxionOptions;
+}
+
+export type ToWorkerMessage = PingMessage | OptionsMessage | RunTaskMessage;
+
+export interface CreatedMessage {
+  type: typeof ToPrimaryType.Created;
+  pid: number;
+}
 
 export interface ReadyMessage {
   type: typeof ToPrimaryType.Ready;
@@ -35,13 +46,12 @@ export interface PongMessage {
 export interface TaskResultMessage {
   type: typeof ToPrimaryType.TaskResult;
   taskId: string;
-  pid: number;
-  result: number;
+  result: any;
 }
 
-export type ToPrimaryMessage = ReadyMessage | PongMessage | TaskResultMessage;
+export type ToPrimaryMessage = CreatedMessage | ReadyMessage | PongMessage | TaskResultMessage;
 
 export interface WorkerState {
-  isReady: boolean;
+  state: 'creating' | 'created' | 'ready';
   instance: cluster.Worker;
 }

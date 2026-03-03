@@ -70,7 +70,7 @@ function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
     return option;
   }
 
-  throw new Error('Invalid logger option: expected function | "one-line" | "json-line"');
+  $throw('Invalid logger option: expected function | "one-line" | "json-line"');
 }
 
 export function createLogger(option: LoggerOption | undefined = 'one-line'): FluxionLogger {

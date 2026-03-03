@@ -9,7 +9,8 @@ import { createFluxionServer } from './server.js';
 
 export function fluxion(options: FluxionOptions): http.Server;
 export function fluxion(rawOptions: FluxionOptions): http.Server {
-  const options = normalizeOptions(rawOptions);
+  Reflect.set(globalThis, 'fluxionOptions', normalizeOptions(rawOptions));
+  const options = fluxionOptions;
 
   const dir = options.dir;
   const logger = options.logger;

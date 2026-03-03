@@ -23,7 +23,7 @@ async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Se
 
   const address = server.address();
   if (address === null || typeof address === 'string') {
-    throw new Error('Failed to resolve server address');
+    $throw('Failed to resolve server address');
   }
 
   const baseURL = `http://127.0.0.1:${address.port}`;

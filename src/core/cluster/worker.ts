@@ -4,48 +4,44 @@ import cluster from 'node:cluster';
 import type { ResolvedFluxionOptions } from '../types.js';
 import type { RunTaskMessage, ToPrimaryMessage, ToWorkerMessage, WorkerState } from './types.js';
 import { ToPrimaryType, ToWorkerType, isToPrimary, isToWorker } from './consts.js';
+import { createFileRuntime } from './file-runtime.js';
 
 const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
 
-export async function createWorker(options: ResolvedFluxionOptions) {
+export async function createWorker() {
   if (cluster.isPrimary) {
-    throw new Error('createWorker should only be called in worker process');
+    $throw('createWorker should only be called in worker process');
   }
 
-  const rawInjections = options.injections.map(async (v) => ({ name: v.name, instance: await v.factory() }));
+  // todo 第一步是要接收fluxionoptions
+  const rawInjections = fluxionOptions.injections.map(async (v) => ({ name: v.name, instance: await v.factory() }));
   const injections = await Promise.all(rawInjections);
   injections.forEach((v) => Reflect.set(globalThis, v.name, v.instance));
+
+  // todo 在这里启动url2handler的监听，收到消息后直接执行对应的handler
+
+  createFileRuntime();
 
   sendToPrimary({
     type: ToPrimaryType.Ready,
     pid: process.pid,
   });
 
-  process.on('message', (rawMessage: ToWorkerMessage) => {
-    if (!isToWorker(rawMessage)) {
+  process.on('message', (raw: ToWorkerMessage) => {
+    if (!isToWorker(raw)) {
       return;
     }
 
-    console.log(`[worker ${process.pid}] received message`, rawMessage);
-    if (rawMessage.type === ToWorkerType.Ping) {
+    console.log(`[worker ${process.pid}] received message`, raw);
+    if (raw.type === ToWorkerType.Ping) {
       sendToPrimary({
         type: ToPrimaryType.Pong,
         pid: process.pid,
-        sentAt: rawMessage.sentAt,
+        sentAt: raw.sentAt,
         receivedAt: Date.now(),
       });
       return;
     }
-
-    // todo 这里就解析url内容，找到文件来执行吧！
-    const someTask = (x: any) => x;
-    const result = someTask(rawMessage.payload);
-    sendToPrimary({
-      type: ToPrimaryType.TaskResult,
-      taskId: rawMessage.taskId,
-      pid: process.pid,
-      result,
-    });
   });
 }
 
@@ -59,7 +55,7 @@ export function createWorkerManager(options: ResolvedFluxionOptions) {
   const workers = new Map<number, WorkerState>();
 
   const attachWorker = (worker: cluster.Worker): void => {
-    const workerInfo: WorkerState = { isReady: false, instance: worker };
+    const workerInfo: WorkerState = { state: 'creating', instance: worker };
     workers.set(worker.id, workerInfo);
 
     worker.on('message', (rawMessage: ToPrimaryMessage) => {
@@ -67,8 +63,9 @@ export function createWorkerManager(options: ResolvedFluxionOptions) {
         return;
       }
 
-      if (rawMessage.type === ToPrimaryType.Ready) {
-        workerInfo.isReady = true; // & only when worker is ready, we can send task to it
+      if (rawMessage.type === ToPrimaryType.Created) {
+        workerInfo.state = 'created';
+        worker.send({ type: ToWorkerType.Options, fluxionOptions });
         return;
       }
 
@@ -77,6 +74,13 @@ export function createWorkerManager(options: ResolvedFluxionOptions) {
         logger.info(
           `[primary ${process.pid}] pong from worker ${rawMessage.pid}, rtt=${rtt}ms, workerTime=${rawMessage.receivedAt}`,
         );
+        return;
+      }
+
+      if (rawMessage.type === ToPrimaryType.Ready) {
+        // & only when worker is ready, we can send task to it
+        workerInfo.state = 'ready';
+        logger.info(`[primary ${process.pid}] worker ${rawMessage.pid} is ready`);
         return;
       }
 

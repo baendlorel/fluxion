@@ -28,7 +28,7 @@ export async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 500
     await sleep(stepMs);
   }
 
-  throw new Error(`Condition not met within ${timeoutMs}ms`);
+  $throw(`Condition not met within ${timeoutMs}ms`);
 }
 
 export async function sleep(ms: number): Promise<void> {
@@ -48,7 +48,7 @@ export async function listenEphemeral(
   const address = server.address();
 
   if (address === null || typeof address === 'string') {
-    throw new Error('Failed to resolve server address');
+    $throw('Failed to resolve server address');
   }
 
   return {
