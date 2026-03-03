@@ -9,39 +9,34 @@ interface CreateMetaApiOptions {
    * Same as `FluxionOptions.dir`.
    */
   dir: string;
-  getRouteSnapshot: () => Promise<FileRouteSnapshot> | FileRouteSnapshot;
-  getWorkerSnapshot: () => Promise<FileWorkerSnapshot> | FileWorkerSnapshot;
 }
 
 export function createMetaApi(options: CreateMetaApiOptions) {
-  return {
-    handleRequest: async (
-      _req: http.IncomingMessage,
-      res: http.ServerResponse,
-      normalized: NormalizedRequest,
-    ): Promise<boolean> => {
-      const pathname = normalized.url.pathname;
+  return async (
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    normalized: NormalizedRequest,
+  ): Promise<boolean> => {
+    const pathname = normalized.url.pathname;
 
-      if (normalized.method === 'GET') {
-        if (pathname === META_PREFIX + '/routes') {
-          const routes = await options.getRouteSnapshot();
-          sendJson(res, { routes });
-          return true;
-        }
-
-        if (pathname === META_PREFIX + '/healthz') {
-          sendJson(res, { ok: true, now: Date.now() });
-          return true;
-        }
-
-        if (pathname === META_PREFIX + '/workers') {
-          const workers = await options.getWorkerSnapshot();
-          sendJson(res, { workers });
-          return true;
-        }
+    if (normalized.method === 'GET') {
+      if (pathname === META_PREFIX + '/healthz') {
+        sendJson(res, { ok: true, now: Date.now() });
+        return true;
       }
 
-      return false;
-    },
+      // if (pathname === META_PREFIX + '/routes') {
+      //   const routes = await options.getRouteSnapshot();
+      //   sendJson(res, { routes });
+      //   return true;
+      // }
+      // if (pathname === META_PREFIX + '/workers') {
+      //   const workers = await options.getWorkerSnapshot();
+      //   sendJson(res, { workers });
+      //   return true;
+      // }
+    }
+
+    return false;
   };
 }

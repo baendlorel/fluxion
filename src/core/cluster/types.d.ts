@@ -1,4 +1,4 @@
-import type { PrimaryToWorkerMessageType, WorkerToPrimaryMessageType } from './scheduler.ts';
+import type { PrimaryToWorkerMessageType, WorkerToPrimaryMessageType } from './consts.ts';
 
 export interface ClusterSchedulerDemoOptions {
   workerCount?: number;

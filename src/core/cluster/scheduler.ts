@@ -1,60 +1,7 @@
 import cluster, { type Worker } from 'node:cluster';
 import os from 'node:os';
-import { whether } from '@/common/expect.js';
-import {
-  PrimaryToWorkerMessage,
-  WorkerToPrimaryMessage,
-  ClusterSchedulerDemoOptions,
-  RunTaskMessage,
-  PingMessage,
-} from './types.js';
-
-export const enum PrimaryToWorkerMessageType {
-  Ping = 100,
-  RunTask,
-}
-
-export const enum WorkerToPrimaryMessageType {
-  Ready = 200,
-  Pong,
-  TaskResult,
-}
-
-function isPrimaryToWorkerMessage(value: unknown): value is PrimaryToWorkerMessage {
-  if (!whether.isObject(value) || 'type' in value === false) {
-    return false;
-  }
-
-  if (value.type === PrimaryToWorkerMessageType.Ping) {
-    return typeof value.sentAt === 'number';
-  }
-
-  if (value.type === PrimaryToWorkerMessageType.RunTask) {
-    return typeof value.taskId === 'string' && typeof value.payload === 'number';
-  }
-
-  return false;
-}
-
-function isWorkerToPrimaryMessage(value: unknown): value is WorkerToPrimaryMessage {
-  if (!whether.isObject(value) || 'type' in value === false) {
-    return false;
-  }
-
-  if (value.type === WorkerToPrimaryMessageType.Ready) {
-    return typeof value.pid === 'number';
-  }
-
-  if (value.type === WorkerToPrimaryMessageType.Pong) {
-    return typeof value.pid === 'number' && typeof value.sentAt === 'number' && typeof value.receivedAt === 'number';
-  }
-
-  if (value.type === WorkerToPrimaryMessageType.TaskResult) {
-    return typeof value.taskId === 'string' && typeof value.pid === 'number' && typeof value.result === 'number';
-  }
-
-  return false;
-}
+import { WorkerToPrimaryMessage, ClusterSchedulerDemoOptions, RunTaskMessage, PingMessage } from './types.js';
+import { isFromPrimary, isFromWorker, PrimaryToWorkerMessageType, WorkerToPrimaryMessageType } from './consts.js';
 
 const sendToPrimary = (message: WorkerToPrimaryMessage) => process.send?.(message);
 
@@ -85,7 +32,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
     workers.set(worker.id, worker);
 
     worker.on('message', (rawMessage: unknown) => {
-      if (!isWorkerToPrimaryMessage(rawMessage)) {
+      if (!isFromWorker(rawMessage)) {
         return;
       }
 
@@ -162,7 +109,7 @@ function startWorker(): void {
   });
 
   process.on('message', (rawMessage: unknown) => {
-    if (!isPrimaryToWorkerMessage(rawMessage)) {
+    if (!isFromPrimary(rawMessage)) {
       return;
     }
 

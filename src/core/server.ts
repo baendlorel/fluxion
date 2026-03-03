@@ -26,11 +26,7 @@ export function fluxion(rawOptions: FluxionOptions): http.Server {
     logger,
   });
 
-  const metaApi = createMetaApi({
-    dir,
-    getRouteSnapshot: fileRuntime.getRouteSnapshot,
-    getWorkerSnapshot: fileRuntime.getWorkerSnapshot,
-  });
+  const metaApiHandler = createMetaApi(options);
 
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
@@ -76,8 +72,7 @@ export function fluxion(rawOptions: FluxionOptions): http.Server {
       logger.info('Res', fields);
     });
 
-    void metaApi
-      .handleRequest(req, res, normalized)
+    void metaApiHandler(req, res, normalized)
       .then(async (metaHandled) => {
         if (metaHandled) {
           return;

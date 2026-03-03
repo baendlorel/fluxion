@@ -1,5 +1,4 @@
 import type { FluxionLogger, LoggerOption } from '@/common/logger.ts';
-import type { protocol } from '@/workers/protocol.js';
 
 export interface NormalizedRequest {
   method: string;
@@ -22,18 +21,6 @@ export interface FluxionDatabaseConfig {
  * User-provided database config input.
  */
 export type FluxionDatabaseInput = string | FluxionDatabaseConfig;
-
-/**
- * Raw database config item loaded from private config file.
- */
-export type FluxionDatabaseRuntimeConfigInput =
-  | protocol.DataBaseDriver
-  | (Record<string, unknown> & {
-      driver?: string;
-      type?: string;
-      contextKey?: string;
-      options?: Record<string, unknown>;
-    });
 
 export interface InjectionConfig {
   /**
