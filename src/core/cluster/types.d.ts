@@ -6,35 +6,35 @@ export interface ClusterSchedulerDemoOptions {
 }
 
 export interface PingMessage {
-  type: ToWorkerMessageType.Ping;
+  type: typeof ToWorkerMessageType.Ping;
   sentAt: number;
 }
 
 export interface RunTaskMessage {
-  type: ToWorkerMessageType.RunTask;
+  type: typeof ToWorkerMessageType.RunTask;
   taskId: string;
   payload: number;
 }
 
-export type MessageToWorker = PingMessage | RunTaskMessage;
+export type ToWorkerMessage = PingMessage | RunTaskMessage;
 
 export interface ReadyMessage {
-  type: ToPrimaryMessageType.Ready;
+  type: typeof ToPrimaryMessageType.Ready;
   pid: number;
 }
 
 export interface PongMessage {
-  type: ToPrimaryMessageType.Pong;
+  type: typeof ToPrimaryMessageType.Pong;
   pid: number;
   sentAt: number;
   receivedAt: number;
 }
 
 export interface TaskResultMessage {
-  type: ToPrimaryMessageType.TaskResult;
+  type: typeof ToPrimaryMessageType.TaskResult;
   taskId: string;
   pid: number;
   result: number;
 }
 
-export type MessageToPrimary = ReadyMessage | PongMessage | TaskResultMessage;
+export type ToPrimaryMessage = ReadyMessage | PongMessage | TaskResultMessage;

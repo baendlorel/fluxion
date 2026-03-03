@@ -1,9 +1,9 @@
 import cluster, { type Worker } from 'node:cluster';
 import os from 'node:os';
-import { MessageToPrimary, ClusterSchedulerDemoOptions, RunTaskMessage, PingMessage } from './types.js';
+import { ToPrimaryMessage, ClusterSchedulerDemoOptions, RunTaskMessage, PingMessage } from './types.js';
 import { isToWorker, isToPrimary, ToWorkerMessageType, ToPrimaryMessageType } from './consts.js';
 
-const sendToPrimary = (message: MessageToPrimary) => process.send?.(message);
+const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
 
 function runFakeTask(payload: number): number {
   let checksum = 0;

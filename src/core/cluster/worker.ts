@@ -1,9 +1,9 @@
 import cluster from 'node:cluster';
 import { ResolvedFluxionOptions } from '../types.js';
-import { MessageToPrimary } from './types.js';
+import { ToPrimaryMessage, ToWorkerMessage } from './types.js';
 import { ToPrimaryMessageType, ToWorkerMessageType, isToWorker } from './consts.js';
 
-const sendToPrimary = (message: MessageToPrimary) => process.send?.(message);
+const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
 
 async function createWorkerPrimarySide(options: ResolvedFluxionOptions) {}
 
@@ -22,7 +22,7 @@ async function createWorkerChildSide(options: ResolvedFluxionOptions) {
     pid: process.pid,
   });
 
-  process.on('message', (rawMessage: unknown) => {
+  process.on('message', (rawMessage: ToWorkerMessage) => {
     if (!isToWorker(rawMessage)) {
       return;
     }
