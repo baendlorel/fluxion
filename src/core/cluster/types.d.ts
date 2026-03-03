@@ -13,7 +13,8 @@ export interface PingMessage {
 export interface RunTaskMessage {
   type: typeof ToWorkerType.RunTask;
   taskId: string;
-  payload: number;
+  payload: any;
+  pathname: string;
 }
 
 export type ToWorkerMessage = PingMessage | RunTaskMessage;

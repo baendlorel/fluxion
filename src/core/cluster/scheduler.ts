@@ -47,6 +47,7 @@ function startPrimary(options: ClusterSchedulerDemoOptions): void {
           type: ToWorkerType.RunTask,
           taskId: createTaskId(worker.id),
           payload: 150_000,
+          pathname: '/fake-task',
         };
         worker.send(taskMessage);
         return;

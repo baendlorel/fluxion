@@ -1,3 +1,4 @@
+import type http from 'node:http';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.ts';
 
 export interface NormalizedRequest {
@@ -5,6 +6,7 @@ export interface NormalizedRequest {
   ip: string;
   url: URL;
   query: Record<string, string | string[]>;
+  body: Record<string, any>;
 }
 
 /**
@@ -131,3 +133,12 @@ export interface ResolvedFluxionOptions {
   maxRequestBytes: number;
   logger: FluxionLogger;
 }
+
+export type FluxionHandler<
+  Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
+  Response extends typeof http.ServerResponse = typeof http.ServerResponse,
+> = (
+  request: InstanceType<Request>,
+  response: InstanceType<Response> & { req: InstanceType<Request> },
+  normalized: NormalizedRequest,
+) => void;
