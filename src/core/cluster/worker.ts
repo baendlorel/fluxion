@@ -1,24 +1,25 @@
+import os from 'node:os';
 import cluster from 'node:cluster';
-import { ResolvedFluxionOptions } from '../types.js';
-import { ToPrimaryMessage, ToWorkerMessage } from './types.js';
-import { ToPrimaryMessageType, ToWorkerMessageType, isToWorker } from './consts.js';
+
+import type { ResolvedFluxionOptions } from '../types.js';
+import type { RunTaskMessage, ToPrimaryMessage, ToWorkerMessage } from './types.js';
+import { ToPrimaryType, ToWorkerType, isToPrimary, isToWorker } from './consts.js';
 
 const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
 
-async function createWorkerPrimarySide(options: ResolvedFluxionOptions) {}
+const createTaskId = (workerId: number): string => `${Date.now().toString(36)}-${workerId.toString(36)}`;
 
-async function createWorkerChildSide(options: ResolvedFluxionOptions) {
-  (
-    await Promise.all(
-      options.injections.map(async (v) => {
-        const instance = await v.factory();
-        return { name: v.name, instance };
-      }),
-    )
-  ).forEach((v) => Reflect.set(globalThis, v.name, v.instance));
+export async function createWorker(options: ResolvedFluxionOptions) {
+  if (cluster.isPrimary) {
+    throw new Error('createWorker should only be called in worker process');
+  }
+
+  const rawInjections = options.injections.map(async (v) => ({ name: v.name, instance: await v.factory() }));
+  const injections = await Promise.all(rawInjections);
+  injections.forEach((v) => Reflect.set(globalThis, v.name, v.instance));
 
   sendToPrimary({
-    type: ToPrimaryMessageType.Ready,
+    type: ToPrimaryType.Ready,
     pid: process.pid,
   });
 
@@ -28,9 +29,9 @@ async function createWorkerChildSide(options: ResolvedFluxionOptions) {
     }
 
     console.log(`[worker ${process.pid}] received message`, rawMessage);
-    if (rawMessage.type === ToWorkerMessageType.Ping) {
+    if (rawMessage.type === ToWorkerType.Ping) {
       sendToPrimary({
-        type: ToPrimaryMessageType.Pong,
+        type: ToPrimaryType.Pong,
         pid: process.pid,
         sentAt: rawMessage.sentAt,
         receivedAt: Date.now(),
@@ -39,9 +40,10 @@ async function createWorkerChildSide(options: ResolvedFluxionOptions) {
     }
 
     // todo 这里就解析url内容，找到文件来执行吧！
+    const someTask = (x: any) => x;
     const result = someTask(rawMessage.payload);
     sendToPrimary({
-      type: ToPrimaryMessageType.TaskResult,
+      type: ToPrimaryType.TaskResult,
       taskId: rawMessage.taskId,
       pid: process.pid,
       result,
@@ -49,10 +51,61 @@ async function createWorkerChildSide(options: ResolvedFluxionOptions) {
   });
 }
 
-export async function createWorker(options: ResolvedFluxionOptions) {
-  if (cluster.isPrimary) {
-    return createWorkerPrimarySide(options);
-  } else {
-    return createWorkerChildSide(options);
+export function createWorkerManager(options: ResolvedFluxionOptions) {
+  const { workerOptions, logger } = options;
+  const cpuCount = Math.max(1, os.cpus().length);
+  const workerCount = Math.max(1, Math.min(workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount));
+
+  logger.info(`[primary ${process.pid}] start cluster, workers=${workerCount}`);
+
+  const workers = new Map<number, cluster.Worker>();
+
+  const attachWorker = (worker: cluster.Worker): void => {
+    workers.set(worker.id, worker);
+
+    worker.on('message', (rawMessage: ToPrimaryMessage) => {
+      if (!isToPrimary(rawMessage)) {
+        return;
+      }
+
+      if (rawMessage.type === ToPrimaryType.Ready) {
+        const taskMessage: RunTaskMessage = {
+          type: ToWorkerType.RunTask,
+          taskId: createTaskId(worker.id),
+          payload: 150_000,
+        };
+        worker.send(taskMessage);
+        return;
+      }
+
+      if (rawMessage.type === ToPrimaryType.Pong) {
+        const rtt = Date.now() - rawMessage.sentAt;
+        logger.info(
+          `[primary ${process.pid}] pong from worker ${rawMessage.pid}, rtt=${rtt}ms, workerTime=${rawMessage.receivedAt}`,
+        );
+        return;
+      }
+
+      logger.info(
+        `[primary ${process.pid}] task result from worker ${rawMessage.pid}, task=${rawMessage.taskId}, result=${rawMessage.result}`,
+      );
+    });
+
+    worker.on('exit', (code, signal) => {
+      workers.delete(worker.id);
+      logger.info(
+        `[primary ${process.pid}] worker ${worker.process.pid ?? 'unknown'} exited, code=${code}, signal=${signal ?? 'none'}`,
+      );
+    });
+  };
+
+  // cluster.setupPrimary({
+  //   exec: process.argv[1],
+  //   args: process.argv.slice(2),
+  //   env: process.env,
+  //   silent: false,
+  // });
+  for (let i = 0; i < workerCount; i++) {
+    attachWorker(cluster.fork());
   }
 }

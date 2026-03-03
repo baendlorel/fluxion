@@ -7,17 +7,18 @@ import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOpt
 /**
  * Resolves runtime options with framework defaults.
  */
-export function resolveWorkerOptions(overrides: Partial<WorkerOptions>): WorkerOptions {
+export function resolveWorkerOptions(options: Partial<WorkerOptions>): WorkerOptions {
   return {
-    requestTimeoutMs: overrides.requestTimeoutMs ?? 3000,
-    maxInflight: overrides.maxInflight ?? 64,
-    memorySoftLimitMb: overrides.memorySoftLimitMb ?? 96,
-    memoryHardLimitMb: overrides.memoryHardLimitMb ?? 128,
-    memorySampleIntervalMs: overrides.memorySampleIntervalMs ?? 5000,
-    maxOldGenerationSizeMb: overrides.maxOldGenerationSizeMb ?? 128,
-    maxYoungGenerationSizeMb: overrides.maxYoungGenerationSizeMb ?? 32,
-    stackSizeMb: overrides.stackSizeMb ?? 4,
-    maxResponseBytes: overrides.maxResponseBytes ?? 2 * 1024 * 1024,
+    maxWorkerCount: options.maxWorkerCount ?? 4,
+    requestTimeoutMs: options.requestTimeoutMs ?? 3000,
+    maxInflight: options.maxInflight ?? 64,
+    memorySoftLimitMb: options.memorySoftLimitMb ?? 96,
+    memoryHardLimitMb: options.memoryHardLimitMb ?? 128,
+    memorySampleIntervalMs: options.memorySampleIntervalMs ?? 5000,
+    maxOldGenerationSizeMb: options.maxOldGenerationSizeMb ?? 128,
+    maxYoungGenerationSizeMb: options.maxYoungGenerationSizeMb ?? 32,
+    stackSizeMb: options.stackSizeMb ?? 4,
+    maxResponseBytes: options.maxResponseBytes ?? 2 * 1024 * 1024,
   };
 }
 

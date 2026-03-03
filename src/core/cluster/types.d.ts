@@ -1,4 +1,4 @@
-import type { ToWorkerMessageType, ToPrimaryMessageType } from './consts.ts';
+import type { ToWorkerType, ToPrimaryType } from './consts.ts';
 
 export interface ClusterSchedulerDemoOptions {
   workerCount?: number;
@@ -6,12 +6,12 @@ export interface ClusterSchedulerDemoOptions {
 }
 
 export interface PingMessage {
-  type: typeof ToWorkerMessageType.Ping;
+  type: typeof ToWorkerType.Ping;
   sentAt: number;
 }
 
 export interface RunTaskMessage {
-  type: typeof ToWorkerMessageType.RunTask;
+  type: typeof ToWorkerType.RunTask;
   taskId: string;
   payload: number;
 }
@@ -19,19 +19,19 @@ export interface RunTaskMessage {
 export type ToWorkerMessage = PingMessage | RunTaskMessage;
 
 export interface ReadyMessage {
-  type: typeof ToPrimaryMessageType.Ready;
+  type: typeof ToPrimaryType.Ready;
   pid: number;
 }
 
 export interface PongMessage {
-  type: typeof ToPrimaryMessageType.Pong;
+  type: typeof ToPrimaryType.Pong;
   pid: number;
   sentAt: number;
   receivedAt: number;
 }
 
 export interface TaskResultMessage {
-  type: typeof ToPrimaryMessageType.TaskResult;
+  type: typeof ToPrimaryType.TaskResult;
   taskId: string;
   pid: number;
   result: number;
