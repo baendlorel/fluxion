@@ -5,11 +5,13 @@ import { getErrorMessage } from '@/common/logger.js';
 
 import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
 import { getRealIp } from './utils/headers.js';
-import { toURL, parseQuery, createBodyPreviewCapture } from './utils/request.js';
+import { toURL, createBodyPreviewCapture } from './utils/request.js';
 import { safeSendJson } from './utils/send-json.js';
+import { parseBody } from './utils/body.js';
+import { parseQuery } from './utils/query.js';
 
 export function createFluxionServer(options: ResolvedFluxionOptions & { handler: FluxionHandler }): http.Server {
-  const { logger, handler } = options;
+  const { logger, handler, maxRequestBytes } = options;
 
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
@@ -25,7 +27,7 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       ip,
       url,
       query: parseQuery(url.searchParams),
-      body: {}, // todo 解析body
+      body: {},
     };
 
     const bodyCapture = createBodyPreviewCapture(req);
@@ -57,7 +59,10 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       logger.info('Res', fields);
     });
 
-    Promise.try(handler, req, res, normalized).catch((error: NodeJS.ErrnoException) => {
+    Promise.try(async () => {
+      normalized.body = await parseBody(req, normalized.method, maxRequestBytes);
+      await handler(req, res, normalized);
+    }).catch((error: NodeJS.ErrnoException) => {
       logger.error('RequestFailed', {
         method: normalized.method,
         ip: normalized.ip,
