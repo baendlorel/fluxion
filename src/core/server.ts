@@ -59,8 +59,9 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       logger.info('Res', fields);
     });
 
-    parseBody(req, normalized.method, maxRequestBytes)
+    void parseBody(req, normalized.method, maxRequestBytes)
       .then(() => Promise.try(handler, req, res, normalized))
+      .then((result) => safeSendJson(res, result)) // let the returned value to be sent as response
       .catch((error: NodeJS.ErrnoException) => {
         logger.error('RequestFailed', {
           method: normalized.method,

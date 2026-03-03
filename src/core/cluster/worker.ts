@@ -7,8 +7,6 @@ import { ToPrimaryType, ToWorkerType, isToPrimary, isToWorker } from './consts.j
 
 const sendToPrimary = (message: ToPrimaryMessage) => process.send?.(message);
 
-const createTaskId = (workerId: number): string => `${Date.now().toString(36)}-${workerId.toString(36)}`;
-
 export async function createWorker(options: ResolvedFluxionOptions) {
   if (cluster.isPrimary) {
     throw new Error('createWorker should only be called in worker process');
