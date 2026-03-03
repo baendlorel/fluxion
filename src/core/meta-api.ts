@@ -1,17 +1,10 @@
 import type http from 'node:http';
 
-import { sendJson } from './utils/send-json.js';
 import type { NormalizedRequest } from './types.js';
 import { META_PREFIX } from '@/common/consts.js';
+import { sendJson } from './utils/send-json.js';
 
-interface CreateMetaApiOptions {
-  /**
-   * Same as `FluxionOptions.dir`.
-   */
-  dir: string;
-}
-
-export function createMetaApi(options: CreateMetaApiOptions) {
+export function createMetaApiHandler() {
   return async (
     _req: http.IncomingMessage,
     res: http.ServerResponse,

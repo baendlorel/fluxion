@@ -1,49 +1,80 @@
 import http from 'node:http';
-import { performance } from 'node:perf_hooks';
 
-import { HandlerResult, HttpCode } from '@/common/consts.js';
+import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
 
-import { createMetaApi } from './meta-api.js';
-
-import type { FluxionOptions, NormalizedRequest } from './types.js';
-import { safeSendJson } from './utils/send-json.js';
+import type { FluxionHandler, NormalizedRequest, ResolvedFluxionOptions } from './types.js';
 import { getRealIp } from './utils/headers.js';
-import { createBodyPreviewCapture, parseQuery, toURL } from './utils/request.js';
-import { normalizeOptions } from './options.js';
-import { createFluxionServer } from './create-server.js';
+import { toURL, parseQuery, createBodyPreviewCapture } from './utils/request.js';
+import { safeSendJson } from './utils/send-json.js';
 
-export function fluxion(options: FluxionOptions): http.Server;
-export function fluxion(rawOptions: FluxionOptions): http.Server {
-  const options = normalizeOptions(rawOptions);
+export function createFluxionServer(options: ResolvedFluxionOptions & { handler: FluxionHandler }): http.Server {
+  const { logger, handler } = options;
 
-  const dir = options.dir;
-  const logger = options.logger;
+  const server = http.createServer((req, res) => {
+    const method = req.method ?? 'GET';
+    const ip = getRealIp(req);
+    const url = toURL(req.url);
+    if (url === undefined) {
+      safeSendJson(res, { message: 'Bad Request: req.url is undefined' }, HttpCode.BadRequest);
+      return;
+    }
 
-  const metaApiHandler = createMetaApi(options);
+    const normalized: NormalizedRequest = {
+      method,
+      ip,
+      url,
+      query: parseQuery(url.searchParams),
+      body: {}, // todo 解析body
+    };
 
-  const server = createFluxionServer({
-    ...options,
-    handler: (req, res, normalized) =>
-      metaApiHandler(req, res, normalized).catch((error) => {
-        logger.error('RequestFailed', {
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
-          error: getErrorMessage(error),
-        });
+    const bodyCapture = createBodyPreviewCapture(req);
 
-        if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
-          safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
-          return;
-        }
+    logger.info('Req', { method, ip, path: url.pathname });
 
-        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
-      }),
+    const start = performance.now();
+    res.once('finish', () => {
+      const fields: Record<string, unknown> = {
+        workerId: process.env.WORKER_ID ?? '[primary]',
+        method,
+        ip,
+        path: url.pathname,
+        status: res.statusCode,
+        duration: (performance.now() - start).toFixed(4),
+      };
+
+      if (Object.keys(normalized.query).length > 0) {
+        fields.query = normalized.query;
+      }
+
+      const bodyPreview = bodyCapture.getPreview();
+      if (bodyPreview.exists) {
+        fields.body = bodyPreview.value;
+        fields.bodyBytes = bodyPreview.bytes;
+        fields.bodyTruncated = bodyPreview.truncated;
+      }
+
+      logger.info('Res', fields);
+    });
+
+    Promise.try(handler, req, res, normalized).catch((error: NodeJS.ErrnoException) => {
+      logger.error('RequestFailed', {
+        method: normalized.method,
+        ip: normalized.ip,
+        path: normalized.url.pathname,
+        error: getErrorMessage(error),
+      });
+
+      if (error.code === 'REQUEST_BODY_TOO_LARGE') {
+        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
+        return;
+      }
+
+      safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
+    });
   });
 
   server.on('close', () => {
-    // todo 也许有用 void fileRuntime.close();
     logger.info('ServerClosed', {
       host: options.host,
       port: options.port,
@@ -55,7 +86,7 @@ export function fluxion(rawOptions: FluxionOptions): http.Server {
       host: options.host,
       port: options.port,
     });
-    logger.info('DynamicDirectory', { directory: dir });
+    logger.info('DynamicDirectory', { directory: options.dir });
   });
 
   server.on('error', (error) => {
@@ -63,5 +94,6 @@ export function fluxion(rawOptions: FluxionOptions): http.Server {
       error: getErrorMessage(error),
     });
   });
+
   return server;
 }

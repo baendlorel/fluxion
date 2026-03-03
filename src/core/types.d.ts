@@ -141,4 +141,4 @@ export type FluxionHandler<
   request: InstanceType<Request>,
   response: InstanceType<Response> & { req: InstanceType<Request> },
   normalized: NormalizedRequest,
-) => void;
+) => Promise<unknown>;

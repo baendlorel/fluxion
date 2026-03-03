@@ -6,7 +6,7 @@ import path from 'node:path';
 import axios, { type AxiosInstance } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fluxion } from '@/core/server.js';
+import { fluxion } from '@/core/fluxion.js';
 
 import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writeFile } from '../helpers/test-utils.js';
 
