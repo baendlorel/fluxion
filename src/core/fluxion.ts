@@ -4,7 +4,7 @@ import { getErrorMessage } from '@/common/logger.js';
 
 import type { FluxionOptions } from './types.js';
 import { createMetaApiHandler } from './meta-api.js';
-import { normalizeOptions } from './options.js';
+import { normalizeOptions } from './utils/options.js';
 import { createFluxionServer } from './server.js';
 
 export function fluxion(options: FluxionOptions): http.Server;

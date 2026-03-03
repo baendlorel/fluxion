@@ -2,7 +2,7 @@ import fs, { existsSync } from 'node:fs';
 import { expect } from '@/common/expect.js';
 import { createLogger } from '@/common/logger.js';
 
-import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOptions } from './types.js';
+import type { WorkerOptions, FluxionOptions, InjectionConfig, ResolvedFluxionOptions } from '../types.js';
 
 /**
  * Resolves runtime options with framework defaults.
