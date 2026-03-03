@@ -59,24 +59,23 @@ export function createFluxionServer(options: ResolvedFluxionOptions & { handler:
       logger.info('Res', fields);
     });
 
-    Promise.try(async () => {
-      normalized.body = await parseBody(req, normalized.method, maxRequestBytes);
-      await handler(req, res, normalized);
-    }).catch((error: NodeJS.ErrnoException) => {
-      logger.error('RequestFailed', {
-        method: normalized.method,
-        ip: normalized.ip,
-        path: normalized.url.pathname,
-        error: getErrorMessage(error),
+    parseBody(req, normalized.method, maxRequestBytes)
+      .then(() => Promise.try(handler, req, res, normalized))
+      .catch((error: NodeJS.ErrnoException) => {
+        logger.error('RequestFailed', {
+          method: normalized.method,
+          ip: normalized.ip,
+          path: normalized.url.pathname,
+          error: getErrorMessage(error),
+        });
+
+        if (error.code === 'REQUEST_BODY_TOO_LARGE') {
+          safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
+          return;
+        }
+
+        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       });
-
-      if (error.code === 'REQUEST_BODY_TOO_LARGE') {
-        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
-        return;
-      }
-
-      safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
-    });
   });
 
   server.on('close', () => {
