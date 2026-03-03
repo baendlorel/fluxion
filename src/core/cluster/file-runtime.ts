@@ -6,26 +6,21 @@ import type { FluxionHandler, NormalizedFluxionOptions } from '../types.js';
 
 const parsePathname = (dir: string, pathname: string) => {
   const parts = pathname.split('/');
+  if (parts.length === 0) {
+    $throw(`Invalid pathname: ${pathname}`);
+  }
+
   parts[0] = dir;
   const name = parts.at(-1) as string;
-  return { mjs: path.join(...parts), indexMjs: path.join(...parts, 'index.mjs'), filename: name };
+  return { rawPath: path.join(...parts), filename: name };
 };
 
 /**
  * ! Make sure `fullpath` exists before calling this function
  */
-const importHandler = async (
-  options: NormalizedFluxionOptions,
-  fullpath: string,
-  stat: fs.Stats,
-): Promise<FluxionHandler | undefined> => {
+const importHandler = async (fullpath: string, stat?: fs.Stats): Promise<FluxionHandler> => {
+  stat ??= fs.statSync(fullpath);
   const o = await import(`${fullpath}:${stat.mtimeMs}`);
-  if (Error.isError(o)) {
-    // todo 删除这里让它报错
-    // & Make it silent
-    options.logger.error('ImportHandlerFailed ' + o.message + '\n' + o.stack);
-    return undefined;
-  }
 
   if (typeof o.default === 'function') {
     return o.default as FluxionHandler;
@@ -34,7 +29,9 @@ const importHandler = async (
     return o.handler as FluxionHandler;
   }
 
-  return undefined;
+  $throw(
+    `Invalid JS Module '${fullpath}', make sure it has a default export or named export called "handler" which is a function`,
+  );
 };
 
 const replyStaticResources = <
@@ -44,62 +41,62 @@ const replyStaticResources = <
   req: InstanceType<Request>,
   res: InstanceType<Response> & { req: InstanceType<Request> },
   fullpath: string,
-  filename: string,
+  filename?: string,
 ): any => {
+  filename ??= path.basename(fullpath);
   // todo 流式返回静态资源文件，可能是html、css、js、图片等
 };
 
-export async function findHandler(options: NormalizedFluxionOptions, url: URL): Promise<FluxionHandler | string> {
+const findFromMjs = (fullpath: string): Promise<FluxionHandler> => {
+  const stat = fs.statSync(fullpath);
+  if (!stat.isFile()) {
+    $throw(`${path.dirname(fullpath)} is not a file`);
+  }
+  return importHandler(fullpath);
+};
+
+export async function findHandler(options: NormalizedFluxionOptions, url: URL): Promise<FluxionHandler> {
   if (cluster.isPrimary) {
     $throw('createFileRuntime should only be called in worker process');
   }
-
-  const rawPath = path.join(options.dir, url.pathname);
-  const { mjs, indexMjs, filename } = parsePathname(options.dir, url.pathname);
+  const { rawPath, filename } = parsePathname(options.dir, url.pathname);
 
   if (fs.existsSync(rawPath)) {
     const stat = fs.statSync(rawPath);
-    if (stat.isDirectory()) {
-      const rawPathAsIndexMjs = path.join(rawPath, 'index.mjs');
-      if (fs.existsSync(rawPathAsIndexMjs)) {
-        const handler = await importHandler(options, rawPathAsIndexMjs);
-        if (handler) {
-          return handler;
-        }
-      }
-
-      const rawPathAsIndexHtml = path.join(rawPath, 'index.html');
-      if (fs.existsSync(rawPathAsIndexHtml)) {
-        return (req, res) => replyStaticResources(req, res, rawPathAsIndexHtml, 'index.html');
-      }
-
-      return `${filename} is a directory, but has no valid index.mjs handler inside`;
-    }
-
     if (stat.isFile()) {
-      if (/\.mjs/i.test(rawPath)) {
-        const handler = await importHandler(options, rawPath, stat);
-        if (handler) {
-          return handler;
-        }
+      if (/\.mjs/i.test(filename)) {
+        return importHandler(rawPath, stat);
+      } else {
+        return (req, res) => replyStaticResources(req, res, rawPath);
       }
-      return (req, res) => replyStaticResources(req, res, rawPath, 'index.html');
     }
-    return `${filename} is not a file nor a directory`;
+
+    if (stat.isDirectory()) {
+      const mjsPath = path.join(rawPath, 'index.mjs');
+      if (fs.existsSync(mjsPath)) {
+        return findFromMjs(mjsPath);
+      }
+
+      const htmlPath = path.join(rawPath, 'index.html');
+      if (fs.existsSync(htmlPath)) {
+        return (req, res) => replyStaticResources(req, res, htmlPath, 'index.html');
+      }
+
+      $throw(`${filename} is a directory, but has no valid index.mjs/index.html inside`);
+    }
+
+    $throw(`${filename} is not a file nor a directory`);
   }
 
   const rawPathMjs = rawPath + '.mjs';
   if (fs.existsSync(rawPathMjs)) {
-    const stat = fs.statSync(rawPathMjs);
-    if (!stat.isFile()) {
-      return `${filename}.mjs is not a file`;
-    }
-    const handler = await importHandler(options, mjs);
-    if (handler) {
-      return handler;
-    }
-    return `${filename}.mjs has no valid handler export`;
+    return findFromMjs(rawPathMjs);
   }
 
-  return undefined;
+  const rawPathHtml = rawPath + '.html';
+  if (fs.existsSync(rawPathHtml)) {
+    return (req, res) => replyStaticResources(req, res, rawPathHtml);
+  }
+
+  $throw('Not Found');
 }
