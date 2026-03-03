@@ -6,7 +6,7 @@ import { getErrorMessage } from '@/common/logger.js';
 
 import { getRealIp } from './utils/headers.js';
 import { toURL } from './utils/request.js';
-import { safeSendJson } from './utils/send-json.js';
+import { safeSendJson } from './utils/respond.js';
 import { parseBody, type BodyPreview } from './utils/body.js';
 import { parseQuery } from './utils/query.js';
 import { $keys } from '@/common/native.js';
