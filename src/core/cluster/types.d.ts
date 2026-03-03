@@ -14,7 +14,7 @@ export interface PingMessage {
 
 export interface OptionsMessage {
   type: PrimaryAction.SendFluxionOptions;
-  fluxionOptions: NormalizedFluxionOptions;
+  options: NormalizedFluxionOptions;
 }
 
 export type PrimaryMessage = PingMessage | OptionsMessage;

@@ -21,13 +21,13 @@ export interface FluxionLogger {
   /**
    * [WARN] We assert that `fields` is an object or undefined.
    */
-  write(level: LogLevel, event: string, fields?: Record<string, unknown>): void;
-  info(event: string, fields?: Record<string, unknown>): void;
-  warn(event: string, fields?: Record<string, unknown>): void;
-  error(event: string, fields?: Record<string, unknown>): void;
-  succ(event: string, fields?: Record<string, unknown>): void;
-  debug(event: string, fields?: Record<string, unknown>): void;
-  verbose(event: string, fields?: Record<string, unknown>): void;
+  write(level: LogLevel, event: string, fields?: object): void;
+  info(event: string, fields?: object): void;
+  warn(event: string, fields?: object): void;
+  error(event: string, fields?: object): void;
+  succ(event: string, fields?: object): void;
+  debug(event: string, fields?: object): void;
+  verbose(event: string, fields?: object): void;
 }
 
 const safeStringify = (value: unknown): string => {

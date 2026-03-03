@@ -5,6 +5,7 @@
     "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "strict": true,
+    // "types": ["./src/global.d.ts"],
 
     "jsx": "react-jsx",
     "jsxImportSource": "kt.js",

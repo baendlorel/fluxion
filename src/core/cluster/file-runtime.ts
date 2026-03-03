@@ -1,8 +1,9 @@
-import http from 'node:http';
-import path from 'node:path';
-import cluster from 'node:cluster';
 import fs from 'node:fs';
-import type { FluxionHandler, NormalizedFluxionOptions } from '../types.js';
+import path from 'node:path';
+import http from 'node:http';
+import cluster from 'node:cluster';
+
+import type { FluxionHandler } from '../types.js';
 
 const parsePathname = (dir: string, pathname: string) => {
   const parts = pathname.split('/');
@@ -55,11 +56,11 @@ const findFromMjs = (fullpath: string): Promise<FluxionHandler> => {
   return importHandler(fullpath);
 };
 
-export async function findHandler(options: NormalizedFluxionOptions, url: URL): Promise<FluxionHandler> {
+export async function findHandler(url: URL): Promise<FluxionHandler> {
   if (cluster.isPrimary) {
     $throw('createFileRuntime should only be called in worker process');
   }
-  const { rawPath, filename } = parsePathname(options.dir, url.pathname);
+  const { rawPath, filename } = parsePathname(fluxion.dir, url.pathname);
 
   if (fs.existsSync(rawPath)) {
     const stat = fs.statSync(rawPath);

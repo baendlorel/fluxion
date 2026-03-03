@@ -11,10 +11,9 @@ import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
 import { createMetaApiHandler } from './meta-api.js';
+import { findHandler } from './file-runtime.js';
 
-export function createServer(options: NormalizedFluxionOptions): http.Server {
-  const { logger, maxRequestBytes } = options;
-
+export function createWorkerServer(): http.Server {
   const metaApiHandler = createMetaApiHandler();
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
@@ -72,11 +71,11 @@ export function createServer(options: NormalizedFluxionOptions): http.Server {
         return;
       }
 
-      const parsed = await parseBody(req, normalized.method, maxRequestBytes);
+      const parsed = await parseBody(req, normalized.method, fluxion.maxRequestBytes);
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      // todo 匹配url到精确的handler
+      const handler = await findHandler(url);
       const result = await Promise.try(handler, req, res, normalized);
       safeSendJson(res, result);
     } catch (error) {
@@ -89,26 +88,26 @@ export function createServer(options: NormalizedFluxionOptions): http.Server {
 
       if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
         safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
-        return;
+      } else {
+        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       }
-
-      safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
     }
   });
 
   server.on('close', () => {
     logger.info('ServerClosed', {
-      host: options.host,
-      port: options.port,
+      host: fluxion.host,
+      port: fluxion.port,
     });
   });
 
-  server.listen(options.port, options.host, () => {
+  server.listen(fluxion.port, fluxion.host, () => {
     logger.info('ServerStarted', {
-      host: options.host,
-      port: options.port,
+      pid: process.pid,
+      host: fluxion.host,
+      port: fluxion.port,
     });
-    logger.info('DynamicDirectory', { directory: options.dir });
+    logger.info('DynamicDirectory', { directory: fluxion.dir });
   });
 
   server.on('error', (error) => {

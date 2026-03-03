@@ -1,8 +1,10 @@
 import os from 'node:os';
 import cluster from 'node:cluster';
-import { NormalizedFluxionOptions } from '../types.js';
-import { WorkerMessage, WorkerState } from './types.js';
+
+import type { NormalizedFluxionOptions } from '../types.js';
+import type { WorkerMessage, WorkerState } from './types.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
+import { sendToWorker } from './communicate.js';
 
 export function createPrimary(options: NormalizedFluxionOptions) {
   if (!cluster.isPrimary) {
@@ -21,33 +23,31 @@ export function createPrimary(options: NormalizedFluxionOptions) {
     const workerInfo: WorkerState = { state: 'creating', instance: worker };
     workers.set(worker.id, workerInfo);
 
-    worker.on('message', (rawMessage: WorkerMessage) => {
-      if (!isWorkerMessage(rawMessage)) {
+    worker.on('message', (raw: WorkerMessage) => {
+      if (!isWorkerMessage(raw)) {
         return;
       }
 
-      if (rawMessage.type === WorkerAction.Pong) {
-        const rtt = Date.now() - rawMessage.sentAt;
-        logger.info(
-          `[primary ${process.pid}] pong from worker ${rawMessage.pid}, rtt=${rtt}ms, workerTime=${rawMessage.receivedAt}`,
-        );
+      if (raw.type === WorkerAction.Pong) {
+        const rtt = Date.now() - raw.sentAt;
+        logger.info(`[primary ${process.pid}] pong from worker ${raw.pid}, rtt=${rtt}ms, workerTime=${raw.receivedAt}`);
         return;
       }
 
-      if (rawMessage.type === WorkerAction.Ready) {
+      if (raw.type === WorkerAction.Ready) {
         // & only when worker is ready, we can send task to it
         workerInfo.state = 'ready';
-        logger.info(`[primary ${process.pid}] worker ${rawMessage.pid} is ready`);
+        logger.info(`[primary ${process.pid}] worker ${raw.pid} is ready`);
         return;
       }
 
-      if (rawMessage.type === WorkerAction.Created) {
+      if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
-        worker.send({ type: PrimaryAction.SendFluxionOptions, fluxionOptions });
+        sendToWorker(worker, { type: PrimaryAction.SendFluxionOptions, options });
         return;
       }
 
-      logger.info(`[primary ${process.pid}] unknown message=${rawMessage}`);
+      logger.info(`[primary ${process.pid}] unknown message=${raw}`);
     });
 
     worker.on('exit', (code, signal) => {
@@ -58,12 +58,6 @@ export function createPrimary(options: NormalizedFluxionOptions) {
     });
   };
 
-  // cluster.setupPrimary({
-  //   exec: process.argv[1],
-  //   args: process.argv.slice(2),
-  //   env: process.env,
-  //   silent: false,
-  // });
   for (let i = 0; i < workerCount; i++) {
     attachWorker(cluster.fork());
   }
