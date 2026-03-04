@@ -4,6 +4,7 @@ import http from 'node:http';
 import cluster from 'node:cluster';
 import { pathToFileURL } from 'node:url';
 
+import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import type { FluxionHandler } from '../types.js';
 import { fluxionOptions } from './global-state.js';
 
@@ -48,7 +49,37 @@ const replyStaticResources = <
   filename?: string,
 ): any => {
   filename ??= path.basename(fullpath);
-  // todo 流式返回静态资源文件，可能是html、css、js、图片等
+  const method = (req.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    res.statusCode = 405;
+    res.setHeader('Allow', 'GET, HEAD');
+    res.end();
+    return;
+  }
+
+  const stat = fs.statSync(fullpath);
+  if (!stat.isFile()) {
+    $throw(`${filename} is not a file`);
+  }
+
+  const extension = path.extname(filename).toLowerCase();
+  const contentType = STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+
+  res.statusCode = 200;
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Length', String(stat.size));
+
+  if (method === 'HEAD') {
+    res.end();
+    return;
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const stream = fs.createReadStream(fullpath);
+    stream.on('error', reject);
+    stream.on('end', resolve);
+    stream.pipe(res);
+  });
 };
 
 const findFromMjs = (fullpath: string): Promise<FluxionHandler> => {
