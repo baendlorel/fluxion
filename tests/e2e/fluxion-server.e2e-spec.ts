@@ -1,225 +1,317 @@
-import { once } from 'node:events';
-import fs from 'node:fs/promises';
-import http from 'node:http';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import net from 'node:net';
 import path from 'node:path';
 
 import axios, { type AxiosInstance } from 'axios';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { fluxion } from '@/core/fluxion.js';
+import { createTempDirectory, removeDirectory, waitFor, writeFile } from '../helpers/test-utils.js';
 
-import { closeServer, createTempDirectory, removeDirectory, sleep, waitFor, writeFile } from '../helpers/test-utils.js';
+interface RunningFluxionApp {
+  businessPort: number;
+  metaPort: number;
+  process: ChildProcessWithoutNullStreams;
+  businessClient: AxiosInstance;
+  metaClient: AxiosInstance;
+  logs: string[];
+  stop: () => Promise<void>;
+}
 
-async function startFluxion(dynamicDirectory: string): Promise<{ server: http.Server; client: AxiosInstance }> {
-  const server = fluxion({
-    dir: dynamicDirectory,
-    host: '127.0.0.1',
-    port: 0,
+const runningApps: RunningFluxionApp[] = [];
+const tempDirectories: string[] = [];
+const packageRoot = path.resolve(import.meta.dirname, '../..');
+const distEntry = path.join(packageRoot, 'dist', 'index.mjs');
+
+function spawnCommand(command: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Command failed: ${command} ${args.join(' ')}\n${output}`));
+    });
+  });
+}
+
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        server.close();
+        reject(new Error('Failed to resolve free port'));
+        return;
+      }
+      const { port } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+  });
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once('error', () => resolve(false));
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function getPortPair(): Promise<{ businessPort: number; metaPort: number }> {
+  for (let i = 0; i < 30; i++) {
+    const businessPort = await getFreePort();
+    const metaPort = businessPort + 1;
+    if (metaPort > 65535) {
+      continue;
+    }
+    if (await isPortFree(metaPort)) {
+      return { businessPort, metaPort };
+    }
+  }
+  throw new Error('Failed to allocate business/meta port pair');
+}
+
+async function startFluxionApp(options: {
+  dynamicDirectory: string;
+  businessPort: number;
+  metaPort?: number;
+  maxWorkerCount?: number;
+}): Promise<RunningFluxionApp> {
+  const appDirectory = await createTempDirectory('fluxion-e2e-app-');
+  tempDirectories.push(appDirectory);
+
+  const scriptPath = path.join(appDirectory, 'app.mjs');
+  const scriptLines = [
+    `import { fluxion } from ${JSON.stringify(distEntry)};`,
+    'fluxion({',
+    `  dir: ${JSON.stringify(options.dynamicDirectory)},`,
+    "  host: '127.0.0.1',",
+    `  port: ${options.businessPort},`,
+    options.metaPort === undefined ? '' : `  metaPort: ${options.metaPort},`,
+    options.maxWorkerCount === undefined
+      ? ''
+      : `  workerOptions: { maxWorkerCount: ${options.maxWorkerCount} },`,
+    '});',
+  ].filter((line) => line.length > 0);
+  await writeFile(scriptPath, scriptLines.join('\n'));
+
+  const child = spawn(process.execPath, [scriptPath], {
+    cwd: appDirectory,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  if (!server.listening) {
-    await once(server, 'listening');
-  }
+  const logs: string[] = [];
+  child.stdout.on('data', (chunk) => logs.push(chunk.toString()));
+  child.stderr.on('data', (chunk) => logs.push(chunk.toString()));
 
-  const address = server.address();
-  if (address === null || typeof address === 'string') {
-    $throw('Failed to resolve server address');
-  }
-
-  const baseURL = `http://127.0.0.1:${address.port}`;
-
-  const client = axios.create({
-    baseURL,
-    timeout: 2500,
+  const businessClient = axios.create({
+    baseURL: `http://127.0.0.1:${options.businessPort}`,
+    timeout: 5000,
     validateStatus: () => true,
     proxy: false,
   });
 
-  return { server, client };
+  const resolvedMetaPort = options.metaPort ?? options.businessPort + 1;
+  const metaClient = axios.create({
+    baseURL: `http://127.0.0.1:${resolvedMetaPort}`,
+    timeout: 5000,
+    validateStatus: () => true,
+    proxy: false,
+  });
+
+  const app: RunningFluxionApp = {
+    businessPort: options.businessPort,
+    metaPort: resolvedMetaPort,
+    process: child,
+    businessClient,
+    metaClient,
+    logs,
+    stop: async () => {
+      if (child.exitCode !== null || child.killed) {
+        return;
+      }
+      child.kill('SIGTERM');
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve();
+        }, 4000);
+        timer.unref();
+        child.once('exit', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    },
+  };
+
+  runningApps.push(app);
+
+  try {
+    await waitFor(async () => {
+      if (child.exitCode !== null) {
+        throw new Error(`Fluxion process exited early (code=${child.exitCode})\n${logs.join('')}`);
+      }
+      try {
+        const response = await metaClient.get('/_fluxion/healthz');
+        return response.status === 200 && response.data?.ok === true;
+      } catch {
+        return false;
+      }
+    }, 10000, 100);
+  } catch (error) {
+    await app.stop();
+    throw new Error(`Failed to start fluxion app: ${(error as Error).message}\n${logs.join('')}`);
+  }
+
+  return app;
 }
 
-describe('fluxion e2e', () => {
-  const tempDirectories: string[] = [];
-  const servers: http.Server[] = [];
-
-  beforeEach(() => {
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+describe('fluxion e2e (cluster runtime)', () => {
+  beforeAll(async () => {
+    await spawnCommand('pnpm', ['build'], packageRoot);
   });
 
   afterEach(async () => {
-    for (const server of servers.splice(0)) {
-      await closeServer(server);
+    for (const app of runningApps.splice(0)) {
+      await app.stop();
     }
 
-    for (const tempDirectory of tempDirectories.splice(0)) {
-      await removeDirectory(tempDirectory);
+    for (const directory of tempDirectories.splice(0)) {
+      await removeDirectory(directory);
     }
-
-    vi.restoreAllMocks();
   });
 
-  it('loads startup routes, serves static files, and exposes meta apis', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-startup-');
+  it('starts primary + workers and exposes worker telemetry on meta api', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-cluster-');
     tempDirectories.push(dynamicDirectory);
 
     await writeFile(
-      path.join(dynamicDirectory, 'aaa', 'bb', 'cc', 'index.mjs'),
-      "export default function handler(_req, res) { res.end('startup-ok'); }",
+      path.join(dynamicDirectory, 'hello.mjs'),
+      "export default function handler() { return { ok: true, workerPid: process.pid }; }",
     );
-    await writeFile(path.join(dynamicDirectory, 'aaa', 'public', 'app.js'), "console.log('startup');");
 
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
-
-    const nestedResponse = await client.get('/aaa/bb/cc');
-    expect(nestedResponse.status).toBe(200);
-    expect(nestedResponse.data).toBe('startup-ok');
-
-    const staticResponse = await client.get('/aaa/public/app.js');
-    expect(staticResponse.status).toBe(200);
-    expect(staticResponse.data).toContain("console.log('startup')");
-
-    const routesResponse = await client.get('/_fluxion/routes');
-    expect(routesResponse.status).toBe(200);
-    expect(routesResponse.data).toMatchObject({
-      routes: {
-        handlers: [
-          {
-            route: '/aaa/bb/cc',
-            file: 'aaa/bb/cc/index.mjs',
-          },
-        ],
-      },
+    const { businessPort, metaPort } = await getPortPair();
+    const app = await startFluxionApp({
+      dynamicDirectory,
+      businessPort,
+      metaPort,
+      maxWorkerCount: 2,
     });
-    expect(
-      routesResponse.data.routes.staticFiles.some(
-        (item: { route: string; file: string }) =>
-          item.route === '/aaa/public/app.js' && item.file === 'aaa/public/app.js',
-      ),
-    ).toBe(true);
 
-    const healthzResponse = await client.get('/_fluxion/healthz');
+    const healthzResponse = await app.metaClient.get('/_fluxion/healthz');
+    expect(healthzResponse.status).toBe(200);
+    expect(healthzResponse.data?.ok).toBe(true);
+    expect(healthzResponse.data?.role).toBe('primary');
+
+    await waitFor(async () => {
+      const response = await app.metaClient.get('/_fluxion/workers');
+      const workers = response.data?.workers?.workers;
+      return (
+        Array.isArray(workers) &&
+        workers.length === 2 &&
+        workers.every((worker: any) => worker.state === 'ready' && worker.stats !== null)
+      );
+    }, 12000, 200);
+
+    const workersResponse = await app.metaClient.get('/_fluxion/workers');
+    const workers = workersResponse.data.workers.workers;
+    expect(workersResponse.status).toBe(200);
+    expect(workersResponse.data.workers.metaPort).toBe(metaPort);
+    expect(workers.every((worker: any) => worker.stats.cpu.percent >= 0)).toBe(true);
+    expect(workers.every((worker: any) => worker.stats.memory.rss > 0)).toBe(true);
+
+    const businessResponse = await app.businessClient.get('/hello');
+    expect(businessResponse.status).toBe(200);
+    expect(businessResponse.data.ok).toBe(true);
+    expect(typeof businessResponse.data.workerPid).toBe('number');
+    expect(businessResponse.data.workerPid).not.toBe(healthzResponse.data.pid);
+  });
+
+  it('uses default metaPort = port + 1 and redirects meta path usage on business port', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-meta-default-');
+    tempDirectories.push(dynamicDirectory);
+
+    await writeFile(path.join(dynamicDirectory, 'ping.mjs'), "export default function handler() { return { pong: true }; }");
+
+    const { businessPort, metaPort } = await getPortPair();
+    const app = await startFluxionApp({
+      dynamicDirectory,
+      businessPort,
+      maxWorkerCount: 1,
+    });
+
+    expect(app.metaPort).toBe(metaPort);
+
+    const healthzResponse = await app.metaClient.get('/_fluxion/healthz');
     expect(healthzResponse.status).toBe(200);
     expect(healthzResponse.data?.ok).toBe(true);
 
-    const workersResponse = await client.get('/_fluxion/workers');
-    expect(workersResponse.status).toBe(200);
-    expect(workersResponse.data).toMatchObject({
-      workers: {
-        dir: dynamicDirectory,
-      },
-    });
-    expect(Array.isArray(workersResponse.data.workers?.workers)).toBe(true);
-    expect(workersResponse.data.workers?.workers.length).toBeGreaterThanOrEqual(1);
+    const wrongPortMetaResponse = await app.businessClient.get('/_fluxion/healthz');
+    expect(wrongPortMetaResponse.status).toBe(404);
+    expect(wrongPortMetaResponse.data?.message).toContain(String(metaPort));
 
-    const missingRouteResponse = await client.get('/missing/path');
-    expect(missingRouteResponse.status).toBe(404);
-    expect(missingRouteResponse.data).toMatchObject({
-      message: 'Route not found',
-    });
+    const pingResponse = await app.businessClient.get('/ping');
+    expect(pingResponse.status).toBe(200);
+    expect(pingResponse.data).toMatchObject({ pong: true });
   });
 
-  it('reflects route add and remove by file changes', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-add-remove-');
+  it('serves static files with GET/HEAD and rejects unsupported methods', async () => {
+    const dynamicDirectory = await createTempDirectory('fluxion-e2e-static-');
     tempDirectories.push(dynamicDirectory);
 
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
+    await writeFile(path.join(dynamicDirectory, 'assets', 'app.js'), "console.log('static-ok');");
 
-    await writeFile(
-      path.join(dynamicDirectory, 'bbb', 'hello.mjs'),
-      "export default function handler(_req, res) { res.end('watch-mounted'); }",
-    );
-
-    await waitFor(async () => {
-      const response = await client.get('/bbb/hello');
-      return response.status === 200 && response.data === 'watch-mounted';
+    const { businessPort, metaPort } = await getPortPair();
+    const app = await startFluxionApp({
+      dynamicDirectory,
+      businessPort,
+      metaPort,
+      maxWorkerCount: 1,
     });
 
-    const routesAfterAdd = await client.get('/_fluxion/routes');
-    expect(
-      routesAfterAdd.data.routes.handlers.some(
-        (item: { route: string; file: string }) => item.route === '/bbb/hello' && item.file === 'bbb/hello.mjs',
-      ),
-    ).toBe(true);
+    const getResponse = await app.businessClient.get('/assets/app.js');
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.data).toContain('static-ok');
+    expect(String(getResponse.headers['content-type'])).toContain('text/javascript');
 
-    await fs.rm(path.join(dynamicDirectory, 'bbb', 'hello.mjs'), { force: true });
+    const headResponse = await app.businessClient.head('/assets/app.js');
+    expect(headResponse.status).toBe(200);
+    expect(Number(headResponse.headers['content-length'])).toBeGreaterThan(0);
 
-    await waitFor(async () => {
-      const response = await client.get('/bbb/hello');
-      return response.status === 404 && response.data?.message === 'Route not found';
-    });
-
-    const routesAfterRemove = await client.get('/_fluxion/routes');
-    expect(routesAfterRemove.data.routes.handlers.some((item: { route: string }) => item.route === '/bbb/hello')).toBe(
-      false,
-    );
-  });
-
-  it('hot reloads mjs handler by mtime+size and returns 500 for invalid default export', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-reload-');
-    tempDirectories.push(dynamicDirectory);
-
-    const handlerFile = path.join(dynamicDirectory, 'ccc', 'task.mjs');
-
-    await writeFile(handlerFile, "export default function handler(_req, res) { res.end('v1'); }");
-
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
-
-    const firstResponse = await client.get('/ccc/task');
-    expect(firstResponse.status).toBe(200);
-    expect(firstResponse.data).toBe('v1');
-
-    await sleep(20);
-    await writeFile(handlerFile, "export default function handler(_req, res) { res.end('v2-hot'); }");
-
-    await waitFor(async () => {
-      const response = await client.get('/ccc/task');
-      return response.status === 200 && response.data === 'v2-hot';
-    });
-
-    await sleep(20);
-    await writeFile(handlerFile, 'export default { broken: true };');
-
-    await waitFor(async () => {
-      const response = await client.get('/ccc/task');
-      return response.status === 500 && response.data?.message === 'Internal Server Error';
-    });
-  });
-
-  it('blocks routing for underscore-prefixed directories', async () => {
-    const dynamicDirectory = await createTempDirectory('fluxion-e2e-underscore-');
-    tempDirectories.push(dynamicDirectory);
-
-    await writeFile(
-      path.join(dynamicDirectory, '_lib', 'secret.mjs'),
-      "export default function handler(_req, res) { res.end('hidden'); }",
-    );
-    await writeFile(path.join(dynamicDirectory, '_lib', 'tool.js'), "console.log('hidden-tool');");
-    await writeFile(
-      path.join(dynamicDirectory, 'public', 'ping.mjs'),
-      "export default function handler(_req, res) { res.end('public-ok'); }",
-    );
-
-    const { server, client } = await startFluxion(dynamicDirectory);
-    servers.push(server);
-
-    const publicResponse = await client.get('/public/ping');
-    expect(publicResponse.status).toBe(200);
-    expect(publicResponse.data).toBe('public-ok');
-
-    const hiddenHandlerResponse = await client.get('/_lib/secret');
-    expect(hiddenHandlerResponse.status).toBe(404);
-
-    const hiddenStaticResponse = await client.get('/_lib/tool.js');
-    expect(hiddenStaticResponse.status).toBe(404);
-
-    const routesResponse = await client.get('/_fluxion/routes');
-    const hasHiddenRoute =
-      routesResponse.data.routes.handlers.some((item: { file: string }) => item.file.startsWith('_lib/')) ||
-      routesResponse.data.routes.staticFiles.some((item: { file: string }) => item.file.startsWith('_lib/'));
-
-    expect(hasHiddenRoute).toBe(false);
+    const postResponse = await app.businessClient.post('/assets/app.js', { a: 1 });
+    expect(postResponse.status).toBe(405);
+    expect(postResponse.headers['allow']).toBe('GET, HEAD');
   });
 });
