@@ -1,3 +1,4 @@
+import path from 'node:path';
 import cluster from 'node:cluster';
 import type { PrimaryMessage } from './types.js';
 
@@ -12,7 +13,7 @@ const inject = async () => {
   Reflect.set(globalThis, INJECTION_KEY, o);
   for (let i = 0; i < fluxionOptions.injections.length; i++) {
     const { name, modulePath } = fluxionOptions.injections[i];
-    const factory = await import(modulePath).then((m) => m.default);
+    const factory = await import(path.join(fluxionOptions.moduleDir, modulePath)).then((m) => m.default);
     const instance = await Promise.try(factory);
     o[name] = instance;
   }

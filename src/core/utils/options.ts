@@ -39,12 +39,21 @@ function expectLoggerOption(o: InjectionConfig | LoggerOption) {
 export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOptions {
   expect.isObject(options, 'FluxionOptions must be an object');
 
-  let { dir, host, port, metaPort, injections = [], workerOptions = {}, maxRequestBytes = 8_000_000 } =
-    options as FluxionOptions;
+  let {
+    dir,
+    host,
+    port,
+    metaPort,
+    injections = [],
+    moduleDir = process.cwd(),
+    workerOptions = {},
+    maxRequestBytes = 8_000_000,
+  } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
 
   expect.isString(dir, 'FluxionOptions.dir must be a string');
+  expect.isString(moduleDir, 'FluxionOptions.moduleDir must be a string');
   expect.isString(host, 'FluxionOptions.host must be a string');
   expect.isPositiveInteger(port, 'FluxionOptions.port must be a positive integer');
   if (port > 65535) {
@@ -72,6 +81,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     port,
     metaPort,
     injections,
+    moduleDir,
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
     logger,

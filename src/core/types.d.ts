@@ -94,7 +94,18 @@ export interface FluxionOptions {
    */
   metaPort?: number;
 
+  /**
+   * Injections will be injected into `globalThis[Symbol.for('fluxion-injections')]`;
+   * - **name**: Name that you can use to refer to this injected dependency in your handlers.
+   * - **modulePath**: The `.mjs` path that exports the factory function to create the dependency instance.
+   */
   injections?: InjectionConfig[];
+
+  /**
+   * Inject Path that will be used like `path.join(moduleDir,modulepath)`
+   * - default is `process.cwd()`
+   */
+  moduleDir?: string;
 
   /**
    * Base worker runtime option overrides.
@@ -120,6 +131,7 @@ export interface NormalizedFluxionOptions {
   port: number;
   metaPort: number;
   injections: InjectionConfig[];
+  moduleDir: string;
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption | InjectionConfig;
