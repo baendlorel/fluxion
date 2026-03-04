@@ -1,9 +1,10 @@
 import http from 'node:http';
 
-import type { NormalizedRequest, NormalizedFluxionOptions } from '../types.js';
+import type { NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
 import { HttpCode } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
+import { fluxionOptions, logger } from './global-state.js';
 
 import { getRealIp } from '../utils/headers.js';
 import { toURL } from '../utils/request.js';
@@ -13,9 +14,8 @@ import { parseQuery } from '../utils/query.js';
 import { createMetaApiHandler } from './meta-api.js';
 import { findHandler } from './file-runtime.js';
 
-export function createWorkerServer(options: NormalizedFluxionOptions): http.Server {
+export function createWorkerServer(): http.Server {
   const metaApiHandler = createMetaApiHandler();
-  const { logger } = options;
 
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
@@ -73,7 +73,7 @@ export function createWorkerServer(options: NormalizedFluxionOptions): http.Serv
         return;
       }
 
-      const parsed = await parseBody(req, normalized.method, options.maxRequestBytes);
+      const parsed = await parseBody(req, normalized.method, fluxionOptions.maxRequestBytes);
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
@@ -98,18 +98,18 @@ export function createWorkerServer(options: NormalizedFluxionOptions): http.Serv
 
   server.on('close', () => {
     logger.info('ServerClosed', {
-      host: options.host,
-      port: options.port,
+      host: fluxionOptions.host,
+      port: fluxionOptions.port,
     });
   });
 
-  server.listen(options.port, options.host, () => {
+  server.listen(fluxionOptions.port, fluxionOptions.host, () => {
     logger.info('ServerStarted', {
       pid: process.pid,
-      host: options.host,
-      port: options.port,
+      host: fluxionOptions.host,
+      port: fluxionOptions.port,
     });
-    logger.info('DynamicDirectory', { directory: options.dir });
+    logger.info('DynamicDirectory', { directory: fluxionOptions.dir });
   });
 
   server.on('error', (error) => {
