@@ -1,8 +1,8 @@
-import path from 'node:path';
 import cluster from 'node:cluster';
 import type { PrimaryMessage } from './types.js';
 
 import { getErrorMessage } from '@/common/logger.js';
+import { loadFunction } from '@/common/injector.js';
 import { logger, fluxionOptions } from './global-state.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
 import { sendToPrimary } from './communicate.js';
@@ -12,10 +12,10 @@ const inject = async () => {
   const o = {} as any;
   Reflect.set(globalThis, INJECTION_KEY, o);
   for (let i = 0; i < fluxionOptions.injections.length; i++) {
-    const { name, modulePath } = fluxionOptions.injections[i];
-    const factory = await import(path.join(fluxionOptions.moduleDir, modulePath)).then((m) => m.default);
+    const injection = fluxionOptions.injections[i];
+    const factory = await loadFunction(injection);
     const instance = await Promise.try(factory);
-    o[name] = instance;
+    o[injection.name] = instance;
   }
   logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
 };
