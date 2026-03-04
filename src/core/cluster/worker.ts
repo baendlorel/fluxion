@@ -19,27 +19,19 @@ const inject = async () => {
   logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
 };
 
-export async function initWorker() {
+export function initWorker() {
   if (cluster.isPrimary) {
     $throw('createWorker should only be called in worker process');
   }
 
   // Send this to get fluxion options from primary process, and then start the server
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
+  inject();
+  createWorkerServer();
+  sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
 
-  process.on('message', async (raw: PrimaryMessage) => {
+  process.on('message', (raw: PrimaryMessage) => {
     if (!isPrimaryMessage(raw)) {
-      return;
-    }
-
-    if (raw.type === PrimaryAction.SendFluxionOptions) {
-      // todo 这里也许不需要，因为顶层fluxion函数加载的配置一定是一样的，这里不需要再加载一遍
-      const logger = await createLogger(raw.options.logger);
-      logger.info(`[worker ${process.pid}] received SendFluxionOptions`, raw);
-      initializeGlobalState(raw.options, logger);
-      inject();
-      createWorkerServer();
-      sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
       return;
     }
 

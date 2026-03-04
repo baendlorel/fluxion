@@ -12,12 +12,7 @@ export interface PingMessage {
   sentAt: number;
 }
 
-export interface OptionsMessage {
-  type: PrimaryAction.SendFluxionOptions;
-  options: NormalizedFluxionOptions;
-}
-
-export type PrimaryMessage = PingMessage | OptionsMessage;
+export type PrimaryMessage = PingMessage;
 
 export interface CreatedMessage {
   type: WorkerAction.Created;

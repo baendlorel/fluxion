@@ -43,7 +43,6 @@ export function initPrimary() {
 
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
-        sendToWorker(worker, { type: PrimaryAction.SendFluxionOptions, options: fluxionOptions });
         return;
       }
 

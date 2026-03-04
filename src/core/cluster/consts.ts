@@ -7,11 +7,6 @@ export const enum PrimaryAction {
    * Health check message, the worker should respond with Pong and the latency information
    */
   Ping = 100,
-
-  /**
-   * Send fluxion options to worker
-   */
-  SendFluxionOptions,
 }
 
 export const enum WorkerAction {
@@ -32,8 +27,7 @@ export const enum WorkerAction {
   Pong,
 }
 
-export const isPrimaryMessage = (v: PrimaryMessage): v is PrimaryMessage =>
-  [PrimaryAction.Ping, PrimaryAction.SendFluxionOptions].includes(v?.type);
+export const isPrimaryMessage = (v: PrimaryMessage): v is PrimaryMessage => [PrimaryAction.Ping].includes(v?.type);
 
 export const isWorkerMessage = (v: WorkerMessage): v is WorkerMessage =>
   [WorkerAction.Pong, WorkerAction.Created, WorkerAction.Ready].includes(v?.type);
