@@ -5,7 +5,7 @@ import cluster from 'node:cluster';
 import { pathToFileURL } from 'node:url';
 
 import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
-import type { FluxionHandler } from '../types.js';
+import type { FluxionHandler, NormalizedRequest } from '../types.js';
 import { fluxionOptions } from './global-state.js';
 
 const parsePathname = (dir: string, pathname: string) => {
@@ -45,12 +45,12 @@ const replyStaticResources = <
 >(
   req: InstanceType<Request>,
   res: InstanceType<Response> & { req: InstanceType<Request> },
+  normalized: NormalizedRequest,
   fullpath: string,
   filename?: string,
 ): any => {
   filename ??= path.basename(fullpath);
-  const method = (req.method ?? 'GET').toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD') {
+  if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
     res.statusCode = 405;
     res.setHeader('Allow', 'GET, HEAD');
     res.end();
@@ -69,7 +69,7 @@ const replyStaticResources = <
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', String(stat.size));
 
-  if (method === 'HEAD') {
+  if (normalized.method === 'HEAD') {
     res.end();
     return;
   }
@@ -102,7 +102,7 @@ export async function findHandler(url: URL): Promise<FluxionHandler> {
       if (/\.mjs/i.test(filename)) {
         return importHandler(rawPath, stat);
       } else {
-        return (req, res) => replyStaticResources(req, res, rawPath);
+        return (req, res, normalized) => replyStaticResources(req, res, normalized, rawPath);
       }
     }
 
@@ -114,7 +114,7 @@ export async function findHandler(url: URL): Promise<FluxionHandler> {
 
       const htmlPath = path.join(rawPath, 'index.html');
       if (fs.existsSync(htmlPath)) {
-        return (req, res) => replyStaticResources(req, res, htmlPath, 'index.html');
+        return (req, res, normalized) => replyStaticResources(req, res, normalized, htmlPath, 'index.html');
       }
 
       $throw(`${filename} is a directory, but has no valid index.mjs/index.html inside`);
@@ -130,7 +130,7 @@ export async function findHandler(url: URL): Promise<FluxionHandler> {
 
   const rawPathHtml = rawPath + '.html';
   if (fs.existsSync(rawPathHtml)) {
-    return (req, res) => replyStaticResources(req, res, rawPathHtml);
+    return (req, res, normalized) => replyStaticResources(req, res, normalized, rawPathHtml);
   }
 
   $throw('Not Found');
