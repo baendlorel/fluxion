@@ -1,9 +1,9 @@
 import chalk from 'chalk';
-import type { otherstring } from '@/global.js';
-import type { InjectionConfig } from '@/core/types.js';
+import type { otherstring, InjectionConfig } from '@/global.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
+import { loadFunction } from './injector.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
 
@@ -50,34 +50,36 @@ const ColoredLevels: Record<LogLevel, string> = {
 };
 const TimestampColor = chalk.hex('#166534');
 
+export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
+  const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
+
+  const timestamp = TimestampColor(`[${rawTimestamp}]`);
+  const level = ColoredLevels[rawLevel] ?? rawLevel;
+  const body = rawMessage ?? rawEvent;
+  const fieldsText = $keys(fields).length > 0 ? ` ${chalk.dim(safeStringify(fields))}` : '';
+
+  console.log(`${timestamp} ${level} ${body}${fieldsText}`);
+};
+
 /**
  * & Logger Options here is checked by normalizeOptions function.
  */
-function resolveLoggerSink(option: LoggerOption | undefined): LoggerSink {
+async function resolveLoggerSink(option: LoggerOption | undefined): Promise<LoggerSink> {
   if (option === undefined || option === 'one-line') {
-    return (entry: LogEntry) => {
-      const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
-
-      const timestamp = TimestampColor(`[${rawTimestamp}]`);
-      const level = ColoredLevels[rawLevel] ?? rawLevel;
-      const body = rawMessage ?? rawEvent;
-      const fieldsText = $keys(fields).length > 0 ? ` ${chalk.dim(safeStringify(fields))}` : '';
-
-      console.log(`${timestamp} ${level} ${body}${fieldsText}`);
-    };
+    return oneLineLogger;
   }
 
   if (option === 'json-line') {
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  $throw('Invalid logger option: expected function | "one-line" | "json-line"');
+  return loadFunction(option) as Promise<LoggerSink>;
 }
 
-export function createLogger(option: LoggerOption | undefined = 'one-line'): FluxionLogger {
-  const sink = resolveLoggerSink(option);
+export async function createLogger(option: LoggerOption | undefined = 'one-line'): Promise<FluxionLogger> {
+  const sink = await resolveLoggerSink(option);
 
-  return {
+  const logger: FluxionLogger = {
     write(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
       const entry: LogEntry = {
         ...fields,
@@ -111,6 +113,8 @@ export function createLogger(option: LoggerOption | undefined = 'one-line'): Flu
       this.write('VERBOSE', event, fields);
     },
   };
+
+  return logger;
 }
 
 /**

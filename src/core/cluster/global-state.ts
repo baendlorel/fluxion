@@ -1,10 +1,10 @@
-import { createLogger, type FluxionLogger } from '@/common/logger.js';
+import type { FluxionLogger } from '@/common/logger.js';
 import { NormalizedFluxionOptions } from '../types.js';
 
-export let logger: FluxionLogger = createLogger('one-line');
-export let fluxionOptions: NormalizedFluxionOptions = {} as any;
+export let logger: FluxionLogger = null as any;
+export let fluxionOptions: NormalizedFluxionOptions = null as any;
 
-export const initializeGlobalState = (options: NormalizedFluxionOptions) => {
-  fluxionOptions = options;
-  logger = options.logger;
+export const initializeGlobalState = (_options: NormalizedFluxionOptions, _logger: FluxionLogger) => {
+  fluxionOptions = _options;
+  logger = _logger;
 };

@@ -1,19 +1,17 @@
 import os from 'node:os';
 import cluster from 'node:cluster';
-import type { NormalizedFluxionOptions } from '../types.js';
 import type { WorkerMessage, WorkerState } from './types.js';
+import { fluxionOptions, logger } from './global-state.js';
 
-import { initializeGlobalState } from './global-state.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 
-export function createPrimary(options: NormalizedFluxionOptions) {
+export function createPrimary() {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }
-  initializeGlobalState(options);
 
-  const { workerOptions, logger } = options;
+  const { workerOptions } = fluxionOptions;
   const cpuCount = Math.max(1, os.cpus().length);
   const workerCount = Math.max(1, Math.min(workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount));
 
@@ -45,7 +43,7 @@ export function createPrimary(options: NormalizedFluxionOptions) {
 
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
-        sendToWorker(worker, { type: PrimaryAction.SendFluxionOptions, options });
+        sendToWorker(worker, { type: PrimaryAction.SendFluxionOptions, options: fluxionOptions });
         return;
       }
 
