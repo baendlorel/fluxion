@@ -4,7 +4,7 @@ import { FluxionOptions } from './core/types.js';
 export { fluxion, type FluxionOptions as FluxionOptions };
 
 if (process.env.NODE_ENV !== 'production') {
-  window.$throw = (message: string) => {
+  globalThis.$throw = (message: string) => {
     throw new Error('[fluxion error]' + message);
   };
   fluxion({

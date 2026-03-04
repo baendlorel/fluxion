@@ -6,7 +6,7 @@ import { fluxionOptions, logger } from './global-state.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 
-export function createPrimary() {
+export function initPrimary() {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }
