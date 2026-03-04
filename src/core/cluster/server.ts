@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import type { NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
-import { HttpCode } from '@/common/consts.js';
+import { HttpCode, META_PREFIX } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
 import { fluxionOptions, logger } from './global-state.js';
 
@@ -11,12 +11,9 @@ import { toURL } from '../utils/request.js';
 import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
-import { createMetaApiHandler } from './meta-api.js';
 import { findHandler } from './file-runtime.js';
 
 export function createWorkerServer(): http.Server {
-  const metaApiHandler = createMetaApiHandler();
-
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
@@ -68,8 +65,8 @@ export function createWorkerServer(): http.Server {
 
     // * Start request handling
     try {
-      const isMetaApiHandled = await metaApiHandler(req, res, normalized);
-      if (isMetaApiHandled) {
+      if (normalized.url.pathname.startsWith(META_PREFIX + '/')) {
+        safeSendJson(res, { message: `Meta APIs are available on port ${fluxionOptions.metaPort}` }, HttpCode.NotFound);
         return;
       }
 

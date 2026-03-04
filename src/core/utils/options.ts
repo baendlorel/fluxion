@@ -1,8 +1,9 @@
 import fs, { existsSync } from 'node:fs';
 import type { LoggerOption } from '@/common/logger.js';
+import type { InjectionConfig } from '@/common/types.js';
 import { expect } from '@/common/expect.js';
 
-import type { WorkerOptions, FluxionOptions, InjectionConfig, NormalizedFluxionOptions } from '../types.js';
+import type { WorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
 
 /**
  * Resolves runtime options with framework defaults.
@@ -38,13 +39,25 @@ function expectLoggerOption(o: InjectionConfig | LoggerOption) {
 export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOptions {
   expect.isObject(options, 'FluxionOptions must be an object');
 
-  let { dir, host, port, injections = [], workerOptions = {}, maxRequestBytes = 8_000_000 } = options as FluxionOptions;
+  let { dir, host, port, metaPort, injections = [], workerOptions = {}, maxRequestBytes = 8_000_000 } =
+    options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
 
   expect.isString(dir, 'FluxionOptions.dir must be a string');
   expect.isString(host, 'FluxionOptions.host must be a string');
   expect.isPositiveInteger(port, 'FluxionOptions.port must be a positive integer');
+  if (port > 65535) {
+    $throw('FluxionOptions.port must be less than or equal to 65535');
+  }
+  metaPort ??= port + 1;
+  expect.isPositiveInteger(metaPort, 'FluxionOptions.metaPort must be a positive integer');
+  if (metaPort > 65535) {
+    $throw('FluxionOptions.metaPort must be less than or equal to 65535');
+  }
+  if (metaPort === port) {
+    $throw('FluxionOptions.metaPort must be different from FluxionOptions.port');
+  }
   expect.isObjectArray<InjectionConfig>(injections, 'FluxionOptions.injections must be an array of objects');
   expect.isObject(workerOptions, 'FluxionOptions.workerOptions must be an object');
   expect.isPositiveInteger(maxRequestBytes, 'FluxionOptions.maxRequestBytes must be a positive integer');
@@ -57,6 +70,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     dir,
     host,
     port,
+    metaPort,
     injections,
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,

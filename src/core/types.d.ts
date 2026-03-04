@@ -1,6 +1,6 @@
 import type http from 'node:http';
-import type { InjectionConfig } from '@/global.js';
-import type { LoggerOption } from '@/common/logger.ts';
+import type { InjectionConfig } from '@/common/types.js';
+import type { LoggerOption } from '@/common/logger.js';
 
 export interface NormalizedRequest {
   method: string;
@@ -88,6 +88,12 @@ export interface FluxionOptions {
 
   port: number;
 
+  /**
+   * Port listened by primary process for meta APIs.
+   * Defaults to `port + 1`.
+   */
+  metaPort?: number;
+
   injections?: InjectionConfig[];
 
   /**
@@ -112,6 +118,7 @@ export interface NormalizedFluxionOptions {
   dir: string;
   host: string;
   port: number;
+  metaPort: number;
   injections: InjectionConfig[];
   workerOptions: WorkerOptions;
   maxRequestBytes: number;

@@ -1,4 +1,3 @@
-import http from 'node:http';
 import type { FluxionOptions } from './types.js';
 
 import { createLogger } from '@/common/logger.js';

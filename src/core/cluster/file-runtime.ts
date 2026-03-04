@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import cluster from 'node:cluster';
+import { pathToFileURL } from 'node:url';
 
 import type { FluxionHandler } from '../types.js';
+import { fluxionOptions } from './global-state.js';
 
 const parsePathname = (dir: string, pathname: string) => {
   const parts = pathname.split('/');
@@ -21,7 +23,8 @@ const parsePathname = (dir: string, pathname: string) => {
  */
 const importHandler = async (fullpath: string, stat?: fs.Stats): Promise<FluxionHandler> => {
   stat ??= fs.statSync(fullpath);
-  const o = await import(`${fullpath}:${stat.mtimeMs}`);
+  const source = `${pathToFileURL(fullpath).href}?v=${stat.mtimeMs}:${stat.size}`;
+  const o = await import(source);
 
   if (typeof o.default === 'function') {
     return o.default as FluxionHandler;
@@ -60,8 +63,7 @@ export async function findHandler(url: URL): Promise<FluxionHandler> {
   if (cluster.isPrimary) {
     $throw('createFileRuntime should only be called in worker process');
   }
-  // todo 改为使用全局状态？
-  const { rawPath, filename } = parsePathname(fluxion.dir, url.pathname);
+  const { rawPath, filename } = parsePathname(fluxionOptions.dir, url.pathname);
 
   if (fs.existsSync(rawPath)) {
     const stat = fs.statSync(rawPath);

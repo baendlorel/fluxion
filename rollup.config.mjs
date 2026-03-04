@@ -25,7 +25,7 @@ export default async (_commandLineArgs) => {
         },
       ],
       plugins: [
-        typescript({ tsconfig: './tsconfig.json' }),
+        typescript({ tsconfig: './tsconfig.build.json' }),
         resolve(),
         json(),
         commonjs(),
@@ -37,7 +37,7 @@ export default async (_commandLineArgs) => {
     {
       input: path.join(libPath, 'src', 'index.ts'),
       output: [{ file: path.join(libPath, 'dist', 'index.d.ts'), format: 'es' }],
-      plugins: [dts({ tsconfig: './tsconfig.json' })],
+      plugins: [dts({ tsconfig: './tsconfig.build.json' })],
       external: [/^node:/],
     },
   ];

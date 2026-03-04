@@ -1,4 +1,4 @@
-import { InjectionConfig } from '@/global.js';
+import type { InjectionConfig } from '@/common/types.js';
 
 export function loadFunction(config: InjectionConfig): Promise<Function> {
   return import(config.modulePath).then((m) => {

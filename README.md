@@ -166,8 +166,16 @@ Main `fluxion({...})` options:
 - `dir`: dynamic directory (handler root)
 - `host`: listen host
 - `port`: listen port
+- `metaPort`: primary meta API port (defaults to `port + 1`)
 - `maxRequestBytes`: max request body size (returns 413 when exceeded)
 - `logger`: `one-line` / `json-line` / custom function
+
+## Meta APIs
+
+Meta APIs are served by the primary process on `metaPort`:
+
+- `GET /_fluxion/healthz`
+- `GET /_fluxion/workers` (worker status + cpu/memory stats)
 
 ## Important
 

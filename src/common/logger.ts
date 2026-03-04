@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { otherstring, InjectionConfig } from '@/global.js';
+import type { otherstring, InjectionConfig } from '@/common/types.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
