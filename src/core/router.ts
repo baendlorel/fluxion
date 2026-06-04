@@ -1,5 +1,6 @@
 import type { FluxionLogger } from '@/common/logger.js';
 import type { FluxionHandler } from './types.js';
+import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -13,8 +14,49 @@ export class FluxtionRouter {
     this.logger = options.logger;
   }
 
-  // TODO generate a handler for returning a static file with proper content-type based on the file extension
-  staticResource(filepath: string): FluxionHandler {}
+  makeStaticResource(filepath: string): FluxionHandler {
+    const fullPath = path.join(this.dir, filepath);
+    return async (normalized, _req, res) => {
+      if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
+        res.statusCode = 405;
+        res.setHeader('Allow', 'GET, HEAD');
+        res.end();
+        return;
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        res.statusCode = 404;
+        res.end('Not Found');
+        return;
+      }
+
+      const stat = fs.statSync(fullPath);
+      if (!stat.isFile()) {
+        res.statusCode = 404;
+        res.end('Not Found');
+        return;
+      }
+
+      const extension = path.extname(filepath).toLowerCase();
+      const contentType = STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', String(stat.size));
+
+      if (normalized.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
+      return new Promise<void>((resolve, reject) => {
+        const stream = fs.createReadStream(fullPath);
+        stream.on('error', reject);
+        stream.on('end', resolve);
+        stream.pipe(res);
+      });
+    };
+  }
 
   /**
    * 1. Check if the path exists, if not, delete the handler;
@@ -51,7 +93,7 @@ export class FluxtionRouter {
       }
 
       // register as static resource
-      this.handlers.set(filepath, this.staticResource(filepath));
+      this.handlers.set(filepath, this.makeStaticResource(filepath));
     }
   }
 }
