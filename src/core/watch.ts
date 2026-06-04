@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import type { FluxionLogger } from '@/common/logger.js';
 
 // const watched = path.join('dist');
@@ -18,9 +17,10 @@ export class FluxionWatcher {
 
   /**
    * Since all actions are mapped to `rename` and `change` (WatchEventType).
+   *
    * We could only record every file and reload them all.
    */
-  start(args: { logger: FluxionLogger; dir: string; refresh: (filepath: string) => void }) {
+  start(args: { logger: FluxionLogger; dir: string; refresh: (relativePath: string) => void }) {
     const { logger, dir, refresh } = args;
     fs.watch(dir, { recursive: true }, (_eventType, filename) => {
       if (!filename) {
@@ -33,11 +33,20 @@ export class FluxionWatcher {
       }
 
       this.timer = setTimeout(() => {
-        this.filesChanged.forEach(refresh);
-        this.filesChanged.clear();
+        this.filesChanged.forEach((p, _, s) => {
+          try {
+            refresh(p);
+          } catch (err) {
+            logger.error(`Error refreshing handlers: ${(err as Error).message}`);
+          } finally {
+            s.delete(p);
+          }
+        });
+
         this.timer = null;
       }, this.delay);
-    });
+    }).on('error', (err) => logger.error(`Watcher error: ${err.message}`));
+
     logger.info(`Watcher started on directory: ${dir}`);
   }
 }
