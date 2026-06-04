@@ -11,6 +11,7 @@ if (process.env.NODE_ENV !== 'production') {
     dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
     host: process.env.HOST ?? 'localhost',
     port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000,
+    reloadDelay: process.env.RELOAD_DELAY ? Number.parseInt(process.env.RELOAD_DELAY, 10) : undefined,
     workerOptions: {
       maxWorkerCount: 1,
     },

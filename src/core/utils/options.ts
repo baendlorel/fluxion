@@ -48,13 +48,22 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     moduleDir = process.cwd(),
     workerOptions = {},
     maxRequestBytes = 8_000_000,
+    reloadDelay = 300,
   } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
 
   expect.isString(dir, 'FluxionOptions.dir must be a string');
+
   expect.isString(moduleDir, 'FluxionOptions.moduleDir must be a string');
+
   expect.isString(host, 'FluxionOptions.host must be a string');
+
+  expect.isPositiveInteger(reloadDelay, 'FluxionOptions.reloadDelay must be a positive integer');
+  if (reloadDelay < 50) {
+    $throw('FluxionOptions.reloadDelay must be greater than or equal to 50');
+  }
+
   expect.isPositiveInteger(port, 'FluxionOptions.port must be a positive integer');
   if (port > 65535) {
     $throw('FluxionOptions.port must be less than or equal to 65535');
@@ -79,6 +88,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     dir,
     host,
     port,
+    reloadDelay,
     metaPort,
     injections,
     moduleDir,

@@ -89,6 +89,13 @@ export interface FluxionOptions {
   port: number;
 
   /**
+   * Delay in milliseconds for reloading handlers after file changes are detected.
+   *
+   * Defaults to 300ms.
+   */
+  reloadDelay?: number;
+
+  /**
    * Port listened by primary process for meta APIs.
    * Defaults to `port + 1`.
    */
@@ -129,6 +136,7 @@ export interface NormalizedFluxionOptions {
   dir: string;
   host: string;
   port: number;
+  reloadDelay: number;
   metaPort: number;
   injections: InjectionConfig[];
   moduleDir: string;

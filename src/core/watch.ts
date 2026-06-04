@@ -7,12 +7,21 @@ import type { FluxionLogger } from '@/common/logger.js';
 // });
 
 export class FluxionWatcher {
-  private timer: NodeJS.Timeout | null = null;
+  // # Options
   private readonly delay: number;
+  private readonly logger: FluxionLogger;
+  private readonly dir: string;
+  private readonly refresh: (relativePath: string) => void;
+
+  private timer: NodeJS.Timeout | null = null;
+  private watcher: fs.FSWatcher | null = null;
   private readonly filesChanged: Set<string> = new Set();
 
-  constructor(delay = 300) {
-    this.delay = delay;
+  constructor(options: { delay: number; logger: FluxionLogger; dir: string; refresh: (relativePath: string) => void }) {
+    this.delay = options.delay;
+    this.logger = options.logger;
+    this.dir = options.dir;
+    this.refresh = options.refresh;
   }
 
   /**
@@ -20,33 +29,46 @@ export class FluxionWatcher {
    *
    * We could only record every file and reload them all.
    */
-  start(args: { logger: FluxionLogger; dir: string; refresh: (relativePath: string) => void }) {
-    const { logger, dir, refresh } = args;
-    fs.watch(dir, { recursive: true }, (_eventType, filename) => {
-      if (!filename) {
-        return;
-      }
+  start() {
+    this.watcher = fs
+      .watch(this.dir, { recursive: true }, (_eventType, filename) => {
+        if (!filename) {
+          return;
+        }
 
-      this.filesChanged.add(filename);
-      if (this.timer) {
-        return;
-      }
+        this.filesChanged.add(filename);
+        if (!this.timer) {
+          this.timer = setTimeout(() => {
+            this.filesChanged.forEach((p, _, s) => {
+              try {
+                this.refresh(p);
+              } catch (err) {
+                this.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
+              } finally {
+                s.delete(p);
+              }
+            });
 
-      this.timer = setTimeout(() => {
-        this.filesChanged.forEach((p, _, s) => {
-          try {
-            refresh(p);
-          } catch (err) {
-            logger.error(`Error refreshing handlers: ${(err as Error).message}`);
-          } finally {
-            s.delete(p);
-          }
-        });
+            this.timer = null;
+          }, this.delay);
+        }
+      })
+      .on('error', (err) => this.logger.error(`Watcher error: ${err.message}`));
 
-        this.timer = null;
-      }, this.delay);
-    }).on('error', (err) => logger.error(`Watcher error: ${err.message}`));
+    this.logger.info(`Watcher started on directory: ${this.dir}`);
+  }
 
-    logger.info(`Watcher started on directory: ${dir}`);
+  stop() {
+    if (this.watcher) {
+      this.watcher.close();
+      this.watcher = null;
+    }
+
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+
+    this.filesChanged.clear();
   }
 }
