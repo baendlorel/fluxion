@@ -11,9 +11,9 @@ import { toURL } from '../utils/request.js';
 import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
-import { findHandler } from './file-runtime.js';
+import { FluxionRouter } from '../router.js';
 
-export function createWorkerServer(): http.Server {
+export function createWorkerServer(router: FluxionRouter): http.Server {
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
@@ -74,8 +74,13 @@ export function createWorkerServer(): http.Server {
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      const handler = await findHandler(url);
-      const result = await Promise.try(handler, req, res, normalized);
+      const handler = await router.getHandler(url);
+      if (!handler) {
+        safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
+        return;
+      }
+
+      const result = await Promise.try(handler, normalized, req, res);
       safeSendJson(res, result);
     } catch (error) {
       logger.error('RequestFailed', {

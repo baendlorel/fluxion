@@ -4,7 +4,7 @@ import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export class FluxtionRouter {
+export class FluxionRouter {
   private readonly handlers: Map<string, FluxionHandler> = new Map();
   private readonly dir: string;
   private readonly logger: FluxionLogger;
@@ -95,5 +95,10 @@ export class FluxtionRouter {
       // register as static resource
       this.handlers.set(filepath, this.makeStaticResource(filepath));
     }
+  }
+
+  getHandler(url: URL): FluxionHandler | undefined {
+    const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
+    return this.handlers.get(relativePath);
   }
 }
