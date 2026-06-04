@@ -120,4 +120,5 @@ export async function createLogger(option: LoggerOption | undefined = 'one-line'
 /**
  * ! Error.isError needs Node.js 24
  */
-export const getErrorMessage = (error: unknown): string => (Error.isError(error) ? error.message : String(error));
+export const getErrorMessage = (error: unknown): string =>
+  typeof error === 'object' && error !== null ? (error as any).message : String(error);

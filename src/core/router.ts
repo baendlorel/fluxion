@@ -9,6 +9,8 @@ export class FluxionRouter {
   private readonly dir: string;
   private readonly logger: FluxionLogger;
 
+  public readonly staticHandled = Symbol('staticHandled');
+
   constructor(options: { dir: string; logger: FluxionLogger }) {
     this.dir = options.dir;
     this.logger = options.logger;
@@ -49,10 +51,10 @@ export class FluxionRouter {
         return;
       }
 
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<symbol>((resolve, reject) => {
         const stream = fs.createReadStream(fullPath);
         stream.on('error', reject);
-        stream.on('end', resolve);
+        stream.on('end', () => resolve(this.staticHandled));
         stream.pipe(res);
       });
     };
@@ -76,7 +78,8 @@ export class FluxionRouter {
       delete require.cache[p];
 
       // register as api
-      if (filepath.endsWith('.ts') || filepath.endsWith('.js')) {
+      // ! Only ts files are considered as API handlers, because js files might be used by dom.
+      if (filepath.endsWith('.ts')) {
         const handler = require(p);
         if (typeof handler === 'function') {
           this.handlers.set(filepath, handler);

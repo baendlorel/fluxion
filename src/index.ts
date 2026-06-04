@@ -7,6 +7,7 @@ if (process.env.NODE_ENV !== 'production') {
   globalThis.$throw = (message: string) => {
     throw new Error('[fluxion error]' + message);
   };
+
   fluxion({
     dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
     host: process.env.HOST ?? 'localhost',

@@ -82,7 +82,10 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
       }
 
       const result = await PromiseTry(handler, normalized, req, res);
-      safeSendJson(res, result);
+
+      if (result !== router.staticHandled) {
+        safeSendJson(res, result);
+      }
     } catch (error) {
       logger.error('RequestFailed', {
         method: normalized.method,

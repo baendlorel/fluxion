@@ -1,8 +1,9 @@
-import cluster from 'node:cluster';
 import type { PrimaryMessage } from './types.js';
+import cluster from 'node:cluster';
 
 import { getErrorMessage } from '@/common/logger.js';
 import { loadFunction } from '@/common/injector.js';
+import { PromiseTry } from '@/common/promise-try.js';
 import { logger, fluxionOptions } from './global-state.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
 import { sendToPrimary } from './communicate.js';
@@ -14,7 +15,7 @@ const inject = async () => {
   for (let i = 0; i < fluxionOptions.injections.length; i++) {
     const injection = fluxionOptions.injections[i];
     const factory = await loadFunction(injection);
-    const instance = await Promise.try(factory);
+    const instance = await PromiseTry(factory);
     o[injection.name] = instance;
   }
   logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
@@ -79,9 +80,9 @@ export function initWorker() {
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
   startStatsReporter();
 
-  Promise.try(async () => {
+  PromiseTry(async () => {
     await inject();
-    createWorkerServer();
+    // createWorkerServer();
     sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
   }).catch((error) => {
     logger.error('WorkerBootstrapFailed', {

@@ -2,46 +2,37 @@
 
 ## 总体评价
 
-`createWorkerServer` 确实很简洁，相比大型框架（如 Express、Fastify、NestJS）保持了极简的设计理念。整个函数约100行，没有复杂的中间件系统，直接使用 Node.js 原生 http 模块。
+`createWorkerServer` 确实很简洁，相比大型框架（如 Express、Fastify、NestJS）保持了极简的设计理念。整个函数约125行，没有复杂的中间件系统，直接使用 Node.js 原生 http 模块。
+
+**当前状态**: ✅ 严重问题已修复，代码可以正常运行
 
 ## 🔴 严重问题
 
-### 1. `findHandler` 未导入
+### ~~1. `findHandler` 未导入~~ ✅ 已修复
 
-**位置**: [server.ts:76](../src/core/cluster/server.ts#L76)
+**原位置**: [server.ts:76](../src/core/cluster/server.ts#L76)
 
-**问题**: 使用了 `findHandler(url)` 但没有导入或定义
+**原问题**: 使用了 `findHandler(url)` 但没有导入或定义
 
-**影响**: 运行时会报 ReferenceError
-
-**修复**:
+**已修复**: 现在通过 `router.getHandler(url)` 解决，且添加了空值检查：
 ```typescript
-import { findHandler } from './file-runtime.js';
+const handler = await router.getHandler(url);
+if (!handler) {
+  safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
+  return;
+}
 ```
 
-### 2. `Promise.try` 未定义
+### ~~2. `Promise.try` 未定义~~ ✅ 已修复
 
-**位置**: [server.ts:77](../src/core/cluster/server.ts#L77)
+**原位置**: [server.ts:77](../src/core/cluster/server.ts#L77)
 
-**问题**: `Promise.try` 不是原生 JavaScript API，需要引入 Bluebird 或自定义实现
+**原问题**: `Promise.try` 不是原生 JavaScript API
 
-**影响**: 运行时会报 TypeError
-
-**修复**:
+**已修复**: 导入了自定义的 `PromiseTry` 工具函数：
 ```typescript
-// 选项1: 直接调用
-const result = await handler(normalized, req, res);
-
-// 选项2: 添加 Promise.try 扩展
-Promise.try = function(fn, ...args) {
-  return new Promise((resolve, reject) => {
-    try {
-      resolve(fn(...args));
-    } catch (e) {
-      reject(e);
-    }
-  });
-};
+import { PromiseTry } from '@/common/promise-try.js';
+const result = await PromiseTry(handler, normalized, req, res);
 ```
 
 ## 🟡 潜在漏洞
@@ -126,4 +117,14 @@ if (bodyPreview.exists) {
 - 学习和教学
 - 不需要复杂中间件的应用场景
 
-但在投入生产使用前，需要修复上述严重问题，并考虑添加必要的安全增强功能。
+### 更新状态
+
+✅ **严重问题已全部修复**：
+- `findHandler` → `router.getHandler(url)` 并添加空值检查
+- `Promise.try` → `PromiseTry` 工具函数
+
+🟡 **仍需改进**：
+- 日志敏感信息脱敏
+- 静态资源响应的冗余处理优化
+
+建议在生产环境使用前考虑添加必要的安全增强功能（如响应头安全、CORS 控制等）。
