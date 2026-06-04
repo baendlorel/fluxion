@@ -19,8 +19,8 @@ export default async (_commandLineArgs) => {
       input: path.join(libPath, 'src', 'index.ts'),
       output: [
         {
-          file: path.join(libPath, 'dist', 'index.mjs'),
-          format: 'esm', // ES module output
+          file: path.join(libPath, 'dist', 'index.cjs'),
+          format: 'cjs',
           sourcemap: true,
         },
       ],
