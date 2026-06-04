@@ -12,6 +12,7 @@ import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
 import { FluxionRouter } from '../router.js';
+import { PromiseTry } from '@/common/promise-try.js';
 
 export function createWorkerServer(router: FluxionRouter): http.Server {
   const server = http.createServer(async (req, res) => {
@@ -80,7 +81,7 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
         return;
       }
 
-      const result = await Promise.try(handler, normalized, req, res);
+      const result = await PromiseTry(handler, normalized, req, res);
       safeSendJson(res, result);
     } catch (error) {
       logger.error('RequestFailed', {
