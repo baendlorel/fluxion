@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://baendlorel.github.io/fluxion/">
-    <img src="https://raw.githubusercontent.com/baendlorel/fluxion/refs/heads/main/assets/fluxion.svg" width="240px" alt="fluxion logo" />
+    <img src="https://raw.githubusercontent.com/baendlorel/fluxion/refs/heads/dev/assets/fluxion.png" width="240px" alt="fluxion logo" />
   </a>
 </p>
 
@@ -106,12 +106,12 @@ With default options:
 
 Examples:
 
-| File | Route | Type |
-| --- | --- | --- |
-| `dynamicDirectory/test.ts` | `/test.ts` | API handler |
+| File                               | Route              | Type        |
+| ---------------------------------- | ------------------ | ----------- |
+| `dynamicDirectory/test.ts`         | `/test.ts`         | API handler |
 | `dynamicDirectory/user/profile.ts` | `/user/profile.ts` | API handler |
-| `dynamicDirectory/index.html` | `/index.html` | Static file |
-| `dynamicDirectory/assets/app.js` | `/assets/app.js` | Static file |
+| `dynamicDirectory/index.html`      | `/index.html`      | Static file |
+| `dynamicDirectory/assets/app.js`   | `/assets/app.js`   | Static file |
 
 A request to `/hello` does not match `hello.ts`; request `/hello.ts` or change `apiExts`/routing behavior in code.
 
