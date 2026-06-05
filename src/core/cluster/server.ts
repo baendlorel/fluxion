@@ -10,6 +10,7 @@ import { toURL } from '../utils/request.js';
 import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
+import { parseCookie } from '../utils/cookie.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
 export function createWorkerServer(cx: FluxionContext): http.Server {
@@ -28,6 +29,8 @@ export function createWorkerServer(cx: FluxionContext): http.Server {
       url,
       query: parseQuery(url.searchParams),
       body: {},
+      headers: req.headers,
+      cookie: parseCookie(req.headers.cookie as string | undefined),
     };
 
     let bodyPreview: BodyPreview = {

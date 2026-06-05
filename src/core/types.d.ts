@@ -5,11 +5,40 @@ import type { FluxionRouter } from './router.ts';
 import type { FluxionWatcher } from './watch.ts';
 
 export interface NormalizedRequest {
+  /**
+   * HTTP request method (GET, POST, PUT, DELETE, etc.)
+   */
   method: string;
+
+  /**
+   * Client IP address (supports X-Forwarded-For and X-Real-IP headers)
+   */
   ip: string;
+
+  /**
+   * Parsed request URL
+   */
   url: URL;
+
+  /**
+   * Parsed query parameters from URL search string
+   */
   query: Record<string, string | string[]>;
+
+  /**
+   * Parsed request body (JSON, form data, etc.)
+   */
   body: Record<string, any>;
+
+  /**
+   * Raw HTTP request headers
+   */
+  headers: http.IncomingHttpHeaders;
+
+  /**
+   * Parsed cookies from the Cookie header
+   */
+  cookie: Record<string, string>;
 }
 
 /**
