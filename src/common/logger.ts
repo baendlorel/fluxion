@@ -61,6 +61,7 @@ export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
 };
 
+// TODO 这里要有context的信息。
 /**
  * & Logger Options here is checked by normalizeOptions function.
  */

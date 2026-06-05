@@ -1,6 +1,8 @@
 import type http from 'node:http';
 import type { InjectionConfig } from '@/common/types.js';
-import type { LoggerOption } from '@/common/logger.js';
+import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
+import type { FluxionRouter } from './router.ts';
+import type { FluxionWatcher } from './watch.ts';
 
 export interface NormalizedRequest {
   method: string;
@@ -143,6 +145,13 @@ export interface NormalizedFluxionOptions {
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption | InjectionConfig;
+}
+
+export interface FluxionContext {
+  options: NormalizedFluxionOptions;
+  logger: FluxionLogger;
+  watcher: FluxionWatcher;
+  router: FluxionRouter;
 }
 
 export type FluxionHandler<
