@@ -1,8 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "Bundler"
+    "module": "es2020",
+    "moduleResolution": "Bundler",
+    "types": ["node"]
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**", "./tests/**", "./document/**"]
