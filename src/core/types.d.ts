@@ -204,4 +204,4 @@ export type FluxionHandler<
   request: NormalizedRequest,
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
-) => Promise<unknown>;
+) => Promise<unknown> | unknown;

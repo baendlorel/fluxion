@@ -22,7 +22,7 @@ Fluxion is a filesystem-routing dynamic server for Node.js.
 ## Install
 
 ```bash
-npm install fluxion
+pnpm add fluxion
 ```
 
 ## Quick Start
@@ -42,12 +42,16 @@ fluxion({
 Create `dynamicDirectory/hello.ts`:
 
 ```ts
-export default async function handler(req) {
+import { defineFluxionHandler } from 'fluxion';
+
+// defineFluxionHandler is only for better type inference and editor support.
+// You can export the handler function directly without it.
+export default defineFluxionHandler(async function handler(req) {
   return {
     message: 'hello fluxion',
     path: req.url.pathname,
   };
-}
+})
 ```
 
 Run:

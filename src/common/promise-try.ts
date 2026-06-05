@@ -3,13 +3,16 @@
  *
  * Only for async functions.
  */
-export function PromiseTry<T extends (...args: any[]) => Promise<any>>(fn: T, ...args: Parameters<T>) {
+export function PromiseTry<T extends (...args: any[]) => any>(fn: T, ...args: Parameters<T>) {
   return new Promise<ReturnType<T>>((resolve, reject) => {
     // in case `fn` throws synchronously, we catch it and reject the promise
     try {
-      fn(...args)
-        .then(resolve)
-        .catch(reject);
+      const r = fn(...args);
+      if (r instanceof Promise) {
+        r.then(resolve).catch(reject);
+      } else {
+        resolve(r);
+      }
     } catch (error) {
       reject(error);
     }
