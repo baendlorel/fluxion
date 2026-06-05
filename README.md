@@ -12,10 +12,12 @@
 
 Fluxion is a filesystem-routing dynamic server for Node.js.
 
-- Use `.mjs` files directly as route handlers
-- Run handlers inside worker runtime isolation
-- Inject any npm module into handler `context` via `modules`
-- If a handler returns a value, Fluxion auto-responds with `200 + JSON`
+- Route files from a dynamic directory
+- Load API handlers by extension, default: `.ts`
+- Serve other files as static resources
+- Run the business server in worker processes
+- Expose runtime status from the primary process through meta APIs
+- Automatically serialize handler return values as JSON
 
 ## Install
 
@@ -24,8 +26,6 @@ npm install fluxion
 ```
 
 ## Quick Start
-
-### 1) Start the server
 
 Create `server.mjs`:
 
@@ -39,15 +39,13 @@ fluxion({
 });
 ```
 
-### 2) Create a route handler
+Create `dynamicDirectory/hello.ts`:
 
-Create `dynamicDirectory/hello.mjs`:
-
-```js
-export default function handler(_req, _res, context) {
+```ts
+export default async function handler(req) {
   return {
     message: 'hello fluxion',
-    workerId: context.worker.id,
+    path: req.url.pathname,
   };
 }
 ```
@@ -58,135 +56,333 @@ Run:
 node server.mjs
 ```
 
-Test:
+Request:
 
 ```bash
-curl http://127.0.0.1:3000/hello
+curl http://127.0.0.1:3000/hello.ts
 ```
 
-You will get a JSON response with status `200`.
+Response:
 
-## Routing Rules
+```json
+{"message":"hello fluxion","path":"/hello.ts"}
+```
 
-- `dynamicDirectory/index.mjs` -> `/`
-- `dynamicDirectory/user.mjs` -> `/user`
-- `dynamicDirectory/user/index.mjs` -> `/user`
-- Non-`.mjs` files are served as static files (`GET/HEAD`)
-- Directories/files starting with `_` are private and not routable
+## Development Entry
 
-## Handler Styles
+In this repository, `pnpm dev` runs `src/index.ts` directly and starts Fluxion unless `NODE_ENV=production`.
 
-### Function export
+Default development options:
 
-```js
-export default function handler(req, res, context) {
+```ts
+fluxion({
+  dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
+  host: process.env.HOST ?? 'localhost',
+  port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000,
+  reloadDelay: process.env.RELOAD_DELAY ? Number.parseInt(process.env.RELOAD_DELAY, 10) : undefined,
+  workerOptions: {
+    maxWorkerCount: 1,
+  },
+});
+```
+
+Example:
+
+```bash
+pnpm dev
+curl http://localhost:3000/test.ts
+```
+
+## Routing
+
+Fluxion registers every file under `dir` recursively.
+
+With default options:
+
+- Files ending with `.ts` are API handlers.
+- Files with other extensions are static resources.
+- Request paths match file paths relative to `dir`.
+- File extensions are part of the route path.
+
+Examples:
+
+| File | Route | Type |
+| --- | --- | --- |
+| `dynamicDirectory/test.ts` | `/test.ts` | API handler |
+| `dynamicDirectory/user/profile.ts` | `/user/profile.ts` | API handler |
+| `dynamicDirectory/index.html` | `/index.html` | Static file |
+| `dynamicDirectory/assets/app.js` | `/assets/app.js` | Static file |
+
+A request to `/hello` does not match `hello.ts`; request `/hello.ts` or change `apiExts`/routing behavior in code.
+
+## API Handlers
+
+An API file must export a function by one of these forms:
+
+```ts
+export default async function handler(req, rawReq, rawRes) {
   return { ok: true };
 }
 ```
 
-### Object export (with modules)
-
-```js
-export default {
-  modules: [
-    {
-      module: 'node:crypto',
-      injectKey: 'crypto',
-      factory: (cryptoModule) => cryptoModule,
-    },
-  ],
-  handler(_req, _res, context) {
-    return {
-      hash: context.crypto.createHash('sha1').update('abc').digest('hex'),
-    };
-  },
-};
+```ts
+export async function handler(req, rawReq, rawRes) {
+  return { ok: true };
+}
 ```
 
-## Automatic JSON Response
+Common local style:
 
-If a handler return value is not `undefined` and you do not manually call `res.end()`, Fluxion will automatically:
+```ts
+import { defineFluxionHandler } from '@/index.js';
 
-- set status to `200`
-- set `content-type` to `application/json; charset=utf-8` (if missing)
-- serialize the return value with `JSON.stringify(...)`
-
-Recommended pattern per handler:
-
-1. Return data directly (recommended)
-2. Or fully control `res` manually (streaming, file download, etc.)
-
-## Module Injection (Recommended)
-
-Fluxion does not bundle database drivers. Install app dependencies yourself.
-
-For example, to use MySQL in handlers:
-
-```bash
-npm install mysql2
+export default defineFluxionHandler(async (req) => {
+  return req.url.pathname + '成功';
+});
 ```
 
-```js
-export default {
-  modules: [
-    {
-      module: 'mysql2/promise',
-      injectKey: 'mydb',
-      options: {
-        host: '127.0.0.1',
-        user: 'root',
-        password: '***',
-        database: 'demo',
-      },
-      factory: (mysql2, options) => mysql2.createPool(options),
-    },
-  ],
-  async handler(_req, _res, context) {
-    const [rows] = await context.mydb.query('select 1 as ok');
-    return rows;
-  },
-};
+### Handler Arguments
+
+```ts
+handler(normalizedRequest, rawRequest, rawResponse)
 ```
 
-### `modules` fields
+`normalizedRequest` contains:
 
-- `module`: module id used by dynamic `import()`
-- `injectKey`: target key in `context[injectKey]`
-- `options`: custom config passed into `factory`
-- `factory`: `(importedModule, options, runtime) => injectedValue`
+```ts
+{
+  method: string;
+  ip: string;
+  url: URL;
+  query: Record<string, string | string[]>;
+  body: Record<string, any>;
+  headers: IncomingHttpHeaders;
+  cookie: Record<string, string>;
+}
+```
 
-`factory` runs inside the worker and is restored from source text. Keep it self-contained (do not depend on outer closures).
+`rawRequest` and `rawResponse` are Node.js HTTP objects.
 
-Each worker keeps its own module instances. On worker shutdown, Fluxion will attempt `dispose/close/end/destroy` if present.
+## Response Behavior
 
-## Common Options
+If the handler returns a value, Fluxion responds with JSON:
 
-Main `fluxion({...})` options:
+```ts
+export default async function handler() {
+  return { ok: true };
+}
+```
 
-- `dir`: dynamic directory (handler root)
-- `host`: listen host
-- `port`: listen port
-- `metaPort`: primary meta API port (defaults to `port + 1`)
-- `maxRequestBytes`: max request body size (returns 413 when exceeded)
-- `logger`: `one-line` / `json-line` / custom function
+Response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{"ok":true}
+```
+
+You can also write to `rawResponse` manually:
+
+```ts
+export default async function handler(_req, _rawReq, res) {
+  res.statusCode = 201;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.end('created');
+}
+```
+
+When `res` has already ended, Fluxion will not send another JSON response.
+
+## Request Body
+
+Fluxion parses request bodies before calling the handler, except for `GET` and `HEAD`.
+
+Supported parsing:
+
+- JSON content types: object values are assigned directly; primitive values become `{ value }`; invalid JSON becomes `{ raw }`.
+- `application/x-www-form-urlencoded`: parsed into key/value fields.
+- Textual content types: stored as `{ raw }`.
+- Other binary bodies are read for size checking/log preview but `body` remains `{}`.
+
+Requests larger than `maxRequestBytes` return `413`.
+
+## Static Files
+
+Non-API files are served as static resources.
+
+Supported methods:
+
+- `GET`
+- `HEAD`
+
+Other methods return `405` with:
+
+```http
+Allow: GET, HEAD
+```
+
+Known content types include `.html`, `.css`, `.js`, `.json`, `.png`, `.jpg`, `.jpeg`, `.svg`, `.txt`, `.webp`, `.ico`, and `.map`. Unknown extensions use `application/octet-stream`.
+
+## File Watching
+
+Workers watch the dynamic directory recursively.
+
+On file changes:
+
+- existing files are re-registered;
+- deleted files are removed from the router;
+- updates are debounced by `reloadDelay`, default `300ms`.
+
+## Cluster Runtime
+
+Fluxion uses Node.js `cluster`:
+
+- The primary process starts meta APIs and manages worker state.
+- Worker processes watch the dynamic directory and serve business traffic.
+- `workerOptions.maxWorkerCount` controls worker count. Default is capped by CPU count.
 
 ## Meta APIs
 
-Meta APIs are served by the primary process on `metaPort`:
+Meta APIs are served by the primary process on `metaPort`.
 
-- `GET /_fluxion/healthz`
-- `GET /_fluxion/workers` (worker status + cpu/memory stats)
+Default:
 
-## Important
-
-Legacy handler-level `db` declarations are removed:
-
-```js
-export default {
-  // db: ['main'] // no longer supported
-  modules: [],
-  handler() {},
-};
+```ts
+metaPort = port + 1
 ```
 
-Use `modules` for dependency injection.
+Endpoints:
+
+```http
+GET /_fluxion/healthz
+GET /_fluxion/workers
+```
+
+Example:
+
+```bash
+curl http://127.0.0.1:3001/_fluxion/healthz
+curl http://127.0.0.1:3001/_fluxion/workers
+```
+
+If a meta API path is requested on the business port, Fluxion returns `404` and points to the meta port.
+
+## Options
+
+```ts
+interface FluxionOptions {
+  dir: string;
+  host: string;
+  port: number;
+  reloadDelay?: number;
+  metaPort?: number;
+  injections?: InjectionConfig[];
+  moduleDir?: string;
+  workerOptions?: Partial<WorkerOptions>;
+  maxRequestBytes?: number;
+  logger?: 'one-line' | 'json-line' | InjectionConfig;
+  apiExts?: string[];
+  routerExclude?: string[];
+}
+```
+
+### `dir`
+
+Dynamic directory root. Created automatically if missing.
+
+### `host`
+
+Host passed to `server.listen`.
+
+### `port`
+
+Business server port.
+
+### `metaPort`
+
+Primary meta API port. Defaults to `port + 1` and must be different from `port`.
+
+### `reloadDelay`
+
+Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
+
+### `apiExts`
+
+Extensions registered as API handlers. Defaults to:
+
+```ts
+['.ts']
+```
+
+Example:
+
+```ts
+fluxion({
+  dir: './dynamicDirectory',
+  host: '127.0.0.1',
+  port: 3000,
+  apiExts: ['.ts', '.mjs'],
+});
+```
+
+### `routerExclude`
+
+Extensions excluded from both API and static registration.
+
+Example:
+
+```ts
+routerExclude: ['.map']
+```
+
+### `maxRequestBytes`
+
+Maximum accepted request body size. Defaults to `8_000_000`.
+
+### `logger`
+
+Built-in modes:
+
+- `one-line`
+- `json-line`
+
+A custom logger can be loaded through an injection config object whose module exports a function.
+
+### `injections`
+
+Worker startup injections. Each item is loaded with `require(modulePath)` and called as a factory. The resulting instances are stored on:
+
+```ts
+globalThis[Symbol.for('fluxion.injection')]
+```
+
+### `workerOptions`
+
+Runtime tuning options:
+
+```ts
+interface WorkerOptions {
+  maxWorkerCount: number;
+  requestTimeoutMs: number;
+  maxInflight: number;
+  memorySoftLimitMb: number;
+  memoryHardLimitMb: number;
+  memorySampleIntervalMs: number;
+  maxOldGenerationSizeMb: number;
+  maxYoungGenerationSizeMb: number;
+  stackSizeMb: number;
+  maxResponseBytes: number;
+}
+```
+
+Current implementation uses `maxWorkerCount` for process count and reports CPU/memory telemetry from workers.
+
+## Build and Test
+
+```bash
+pnpm build
+pnpm test
+pnpm lint
+```
+
