@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import type { otherstring, InjectionConfig } from '@/common/types.js';
+import type { FluxionContext } from '@/core/types.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
@@ -61,24 +62,24 @@ export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
 };
 
-// TODO 这里要有context的信息。
 /**
  * & Logger Options here is checked by normalizeOptions function.
  */
-async function resolveLoggerSink(option: LoggerOption | undefined): Promise<LoggerSink> {
-  if (option === undefined || option === 'one-line') {
+function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): LoggerSink {
+  const loggerOption = cx.options.logger;
+  if (loggerOption === undefined || loggerOption === 'one-line') {
     return oneLineLogger;
   }
 
-  if (option === 'json-line') {
+  if (loggerOption === 'json-line') {
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  return loadFunction(option) as Promise<LoggerSink>;
+  return loadFunction(cx) as LoggerSink;
 }
 
-export async function createLogger(option: LoggerOption | undefined = 'one-line'): Promise<FluxionLogger> {
-  const sink = await resolveLoggerSink(option);
+export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger {
+  const sink = resolveLoggerSink(cx);
 
   const logger: FluxionLogger = {
     write(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {

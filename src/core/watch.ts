@@ -1,27 +1,16 @@
 import fs from 'node:fs';
-import type { FluxionLogger } from '@/common/logger.js';
-
-// const watched = path.join('dist');
-// fs.watch(watched, { recursive: true }, (eventType, filename) => {
-//   console.log(`[${new Date().toISOString()}] ${eventType} - ${filename}`);
-// });
+import type { FluxionContext } from './types.js';
 
 export class FluxionWatcher {
   // # Options
-  private readonly delay: number;
-  private readonly logger: FluxionLogger;
-  private readonly dir: string;
-  private readonly refresh: (relativePath: string) => void;
+  private readonly cx: Pick<FluxionContext, 'options' | 'logger' | 'router'>;
 
   private timer: NodeJS.Timeout | null = null;
   private watcher: fs.FSWatcher | null = null;
   private readonly filesChanged: Set<string> = new Set();
 
-  constructor(options: { delay: number; logger: FluxionLogger; dir: string; refresh: (relativePath: string) => void }) {
-    this.delay = options.delay;
-    this.logger = options.logger;
-    this.dir = options.dir;
-    this.refresh = options.refresh;
+  constructor(cx: Pick<FluxionContext, 'options' | 'logger' | 'router'>) {
+    this.cx = cx;
   }
 
   /**
@@ -29,9 +18,9 @@ export class FluxionWatcher {
    *
    * We could only record every file and reload them all.
    */
-  start() {
+  start(): this {
     this.watcher = fs
-      .watch(this.dir, { recursive: true }, (_eventType, filename) => {
+      .watch(this.cx.options.dir, { recursive: true }, (_eventType, filename) => {
         if (!filename) {
           return;
         }
@@ -41,24 +30,25 @@ export class FluxionWatcher {
           this.timer = setTimeout(() => {
             this.filesChanged.forEach((p, _, s) => {
               try {
-                this.refresh(p);
+                this.cx.router.register(p);
               } catch (err) {
-                this.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
+                this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
               } finally {
                 s.delete(p);
               }
             });
 
             this.timer = null;
-          }, this.delay);
+          }, this.cx.options.reloadDelay);
         }
       })
-      .on('error', (err) => this.logger.error(`Watcher error: ${err.message}`));
+      .on('error', (err) => this.cx.logger.error(`Watcher error: ${err.message}`));
 
-    this.logger.info(`Watcher started on directory: ${this.dir}`);
+    this.cx.logger.info(`Watcher started on directory: ${this.cx.options.dir}`);
+    return this;
   }
 
-  stop() {
+  stop(): this {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
@@ -70,5 +60,6 @@ export class FluxionWatcher {
     }
 
     this.filesChanged.clear();
+    return this;
   }
 }
