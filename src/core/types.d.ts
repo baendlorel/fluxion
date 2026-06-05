@@ -13,68 +13,66 @@ export interface NormalizedRequest {
 }
 
 /**
- * Database config item accepted by server options.
- */
-export interface FluxionDatabaseConfig {
-  /**
-   * Stable database name.
-   */
-  name: string;
-}
-
-/**
- * User-provided database config input.
- */
-export type FluxionDatabaseInput = string | FluxionDatabaseConfig;
-
-/**
  * Worker runtime tuning options.
  */
 export interface WorkerOptions {
+  /**
+   * Maximum number of worker processes to spawn.
+   * @default 4
+   */
   maxWorkerCount: number;
 
   /**
    * Request timeout in milliseconds.
+   * @default 3000
    */
   requestTimeoutMs: number;
 
   /**
    * Maximum concurrent requests allowed in the pool.
+   * @default 64
    */
   maxInflight: number;
 
   /**
    * Soft heap threshold in MB. Idle worker may restart after crossing it.
+   * @default 96
    */
   memorySoftLimitMb: number;
 
   /**
    * ! Hard heap threshold in MB. Worker is restarted once reached.
+   * @default 128
    */
   memoryHardLimitMb: number;
 
   /**
    * Memory telemetry interval in milliseconds.
+   * @default 5000
    */
   memorySampleIntervalMs: number;
 
   /**
    * ! V8 old-generation limit per worker in MB.
+   * @default 128
    */
   maxOldGenerationSizeMb: number;
 
   /**
    * ! V8 young-generation limit per worker in MB.
+   * @default 32
    */
   maxYoungGenerationSizeMb: number;
 
   /**
    * Worker stack size in MB.
+   * @default 4
    */
   stackSizeMb: number;
 
   /**
    * ! Maximum response payload bytes allowed from worker to main thread.
+   * @default 2097152 (2MB)
    */
   maxResponseBytes: number;
 }
