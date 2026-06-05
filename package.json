@@ -1,6 +1,6 @@
 {
   "name": "fluxion-ts",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": {
     "name": "Kasukabe Tsumugi",
     "email": "futami16237@gmail.com"
@@ -8,15 +8,15 @@
   "purpose": "npm",
   "description": "Fluxion is able to start a server that can dynamically load routers and js files. It is designed to be used to replace PHP",
   "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
-  "type": "commonjs",
-  "main": "./dist/index.mjs",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "default": "./dist/index.mjs"
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
     }
   },
   "files": [
