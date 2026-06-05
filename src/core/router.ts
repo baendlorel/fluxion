@@ -101,6 +101,8 @@ export class FluxionRouter {
   }
 
   getHandler(url: URL): FluxionHandler | undefined {
+    console.log(url);
+    console.log(this.handlers.keys());
     const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
     return this.handlers.get(relativePath);
   }

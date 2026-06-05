@@ -7,6 +7,7 @@ import { loadFunction } from '@/common/injector.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
 import { sendToPrimary } from './communicate.js';
+import { createWorkerServer } from './server.js';
 
 const inject = async (cx: FluxionContext) => {
   const o = {} as any;
@@ -81,7 +82,7 @@ export function initWorker(cx: FluxionContext) {
 
   PromiseTry(async () => {
     await inject(cx);
-    // createWorkerServer();
+    createWorkerServer(cx);
     sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
   }).catch((error) => {
     cx.logger.error('WorkerBootstrapFailed', {

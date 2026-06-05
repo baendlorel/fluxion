@@ -47,7 +47,7 @@ export function createPrimaryMetaApiServer(
     cx.logger.info('MetaApiStarted', {
       pid: process.pid,
       host: cx.options.host,
-      port: cx.options.port,
+      port: cx.options.metaPort,
       prefix: META_PREFIX,
     });
   });
@@ -55,12 +55,12 @@ export function createPrimaryMetaApiServer(
   server.on('error', (error) => {
     cx.logger.error('MetaApiError', {
       host: cx.options.host,
-      port: cx.options.port,
+      port: cx.options.metaPort,
       error: getErrorMessage(error),
     });
     process.exit(1);
   });
 
-  server.listen(cx.options.port, cx.options.host);
+  server.listen(cx.options.metaPort, cx.options.host);
   return server;
 }
