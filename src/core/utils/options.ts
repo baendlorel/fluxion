@@ -49,6 +49,8 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     workerOptions = {},
     maxRequestBytes = 8_000_000,
     reloadDelay = 300,
+    apiExts = ['.ts'],
+    routerExclude = [],
   } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
@@ -95,5 +97,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
     logger,
+    apiExts,
+    routerExclude,
   };
 }

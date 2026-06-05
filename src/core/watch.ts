@@ -25,11 +25,9 @@ export class FluxionWatcher {
           return;
         }
 
-        // FIXME change会触发两次，但我已经做了防抖啊，已经累积为settimeout。
         this.filesChanged.add(filename);
         if (!this.timer) {
           this.timer = setTimeout(() => {
-            console.log('fileschanged', this.filesChanged, this.cx.options.reloadDelay);
             this.filesChanged.forEach((p, _, s) => {
               try {
                 this.cx.router.register(p);

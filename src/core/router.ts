@@ -63,23 +63,33 @@ export class FluxionRouter {
 
   /**
    * 1. Check if the path exists, if not, delete the handler;
-   * 2. If it's a ts file, register it as an API, otherwise return the file itself;
+   * 2. If the file extension matches `routerExclude`, delete it and return early;
+   * 3. If the file extension matches `apiExts`, register it as an API, otherwise register as static resource;
    * @param filepath
    */
   register(filepath: string) {
-    const p = path.join(process.cwd(), this.cx.options.dir, filepath);
-    if (!fs.existsSync(p)) {
+    const fullpath = path.join(process.cwd(), this.cx.options.dir, filepath);
+    if (!fs.existsSync(fullpath)) {
       this.handlers.delete(filepath);
       this.cx.logger.info(`[${filepath}] deleted`);
       return;
     }
 
-    delete require.cache[p];
+    delete require.cache[fullpath];
+
+    const extension = path.extname(filepath).toLowerCase();
+
+    // Check if this file should be excluded from registration
+    if (this.cx.options.routerExclude.some((ext) => extension === ext)) {
+      this.handlers.delete(filepath);
+      this.cx.logger.info(`[${filepath}] excluded`);
+      return;
+    }
 
     // register as api
-    // ! Only ts files are considered as API handlers, because js files might be used by dom.
-    if (filepath.endsWith('.ts')) {
-      const handler = loadFunction({ name: p, modulePath: p });
+    // ! Files with extensions matching `apiExts` are considered as API handlers.
+    if (this.cx.options.apiExts.some((ext) => extension === ext)) {
+      const handler = loadFunction({ name: fullpath, modulePath: fullpath });
       this.handlers.set(filepath, handler);
       this.cx.logger.info(`[${filepath}] handler registered`);
       return;

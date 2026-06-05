@@ -48,3 +48,10 @@ worker优化：
 ---
 
 现在，请你把db config的interface保留下来。我已经删除了pg和mysql2依赖，因为它们不应该这样写，它们应该在用户npm install fluxion后由用户自行安装引入，fluxion只做配置传递。为不失一般性，mjs返回的不再是db:{key:value}，而是modules:[{module:'mysql2',injectKey:"mydb",factory:(...)=>{ 这里返回最终注入context的对象}}]。而这个modules数组将会传输到worker，其中，factory因为是函数，所以会tostring后传输，传输到worker内部后再new Function的形式绕回来,而最终这个数据库链接实例会出现在context.mydb。
+
+---
+优化router.ts的register函数：
+1、目前`// register as api`这里是定死的，但我希望FluxionOptions以及后续的其他类型里，
+增加一个字段叫apiExts，类型为string[]，也就是要能够做到，如果后缀名在这个数组里，
+将会被读取为handler并注册成api，其余情况被注册为静态元素。
+2、再增加routerExclude，也是string[]，表示满足这个东西的后缀名将不会被注册。首先，register将会尝试检查是否存在它，如果存在就删除，但走到注册的这一步就立刻返回，它表示排除这个

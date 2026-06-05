@@ -159,6 +159,20 @@ export interface FluxionOptions {
    * Defaults to `one-line`.
    */
   logger?: LoggerOption;
+
+  /**
+   * File extensions that should be registered as API handlers.
+   * Files with these extensions will be loaded as handlers and registered as APIs.
+   * Defaults to `['.ts']`.
+   */
+  apiExts?: string[];
+
+  /**
+   * File extensions that should be excluded from registration.
+   * Files with these extensions will not be registered (neither as API nor static resource).
+   * Defaults to `[]`.
+   */
+  routerExclude?: string[];
 }
 
 export interface NormalizedFluxionOptions {
@@ -172,6 +186,8 @@ export interface NormalizedFluxionOptions {
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption | InjectionConfig;
+  apiExts: string[];
+  routerExclude: string[];
 }
 
 export interface FluxionContext {
