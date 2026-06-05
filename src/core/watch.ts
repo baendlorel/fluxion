@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { FluxionContext } from './types.js';
 
 export class FluxionWatcher {
@@ -14,11 +15,47 @@ export class FluxionWatcher {
   }
 
   /**
+   * Recursively register all files in the options directory.
+   */
+  private init(): this {
+    const dirPath = path.join(process.cwd(), this.cx.options.dir);
+
+    const registerRecursive = (dir: string, relativePath: string) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const entryPath = path.join(dir, entry.name);
+        const entryRelativePath = path.join(relativePath, entry.name);
+
+        if (entry.isDirectory()) {
+          registerRecursive(entryPath, entryRelativePath);
+        } else if (entry.isFile()) {
+          try {
+            this.cx.router.register(entryRelativePath);
+          } catch (err) {
+            this.cx.logger.error(`Error registering [${entryRelativePath}]: ${(err as Error).message}`);
+          }
+        }
+      }
+    };
+
+    if (fs.existsSync(dirPath)) {
+      registerRecursive(dirPath, '');
+      this.cx.logger.info(`Initial registration complete for directory: ${this.cx.options.dir}`);
+    } else {
+      this.cx.logger.warn(`Directory does not exist: ${this.cx.options.dir}`);
+    }
+
+    return this;
+  }
+
+  /**
    * Since all actions are mapped to `rename` and `change` (WatchEventType).
    *
    * We could only record every file and reload them all.
    */
   start(): this {
+    this.init();
     this.watcher = fs
       .watch(this.cx.options.dir, { recursive: true }, (_eventType, filename) => {
         if (!filename) {
@@ -42,7 +79,11 @@ export class FluxionWatcher {
           }, this.cx.options.reloadDelay);
         }
       })
-      .on('error', (err) => this.cx.logger.error(`Watcher error: ${err.message}`));
+      .on('error', (err) => {
+        this.cx.logger.error(`Watcher error: ${err.message}`);
+        this.cx.logger.error(`Restarting watcher...`);
+        this.stop().start();
+      });
 
     this.cx.logger.info(`Watcher started on directory: ${this.cx.options.dir}`);
     return this;
