@@ -1,7 +1,11 @@
+import type { FluxionHandler, FluxionOptions } from './core/types.js';
 import { fluxion } from './core/fluxion.js';
-import { FluxionOptions } from './core/types.js';
 
 export { fluxion, type FluxionOptions as FluxionOptions };
+
+export function defineFluxionHandler(handler: FluxionHandler) {
+  return handler;
+}
 
 if (process.env.NODE_ENV !== 'production') {
   globalThis.$throw = (message: string) => {

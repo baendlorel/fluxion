@@ -19,6 +19,7 @@
     }
   },
   "include": [
+    "./dynamicDirectory/**/*.ts",
     "./src/**/*.ts",
     "./draft/**/*.ts",
     "*.config.ts",

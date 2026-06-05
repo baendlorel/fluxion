@@ -158,7 +158,7 @@ export type FluxionHandler<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
 > = (
-  normalized: NormalizedRequest,
-  request: InstanceType<Request>,
-  response: InstanceType<Response> & { req: InstanceType<Request> },
+  request: NormalizedRequest,
+  rawRequest: InstanceType<Request>,
+  rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
 ) => Promise<unknown>;

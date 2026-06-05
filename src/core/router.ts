@@ -67,9 +67,10 @@ export class FluxionRouter {
    * @param filepath
    */
   register(filepath: string) {
-    const p = path.join(this.cx.options.dir, filepath);
+    const p = path.join(process.cwd(), this.cx.options.dir, filepath);
     if (!fs.existsSync(p)) {
       this.handlers.delete(filepath);
+      this.cx.logger.info(`[${filepath}] deleted`);
       return;
     }
 
@@ -80,11 +81,13 @@ export class FluxionRouter {
     if (filepath.endsWith('.ts')) {
       const handler = loadFunction({ name: p, modulePath: p });
       this.handlers.set(filepath, handler);
+      this.cx.logger.info(`[${filepath}] handler registered`);
       return;
     }
 
     // register as static resource
     this.handlers.set(filepath, this.makeStaticResource(filepath));
+    this.cx.logger.info(`[${filepath}] static resource registered`);
   }
 
   getHandler(url: URL): FluxionHandler | undefined {
