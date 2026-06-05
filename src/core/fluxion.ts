@@ -15,11 +15,12 @@ export async function fluxion(options: FluxionOptions) {
 
   context.logger = createLogger(context as Pick<FluxionContext, 'options'>);
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
-  context.watcher = new FluxionWatcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
 
   if (cluster.isPrimary) {
     initPrimary(context);
   } else {
+    // Only worker creates the watcher
+    context.watcher = new FluxionWatcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
     initWorker(context);
   }
 }

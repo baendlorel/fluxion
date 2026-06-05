@@ -5,7 +5,10 @@ import { HttpCode, META_PREFIX } from '@/common/consts.js';
 import { sendJson } from '../utils/respond.js';
 import { FluxionContext } from '../types.js';
 
-export function createPrimaryMetaApiServer(cx: FluxionContext, getWorkersSnapshot: () => unknown): http.Server {
+export function createPrimaryMetaApiServer(
+  cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>,
+  getWorkersSnapshot: () => unknown,
+): http.Server {
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
 

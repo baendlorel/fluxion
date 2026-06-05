@@ -9,7 +9,7 @@ import { createPrimaryMetaApiServer } from './meta-api.js';
 
 const bytesToMb = (bytes: number) => Number((bytes / 1024 / 1024).toFixed(2));
 
-export function initPrimary(cx: FluxionContext) {
+export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }

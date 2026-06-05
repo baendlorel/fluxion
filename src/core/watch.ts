@@ -25,7 +25,7 @@ export class FluxionWatcher {
           return;
         }
 
-        // FIXME change会触发两次
+        // FIXME change会触发两次，但我已经做了防抖啊，已经累积为settimeout。
         this.filesChanged.add(filename);
         if (!this.timer) {
           this.timer = setTimeout(() => {
