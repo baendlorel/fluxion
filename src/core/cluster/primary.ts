@@ -1,29 +1,29 @@
+import type { WorkerMessage, WorkerState } from './types.js';
+import type { FluxionContext } from '../types.js';
 import os from 'node:os';
 import cluster from 'node:cluster';
 
-import type { WorkerMessage, WorkerState } from './types.js';
-import { fluxionOptions, logger } from './global-state.js';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 import { createPrimaryMetaApiServer } from './meta-api.js';
 
 const bytesToMb = (bytes: number) => Number((bytes / 1024 / 1024).toFixed(2));
 
-export function initPrimary() {
+export function initPrimary(cx: FluxionContext) {
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }
 
-  const { workerOptions } = fluxionOptions;
+  const { workerOptions } = cx.options;
   const cpuCount = Math.max(1, os.cpus().length);
   const workerCount = Math.max(1, Math.min(workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount));
 
-  logger.info('PrimaryStarted', {
+  cx.logger.info('PrimaryStarted', {
     pid: process.pid,
     workers: workerCount,
-    host: fluxionOptions.host,
-    port: fluxionOptions.port,
-    metaPort: fluxionOptions.metaPort,
+    host: cx.options.host,
+    port: cx.options.port,
+    metaPort: cx.options.metaPort,
   });
 
   const workers = new Map<number, WorkerState>();
@@ -31,9 +31,9 @@ export function initPrimary() {
   const getWorkersSnapshot = () => {
     return {
       primaryPid: process.pid,
-      host: fluxionOptions.host,
-      port: fluxionOptions.port,
-      metaPort: fluxionOptions.metaPort,
+      host: cx.options.host,
+      port: cx.options.port,
+      metaPort: cx.options.metaPort,
       uptimeSeconds: Number(process.uptime().toFixed(3)),
       workers: Array.from(workers.entries()).map(([workerId, info]) => {
         const { instance } = info;
@@ -70,12 +70,7 @@ export function initPrimary() {
     };
   };
 
-  createPrimaryMetaApiServer({
-    host: fluxionOptions.host,
-    port: fluxionOptions.metaPort,
-    logger,
-    getWorkersSnapshot,
-  });
+  createPrimaryMetaApiServer(cx, getWorkersSnapshot);
 
   const attachWorker = (worker: cluster.Worker): void => {
     const workerInfo: WorkerState = {
@@ -103,14 +98,14 @@ export function initPrimary() {
         workerInfo.state = 'ready';
         workerInfo.pid = raw.pid;
         workerInfo.readyAt = Date.now();
-        logger.info('WorkerReady', { workerId: worker.id, pid: raw.pid });
+        cx.logger.info('WorkerReady', { workerId: worker.id, pid: raw.pid });
         return;
       }
 
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
         workerInfo.pid = raw.pid;
-        logger.info('WorkerCreated', { workerId: worker.id, pid: raw.pid });
+        cx.logger.info('WorkerCreated', { workerId: worker.id, pid: raw.pid });
         return;
       }
 
@@ -122,7 +117,7 @@ export function initPrimary() {
 
     worker.on('exit', (code, signal) => {
       workers.delete(worker.id);
-      logger.warn('WorkerExited', {
+      cx.logger.warn('WorkerExited', {
         workerId: worker.id,
         pid: worker.process.pid ?? 'unknown',
         code,

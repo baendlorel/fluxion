@@ -75,7 +75,7 @@ function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): LoggerSink {
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  return loadFunction(cx) as LoggerSink;
+  return loadFunction(loggerOption) as LoggerSink;
 }
 
 export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger {

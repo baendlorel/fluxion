@@ -1,13 +1,17 @@
 import type { FluxionContext, FluxionHandler } from './types.js';
 import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
+import { loadFunction } from '@/common/injector.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
 export class FluxionRouter {
-  public static readonly StaticHandled = Symbol('staticHandled');
+  /**
+   * This means the request has been handled by static resource handler, and no more response should be sent.
+   */
+  public readonly StaticHandled = Symbol.for('fluxion.router.StaticHandled');
 
-  private readonly handlers: Map<string, FluxionHandler> = new Map();
   private readonly cx: Pick<FluxionContext, 'options' | 'logger'>;
+  private readonly handlers: Map<string, FluxionHandler> = new Map();
 
   constructor(cx: Pick<FluxionContext, 'options' | 'logger'>) {
     this.cx = cx;
@@ -51,7 +55,7 @@ export class FluxionRouter {
       return new Promise<symbol>((resolve, reject) => {
         const stream = fs.createReadStream(fullPath);
         stream.on('error', reject);
-        stream.on('end', () => resolve(FluxionRouter.StaticHandled));
+        stream.on('end', () => resolve(this.StaticHandled));
         stream.pipe(res);
       });
     };
@@ -74,18 +78,8 @@ export class FluxionRouter {
     // register as api
     // ! Only ts files are considered as API handlers, because js files might be used by dom.
     if (filepath.endsWith('.ts')) {
-      const handler = require(p);
-      if (typeof handler === 'function') {
-        this.handlers.set(filepath, handler);
-      } else if (typeof handler.default === 'function') {
-        this.handlers.set(filepath, handler.default);
-      } else if (typeof handler.handler === 'function') {
-        this.handlers.set(filepath, handler.handler);
-      } else {
-        this.cx.logger.error(
-          `Invalid handler module '${filepath}', make sure it has a default export or named export called "handler" which is a function`,
-        );
-      }
+      const handler = loadFunction({ name: p, modulePath: p });
+      this.handlers.set(filepath, handler);
       return;
     }
 

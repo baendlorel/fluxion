@@ -1,18 +1,11 @@
 import http from 'node:http';
 
-import type { FluxionLogger } from '@/common/logger.js';
 import { getErrorMessage } from '@/common/logger.js';
 import { HttpCode, META_PREFIX } from '@/common/consts.js';
 import { sendJson } from '../utils/respond.js';
+import { FluxionContext } from '../types.js';
 
-export interface PrimaryMetaApiOptions {
-  host: string;
-  port: number;
-  logger: FluxionLogger;
-  getWorkersSnapshot: () => unknown;
-}
-
-export function createPrimaryMetaApiServer(options: PrimaryMetaApiOptions): http.Server {
+export function createPrimaryMetaApiServer(cx: FluxionContext, getWorkersSnapshot: () => unknown): http.Server {
   const server = http.createServer((req, res) => {
     const method = req.method ?? 'GET';
 
@@ -39,7 +32,7 @@ export function createPrimaryMetaApiServer(options: PrimaryMetaApiOptions): http
       sendJson(res, {
         ok: true,
         now: Date.now(),
-        workers: options.getWorkersSnapshot(),
+        workers: getWorkersSnapshot(),
       });
       return;
     }
@@ -48,23 +41,23 @@ export function createPrimaryMetaApiServer(options: PrimaryMetaApiOptions): http
   });
 
   server.on('listening', () => {
-    options.logger.info('MetaApiStarted', {
+    cx.logger.info('MetaApiStarted', {
       pid: process.pid,
-      host: options.host,
-      port: options.port,
+      host: cx.options.host,
+      port: cx.options.port,
       prefix: META_PREFIX,
     });
   });
 
   server.on('error', (error) => {
-    options.logger.error('MetaApiError', {
-      host: options.host,
-      port: options.port,
+    cx.logger.error('MetaApiError', {
+      host: cx.options.host,
+      port: cx.options.port,
       error: getErrorMessage(error),
     });
     process.exit(1);
   });
 
-  server.listen(options.port, options.host);
+  server.listen(cx.options.port, cx.options.host);
   return server;
 }

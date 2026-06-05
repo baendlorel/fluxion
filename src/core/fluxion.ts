@@ -18,8 +18,8 @@ export async function fluxion(options: FluxionOptions) {
   context.watcher = new FluxionWatcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
 
   if (cluster.isPrimary) {
-    initPrimary();
+    initPrimary(context);
   } else {
-    initWorker();
+    initWorker(context);
   }
 }

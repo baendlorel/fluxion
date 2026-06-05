@@ -1,24 +1,23 @@
 import type { PrimaryMessage } from './types.js';
+import type { FluxionContext } from '../types.js';
 import cluster from 'node:cluster';
 
 import { getErrorMessage } from '@/common/logger.js';
 import { loadFunction } from '@/common/injector.js';
 import { PromiseTry } from '@/common/promise-try.js';
-import { logger, fluxionOptions } from './global-state.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
 import { sendToPrimary } from './communicate.js';
-import { createWorkerServer } from './server.js';
 
-const inject = async () => {
+const inject = async (cx: FluxionContext) => {
   const o = {} as any;
   Reflect.set(globalThis, INJECTION_KEY, o);
-  for (let i = 0; i < fluxionOptions.injections.length; i++) {
-    const injection = fluxionOptions.injections[i];
-    const factory = await loadFunction(injection);
+  for (let i = 0; i < cx.options.injections.length; i++) {
+    const injection = cx.options.injections[i];
+    const factory = loadFunction(injection);
     const instance = await PromiseTry(factory);
     o[injection.name] = instance;
   }
-  logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
+  cx.logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
 };
 
 const startStatsReporter = () => {
@@ -61,7 +60,7 @@ const startStatsReporter = () => {
   interval.unref();
 };
 
-export function initWorker() {
+export function initWorker(cx: FluxionContext) {
   if (cluster.isPrimary) {
     $throw('createWorker should only be called in worker process');
   }
@@ -81,11 +80,11 @@ export function initWorker() {
   startStatsReporter();
 
   PromiseTry(async () => {
-    await inject();
+    await inject(cx);
     // createWorkerServer();
     sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
   }).catch((error) => {
-    logger.error('WorkerBootstrapFailed', {
+    cx.logger.error('WorkerBootstrapFailed', {
       pid: process.pid,
       error: getErrorMessage(error),
     });

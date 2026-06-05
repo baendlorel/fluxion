@@ -1,20 +1,18 @@
 import http from 'node:http';
 
-import type { NormalizedRequest } from '../types.js';
+import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
 import { HttpCode, META_PREFIX } from '@/common/consts.js';
 import { getErrorMessage } from '@/common/logger.js';
-import { fluxionOptions, logger } from './global-state.js';
 
 import { getRealIp } from '../utils/headers.js';
 import { toURL } from '../utils/request.js';
 import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
-import { FluxionRouter } from '../router.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
-export function createWorkerServer(router: FluxionRouter): http.Server {
+export function createWorkerServer(cx: FluxionContext): http.Server {
   const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
@@ -38,7 +36,7 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
       truncated: false,
     };
 
-    logger.info('Req', { method, ip, path: url.pathname });
+    cx.logger.info('Req', { method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -61,21 +59,21 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
         fields.bodyTruncated = bodyPreview.truncated;
       }
 
-      logger.info('Res', fields);
+      cx.logger.info('Res', fields);
     });
 
     // * Start request handling
     try {
       if (normalized.url.pathname.startsWith(META_PREFIX + '/')) {
-        safeSendJson(res, { message: `Meta APIs are available on port ${fluxionOptions.metaPort}` }, HttpCode.NotFound);
+        safeSendJson(res, { message: `Meta APIs are available on port ${cx.options.metaPort}` }, HttpCode.NotFound);
         return;
       }
 
-      const parsed = await parseBody(req, normalized.method, fluxionOptions.maxRequestBytes);
+      const parsed = await parseBody(req, normalized.method, cx.options.maxRequestBytes);
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      const handler = await router.getHandler(url);
+      const handler = await cx.router.getHandler(url);
       if (!handler) {
         safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
         return;
@@ -83,11 +81,11 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
 
       const result = await PromiseTry(handler, normalized, req, res);
 
-      if (result !== router.staticHandled) {
+      if (result !== cx.router.StaticHandled) {
         safeSendJson(res, result);
       }
     } catch (error) {
-      logger.error('RequestFailed', {
+      cx.logger.error('RequestFailed', {
         method: normalized.method,
         ip: normalized.ip,
         path: normalized.url.pathname,
@@ -103,23 +101,23 @@ export function createWorkerServer(router: FluxionRouter): http.Server {
   });
 
   server.on('close', () => {
-    logger.info('ServerClosed', {
-      host: fluxionOptions.host,
-      port: fluxionOptions.port,
+    cx.logger.info('ServerClosed', {
+      host: cx.options.host,
+      port: cx.options.port,
     });
   });
 
-  server.listen(fluxionOptions.port, fluxionOptions.host, () => {
-    logger.info('ServerStarted', {
+  server.listen(cx.options.port, cx.options.host, () => {
+    cx.logger.info('ServerStarted', {
       pid: process.pid,
-      host: fluxionOptions.host,
-      port: fluxionOptions.port,
+      host: cx.options.host,
+      port: cx.options.port,
     });
-    logger.info('DynamicDirectory', { directory: fluxionOptions.dir });
+    cx.logger.info('DynamicDirectory', { directory: cx.options.dir });
   });
 
   server.on('error', (error) => {
-    logger.error('ServerError', {
+    cx.logger.error('ServerError', {
       error: getErrorMessage(error),
     });
   });
