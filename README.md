@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://baendlorel.github.io/fluxion/">
-    <img src="https://raw.githubusercontent.com/baendlorel/fluxion/refs/heads/dev/assets/fluxion.png" width="240px" alt="fluxion logo" />
+    <img src="assets/fluxion.png" width="240px" alt="fluxion logo" />
   </a>
 </p>
 
