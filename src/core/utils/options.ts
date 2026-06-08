@@ -1,4 +1,5 @@
-import fs, { existsSync } from 'node:fs';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { LoggerOption } from '@/common/logger.js';
 import type { InjectionConfig } from '@/common/types.js';
 import { expect } from '@/common/expect.js';
@@ -34,6 +35,58 @@ function expectLoggerOption(o: InjectionConfig | LoggerOption) {
 }
 
 /**
+ * Read certificate content from a file path or return the content directly.
+ */
+function readCertificateContent(content: string | Buffer, moduleDir: string): Buffer {
+  if (Buffer.isBuffer(content)) {
+    return content;
+  }
+  if (typeof content === 'string') {
+    // Check if it looks like a file path (not a PEM certificate)
+    // PEM certificates start with "-----BEGIN"
+    if (!content.startsWith('-----BEGIN')) {
+      const filePath = path.isAbsolute(content) ? content : path.join(moduleDir, content);
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath);
+      }
+    }
+    return Buffer.from(content);
+  }
+  $throw('Certificate content must be a string or Buffer');
+}
+
+/**
+ * Normalize HTTPS options.
+ */
+function normalizeHttpsOptions(
+  https: FluxionOptions['https'],
+  moduleDir: string,
+): NormalizedFluxionOptions['https'] | undefined {
+  if (!https) {
+    return undefined;
+  }
+
+  expect.isObject(https, 'FluxionOptions.https must be an object');
+  expect.isString(https.key, 'FluxionOptions.https.key must be a string');
+  expect.isString(https.cert, 'FluxionOptions.https.cert must be a string');
+
+  const result: NormalizedFluxionOptions['https'] = {
+    key: readCertificateContent(https.key, moduleDir),
+    cert: readCertificateContent(https.cert, moduleDir),
+  };
+
+  if (https.ca !== undefined) {
+    if (Array.isArray(https.ca)) {
+      result.ca = https.ca.map((item) => readCertificateContent(item, moduleDir));
+    } else {
+      result.ca = readCertificateContent(https.ca, moduleDir);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Normalize options and create necessary resources like the dynamic directory and logger.
  */
 export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOptions {
@@ -51,6 +104,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     reloadDelay = 300,
     apiExts = ['.ts'],
     routerExclude = [],
+    https,
   } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
@@ -82,7 +136,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
   expect.isObject(workerOptions, 'FluxionOptions.workerOptions must be an object');
   expect.isPositiveInteger(maxRequestBytes, 'FluxionOptions.maxRequestBytes must be a positive integer');
 
-  if (!existsSync(dir)) {
+  if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
@@ -99,5 +153,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     logger,
     apiExts,
     routerExclude,
+    https: normalizeHttpsOptions(https, moduleDir),
   };
 }

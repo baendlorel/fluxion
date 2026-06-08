@@ -288,8 +288,123 @@ interface FluxionOptions {
   logger?: 'one-line' | 'json-line' | InjectionConfig;
   apiExts?: string[];
   routerExclude?: string[];
+  https?: {
+    key: string | Buffer;
+    cert: string | Buffer;
+    ca?: string | Buffer | Array<string | Buffer>;
+  };
 }
 ```
+
+### `dir`
+
+Dynamic directory root. Created automatically if missing.
+
+### `host`
+
+Host passed to `server.listen`.
+
+### `port`
+
+Business server port.
+
+### `metaPort`
+
+Primary meta API port. Defaults to `port + 1` and must be different from `port`.
+
+### `reloadDelay`
+
+Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
+
+### `apiExts`
+
+Extensions registered as API handlers. Defaults to:
+
+```ts
+['.ts']
+```
+
+Example:
+
+```ts
+fluxion({
+  dir: './dynamicDirectory',
+  host: '127.0.0.1',
+  port: 3000,
+  apiExts: ['.ts', '.mjs'],
+});
+```
+
+### `routerExclude`
+
+Extensions excluded from both API and static registration.
+
+Example:
+
+```ts
+routerExclude: ['.map']
+```
+
+### `maxRequestBytes`
+
+Maximum accepted request body size. Defaults to `8_000_000`.
+
+### `logger`
+
+Built-in modes:
+
+- `one-line`
+- `json-line`
+
+A custom logger can be loaded through an injection config object whose module exports a function.
+
+### `injections`
+
+Worker startup injections. Each item is loaded with `require(modulePath)` and called as a factory. The resulting instances are stored on:
+
+```ts
+globalThis[Symbol.for('fluxion.injection')]
+```
+
+### `workerOptions`
+
+Runtime tuning options:
+
+```ts
+interface WorkerOptions {
+  maxWorkerCount: number;
+  requestTimeoutMs: number;
+  maxInflight: number;
+  memorySoftLimitMb: number;
+  memoryHardLimitMb: number;
+  memorySampleIntervalMs: number;
+  maxOldGenerationSizeMb: number;
+  maxYoungGenerationSizeMb: number;
+  stackSizeMb: number;
+  maxResponseBytes: number;
+}
+```
+
+Current implementation uses `maxWorkerCount` for process count and reports CPU/memory telemetry from workers.
+
+### `https`
+
+HTTPS server configuration. When provided, Fluxion creates an HTTPS server instead of HTTP.
+
+```ts
+fluxion({
+  dir: './dynamicDirectory',
+  host: '127.0.0.1',
+  port: 9443,
+  https: {
+    key: './certs/private-key.pem',  // 私钥文件路径或内容
+    cert: './certs/certificate.pem', // 证书文件路径或内容
+    ca: './certs/ca-bundle.crt',    // 可选：CA 证书链
+  },
+});
+```
+
+Relative paths are resolved relative to `moduleDir`. PEM content can be passed directly as strings.
 
 ### `dir`
 

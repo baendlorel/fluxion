@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 
 import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
@@ -13,8 +14,8 @@ import { parseQuery } from '../utils/query.js';
 import { parseCookie } from '../utils/cookie.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
-export function createWorkerServer(cx: FluxionContext): http.Server {
-  const server = http.createServer(async (req, res) => {
+export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
+  const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
     const url = toURL(req.url);
@@ -101,7 +102,15 @@ export function createWorkerServer(cx: FluxionContext): http.Server {
         safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       }
     }
-  });
+  };
+
+  const server = cx.options.https
+    ? https.createServer({
+        key: cx.options.https.key,
+        cert: cx.options.https.cert,
+        ca: cx.options.https.ca,
+      }, requestHandler)
+    : http.createServer(requestHandler);
 
   server.on('close', () => {
     cx.logger.info('ServerClosed', {
@@ -113,6 +122,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server {
   server.listen(cx.options.port, cx.options.host, () => {
     cx.logger.info('ServerStarted', {
       pid: process.pid,
+      protocol: cx.options.https ? 'https' : 'http',
       host: cx.options.host,
       port: cx.options.port,
     });

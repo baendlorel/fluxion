@@ -173,6 +173,26 @@ export interface FluxionOptions {
    * Defaults to `[]`.
    */
   routerExclude?: string[];
+
+  /**
+   * HTTPS server configuration. If provided, the server will use HTTPS instead of HTTP.
+   * Both `key` and `cert` are required for HTTPS. `ca` is optional for certificate chains.
+   */
+  https?: {
+    /**
+     * Path to the private key file (PEM format) or the key content as a string/buffer.
+     */
+    key: string | Buffer;
+    /**
+     * Path to the certificate file (PEM format) or the certificate content as a string/buffer.
+     */
+    cert: string | Buffer;
+    /**
+     * Optional: Path to CA certificate file(s) or the CA content as a string/buffer/array.
+     * Used for intermediate certificates.
+     */
+    ca?: string | Buffer | Array<string | Buffer>;
+  };
 }
 
 export interface NormalizedFluxionOptions {
@@ -188,6 +208,11 @@ export interface NormalizedFluxionOptions {
   logger: LoggerOption | InjectionConfig;
   apiExts: string[];
   routerExclude: string[];
+  https?: {
+    key: string | Buffer;
+    cert: string | Buffer;
+    ca?: string | Buffer | Array<string | Buffer>;
+  };
 }
 
 export interface FluxionContext {
