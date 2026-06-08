@@ -79,6 +79,8 @@ In this repository, `pnpm dev` runs `src/index.ts` directly and starts Fluxion u
 Default development options:
 
 ```ts
+// if process.env.FLUXION_COLORS === '0', colors will be disabled in logs
+
 fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
   host: process.env.HOST ?? 'localhost',
