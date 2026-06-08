@@ -18,7 +18,9 @@ export class FluxionWatcher {
    * Recursively register all files in the options directory.
    */
   private init(): this {
-    const dirPath = path.join(process.cwd(), this.cx.options.dir);
+    const dirPath = path.isAbsolute(this.cx.options.dir)
+      ? this.cx.options.dir
+      : path.join(process.cwd(), this.cx.options.dir);
 
     const registerRecursive = (dir: string, relativePath: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });

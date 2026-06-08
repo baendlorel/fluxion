@@ -55,3 +55,12 @@ worker优化：
 增加一个字段叫apiExts，类型为string[]，也就是要能够做到，如果后缀名在这个数组里，
 将会被读取为handler并注册成api，其余情况被注册为静态元素。
 2、再增加routerExclude，也是string[]，表示满足这个东西的后缀名将不会被注册。首先，register将会尝试检查是否存在它，如果存在就删除，但走到注册的这一步就立刻返回，它表示排除这个
+
+---
+使用fast-glob包，加强将apiExts，改为apiInclude（默认为*.ts）,采用fast-glob来处理。
+增加设置叫include，只有满足这个才会被注册，routerExclude改为exclude（默认是.gitignore\node_modules等等常见排除项），满足这个就不注册。
+都采用fast-glob处理这些匹配。
+顺序是：
+1. if !include return
+2. if exclude return
+3. if apiinclude -> 注册为api else 注册为静态文件资源

@@ -161,18 +161,27 @@ export interface FluxionOptions {
   logger?: LoggerOption;
 
   /**
-   * File extensions that should be registered as API handlers.
-   * Files with these extensions will be loaded as handlers and registered as APIs.
-   * Defaults to `['.ts']`.
+   * Glob patterns for files that should be registered.
+   * Only files matching these patterns will be registered (as API or static resource).
+   * Defaults to all files (via wildcard patterns).
+   * @example ['*.ts', '*.js'] - only register TypeScript and JavaScript files
    */
-  apiExts?: string[];
+  include?: string[];
 
   /**
-   * File extensions that should be excluded from registration.
-   * Files with these extensions will not be registered (neither as API nor static resource).
-   * Defaults to `[]`.
+   * Glob patterns for files that should be registered as API handlers.
+   * Files matching these patterns will be loaded as handlers and registered as APIs.
+   * Defaults to TypeScript files (*.ts).
+   * @example ['*.api.ts', 'handlers/*.js'] - register specific patterns as APIs
    */
-  routerExclude?: string[];
+  apiInclude?: string[];
+
+  /**
+   * Glob patterns for files that should be excluded from registration.
+   * Files matching these patterns will not be registered (neither as API nor static resource).
+   * Defaults to common exclusions like node_modules, .git, dist, etc.
+   */
+  exclude?: string[];
 
   /**
    * HTTPS server configuration. If provided, the server will use HTTPS instead of HTTP.
@@ -206,8 +215,9 @@ export interface NormalizedFluxionOptions {
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption | InjectionConfig;
-  apiExts: string[];
-  routerExclude: string[];
+  include: string[];
+  apiInclude: string[];
+  exclude: string[];
   https?: {
     key: string | Buffer;
     cert: string | Buffer;

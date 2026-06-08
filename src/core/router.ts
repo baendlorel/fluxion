@@ -1,8 +1,9 @@
 import type { FluxionContext, FluxionHandler } from './types.js';
-import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
-import { loadFunction } from '@/common/injector.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { minimatch } from 'minimatch';
+import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
+import { loadFunction } from '@/common/injector.js';
 
 export class FluxionRouter {
   /**
@@ -18,7 +19,9 @@ export class FluxionRouter {
   }
 
   makeStaticResource(filepath: string): FluxionHandler {
-    const fullPath = path.join(this.cx.options.dir, filepath);
+    const fullPath = path.isAbsolute(this.cx.options.dir)
+      ? path.join(this.cx.options.dir, filepath)
+      : path.join(process.cwd(), this.cx.options.dir, filepath);
     return async (normalized, _req, res) => {
       if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
         res.statusCode = 405;
@@ -62,13 +65,18 @@ export class FluxionRouter {
   }
 
   /**
+   * File registration logic with fast-glob pattern matching:
    * 1. Check if the path exists, if not, delete the handler;
-   * 2. If the file extension matches `routerExclude`, delete it and return early;
-   * 3. If the file extension matches `apiExts`, register it as an API, otherwise register as static resource;
+   * 2. If file doesn't match include patterns, skip registration;
+   * 3. If file matches exclude patterns, skip registration;
+   * 4. If file matches apiInclude patterns, register as API handler;
+   * 5. Otherwise, register as static resource.
    * @param filepath
    */
   register(filepath: string) {
-    const fullpath = path.join(process.cwd(), this.cx.options.dir, filepath);
+    const fullpath = path.isAbsolute(this.cx.options.dir)
+      ? path.join(this.cx.options.dir, filepath)
+      : path.join(process.cwd(), this.cx.options.dir, filepath);
     if (!fs.existsSync(fullpath)) {
       this.handlers.delete(filepath);
       this.cx.logger.info(`[${filepath}] deleted`);
@@ -77,18 +85,28 @@ export class FluxionRouter {
 
     delete require.cache[fullpath];
 
-    const extension = path.extname(filepath).toLowerCase();
+    // Step 2: Check if file matches include patterns (default: all files)
+    // If not matching, skip registration
+    const matchesInclude = this.cx.options.include.some((pattern) => minimatch(filepath, pattern));
+    if (!matchesInclude) {
+      this.handlers.delete(filepath);
+      this.cx.logger.info(`[${filepath}] skipped (not in include)`);
+      return;
+    }
 
-    // Check if this file should be excluded from registration
-    if (this.cx.options.routerExclude.some((ext) => extension === ext)) {
+    // Step 3: Check if file matches exclude patterns
+    // If matching, skip registration
+    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(filepath, pattern));
+    if (matchesExclude) {
       this.handlers.delete(filepath);
       this.cx.logger.info(`[${filepath}] excluded`);
       return;
     }
 
-    // register as api
-    // ! Files with extensions matching `apiExts` are considered as API handlers.
-    if (this.cx.options.apiExts.some((ext) => extension === ext)) {
+    // Step 4 & 5: Check if file matches apiInclude patterns
+    // If matching, register as API handler; otherwise as static resource
+    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(filepath, pattern));
+    if (matchesApiInclude) {
       const handler = loadFunction({ name: fullpath, modulePath: fullpath });
       this.handlers.set(filepath, handler);
       this.cx.logger.info(`[${filepath}] handler registered`);

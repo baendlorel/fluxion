@@ -102,8 +102,22 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     workerOptions = {},
     maxRequestBytes = 8_000_000,
     reloadDelay = 300,
-    apiExts = ['.ts'],
-    routerExclude = [],
+    include = ['**/*'],
+    apiInclude = ['**/*.ts'],
+    exclude = [
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.vscode/**',
+      '**/.idea/**',
+      '**/*.log',
+      '**/.DS_Store',
+      '**/coverage/**',
+      '**/.nyc_output/**',
+      '**/*.tmp',
+      '**/*.temp',
+    ],
     https,
   } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
@@ -151,8 +165,9 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
     logger,
-    apiExts,
-    routerExclude,
+    include,
+    apiInclude,
+    exclude,
     https: normalizeHttpsOptions(https, moduleDir),
   };
 }
