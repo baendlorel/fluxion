@@ -4,6 +4,7 @@ import type { FluxionContext } from '@/core/types.js';
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
 import { loadFunction } from './injector.js';
+import { cctl } from './color.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
 
@@ -41,22 +42,22 @@ const safeStringify = (value: unknown): string => {
 };
 
 const ColoredLevels: Record<LogLevel, string> = {
-  INFO: 'INFO',
-  WARN: 'WARN',
-  ERROR: 'ERROR',
-  SUCC: 'SUCC',
-  DEBUG: 'DEBUG',
-  VERBOSE: 'VERBOSE',
+  INFO: `${cctl.cyan}INFO${cctl.reset}`,
+  WARN: `${cctl.orange}WARN${cctl.reset}`,
+  ERROR: `${cctl.red}ERROR${cctl.reset}`,
+  SUCC: `${cctl.green}SUCC${cctl.reset}`,
+  DEBUG: `${cctl.blue}DEBUG${cctl.reset}`,
+  VERBOSE: `${cctl.purple}VERBOSE${cctl.reset}`,
 };
-const TimestampColor = '#166534';
+const TimestampColor = 'rgb(22, 101, 52)';
 
 export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
   const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
 
-  const timestamp = `[${rawTimestamp}]`;
+  const timestamp = `${cctl.darkGreen}[${rawTimestamp}]${cctl.reset}`;
   const level = ColoredLevels[rawLevel] ?? rawLevel;
   const body = rawMessage ?? rawEvent;
-  const fieldsText = $keys(fields).length > 0 ? ` ${safeStringify(fields)}` : '';
+  const fieldsText = $keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
 };

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
 import { loadFunction } from '@/common/injector.js';
+import { cctl } from '@/common/color.js';
 
 export class FluxionRouter {
   /**
@@ -79,7 +80,7 @@ export class FluxionRouter {
       : path.join(process.cwd(), this.cx.options.dir, filepath);
     if (!fs.existsSync(fullpath)) {
       this.handlers.delete(filepath);
-      this.cx.logger.info(`[${filepath}] deleted`);
+      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${filepath}`);
       return;
     }
 
@@ -90,7 +91,7 @@ export class FluxionRouter {
     const matchesInclude = this.cx.options.include.some((pattern) => minimatch(filepath, pattern));
     if (!matchesInclude) {
       this.handlers.delete(filepath);
-      this.cx.logger.info(`[${filepath}] skipped (not in include)`);
+      this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${filepath}`);
       return;
     }
 
@@ -99,7 +100,7 @@ export class FluxionRouter {
     const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(filepath, pattern));
     if (matchesExclude) {
       this.handlers.delete(filepath);
-      this.cx.logger.info(`[${filepath}] excluded`);
+      this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${filepath}`);
       return;
     }
 
@@ -109,13 +110,13 @@ export class FluxionRouter {
     if (matchesApiInclude) {
       const handler = loadFunction({ name: fullpath, modulePath: fullpath });
       this.handlers.set(filepath, handler);
-      this.cx.logger.info(`[${filepath}] handler registered`);
+      this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${filepath}`);
       return;
     }
 
     // register as static resource
     this.handlers.set(filepath, this.makeStaticResource(filepath));
-    this.cx.logger.info(`[${filepath}] static resource registered`);
+    this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${filepath}`);
   }
 
   getHandler(url: URL): FluxionHandler | undefined {
