@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import type { otherstring, InjectionConfig } from '@/common/types.js';
 import type { FluxionContext } from '@/core/types.js';
 
@@ -42,22 +41,22 @@ const safeStringify = (value: unknown): string => {
 };
 
 const ColoredLevels: Record<LogLevel, string> = {
-  INFO: chalk.hex('#0386e3')('INFO'),
-  WARN: chalk.hex('#fb923c')('WARN'),
-  ERROR: chalk.hex('#ef4444')('ERROR'),
-  SUCC: chalk.hex('#22c55e')('SUCC'),
-  DEBUG: chalk.hex('#d327e0')('DEBUG'),
-  VERBOSE: chalk.hex('#36ffeb')('SUCC'),
+  INFO: 'INFO',
+  WARN: 'WARN',
+  ERROR: 'ERROR',
+  SUCC: 'SUCC',
+  DEBUG: 'DEBUG',
+  VERBOSE: 'VERBOSE',
 };
-const TimestampColor = chalk.hex('#166534');
+const TimestampColor = '#166534';
 
 export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
   const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
 
-  const timestamp = TimestampColor(`[${rawTimestamp}]`);
+  const timestamp = `[${rawTimestamp}]`;
   const level = ColoredLevels[rawLevel] ?? rawLevel;
   const body = rawMessage ?? rawEvent;
-  const fieldsText = $keys(fields).length > 0 ? ` ${chalk.dim(safeStringify(fields))}` : '';
+  const fieldsText = $keys(fields).length > 0 ? ` ${safeStringify(fields)}` : '';
 
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
 };
