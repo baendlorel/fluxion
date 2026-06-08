@@ -120,6 +120,37 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
 }
 
 /**
+ * Create a worker logger that prefixes all log messages with the worker PID.
+ */
+export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): FluxionLogger {
+  const pidPrefix = `[${pid}]`;
+
+  return {
+    write(level: LogLevel, event: string, fields?: object): void {
+      baseLogger.write(level, `${pidPrefix} ${event}`, fields);
+    },
+    info(event: string, fields?: object): void {
+      baseLogger.info(`${pidPrefix} ${event}`, fields);
+    },
+    warn(event: string, fields?: object): void {
+      baseLogger.warn(`${pidPrefix} ${event}`, fields);
+    },
+    error(event: string, fields?: object): void {
+      baseLogger.error(`${pidPrefix} ${event}`, fields);
+    },
+    succ(event: string, fields?: object): void {
+      baseLogger.succ(`${pidPrefix} ${event}`, fields);
+    },
+    debug(event: string, fields?: object): void {
+      baseLogger.debug(`${pidPrefix} ${event}`, fields);
+    },
+    verbose(event: string, fields?: object): void {
+      baseLogger.verbose(`${pidPrefix} ${event}`, fields);
+    },
+  };
+}
+
+/**
  * ! Error.isError needs Node.js 24
  */
 export const getErrorMessage = (error: unknown): string =>

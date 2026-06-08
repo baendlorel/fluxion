@@ -18,7 +18,7 @@ const inject = async (cx: FluxionContext) => {
     const instance = await PromiseTry(factory);
     o[injection.name] = instance;
   }
-  cx.logger.info(`[worker ${process.pid}] injections loaded`, Object.keys(o));
+  cx.logger.info('injections loaded', Object.keys(o));
 };
 
 const startStatsReporter = () => {

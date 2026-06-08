@@ -1,6 +1,6 @@
 import type { FluxionContext, FluxionOptions } from './types.js';
 
-import { createLogger } from '@/common/logger.js';
+import { createLogger, createWorkerLogger } from '@/common/logger.js';
 import { normalizeOptions } from './utils/options.js';
 import cluster from 'node:cluster';
 import { initPrimary } from './cluster/primary.js';
@@ -19,6 +19,8 @@ export async function fluxion(options: FluxionOptions) {
   if (cluster.isPrimary) {
     initPrimary(context);
   } else {
+    // Replace logger with worker logger that prefixes PID
+    context.logger = createWorkerLogger(context.logger, process.pid);
     // Only worker creates the watcher
     context.watcher = new FluxionWatcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
     initWorker(context);
