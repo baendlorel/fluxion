@@ -153,5 +153,4 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
 /**
  * ! Error.isError needs Node.js 24
  */
-export const getErrorMessage = (error: unknown): string =>
-  typeof error === 'object' && error !== null ? (error as any).message : String(error);
+export const getErrorMessage = (error: unknown): string => (error as any)?.message || String(error);

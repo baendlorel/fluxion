@@ -99,17 +99,20 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
         safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
       } else {
-        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
+        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.InternalServerError);
       }
     }
   };
 
   const server = cx.options.https
-    ? https.createServer({
-        key: cx.options.https.key,
-        cert: cx.options.https.cert,
-        ca: cx.options.https.ca,
-      }, requestHandler)
+    ? https.createServer(
+        {
+          key: cx.options.https.key,
+          cert: cx.options.https.cert,
+          ca: cx.options.https.ca,
+        },
+        requestHandler,
+      )
     : http.createServer(requestHandler);
 
   server.on('close', () => {
