@@ -120,7 +120,7 @@ export interface FluxionOptions {
   /**
    * Delay in milliseconds for reloading handlers after file changes are detected.
    *
-   * Defaults to 300ms.
+   * Defaults to 500ms.
    */
   reloadDelay?: number;
 

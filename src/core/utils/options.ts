@@ -101,7 +101,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     moduleDir = process.cwd(),
     workerOptions = {},
     maxRequestBytes = 8_000_000,
-    reloadDelay = 300,
+    reloadDelay = 500,
     include = ['**/*'],
     apiInclude = ['**/*.ts'],
     exclude = [

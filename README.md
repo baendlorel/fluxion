@@ -12,7 +12,7 @@
 
 Fluxion is a filesystem-routing dynamic server for Node.js.
 
-- Route files from a dynamic directory
+- Route files from a dynamic directory(by chokidar)
 - Load API handlers by extension, default: `.ts`
 - Serve other files as static resources
 - Run the business server in worker processes

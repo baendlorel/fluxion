@@ -1,6 +1,6 @@
 {
   "name": "fluxion-ts",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": {
     "name": "Kasukabe Tsumugi",
     "email": "futami16237@gmail.com"
@@ -76,7 +76,7 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
-    "chokidar": "^5.0.0",
+    "chokidar": "4.0.3",
     "minimatch": "^10.2.5"
   }
 }
