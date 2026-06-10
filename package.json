@@ -76,6 +76,7 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
+    "chokidar": "^5.0.0",
     "minimatch": "^10.2.5"
   }
 }
