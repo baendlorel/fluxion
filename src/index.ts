@@ -7,8 +7,6 @@ export function defineFluxionHandler(handler: FluxionHandler) {
   return handler;
 }
 
-// TODO 增加发送请求库+token认证的js文件，可通用地纳入dynamic directory里面，比如fetch.js/uname.js
-// TODO 加入后端专用的认证机制，可以叫defineFluxionAuthedHandler，自动校验认证信息，方便处理；
 if (process.env.NODE_ENV !== 'production') {
   globalThis.$throw = (message: string) => {
     throw new Error('[fluxion error]' + message);
