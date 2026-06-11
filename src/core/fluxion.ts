@@ -6,6 +6,7 @@ import cluster from 'node:cluster';
 import { initPrimary } from './cluster/primary.js';
 import { initWorker } from './cluster/worker.js';
 import { FluxionWatcher } from './watch.js';
+import { FluxionNativeWatcher } from './watch.native.js';
 import { FluxionRouter } from './router.js';
 
 export async function fluxion(options: FluxionOptions) {
@@ -22,7 +23,8 @@ export async function fluxion(options: FluxionOptions) {
     // Replace logger with worker logger that prefixes PID
     context.logger = createWorkerLogger(context.logger, process.pid);
     // Only worker creates the watcher
-    context.watcher = new FluxionWatcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
+    const Watcher = context.options.nativeWatcher ? FluxionNativeWatcher : FluxionWatcher;
+    context.watcher = new Watcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
     initWorker(context);
   }
 }

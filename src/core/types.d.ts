@@ -3,6 +3,7 @@ import type { InjectionConfig } from '@/common/types.js';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router.ts';
 import type { FluxionWatcher } from './watch.ts';
+import type { FluxionNativeWatcher } from './watch.native.ts';
 
 export interface NormalizedRequest {
   /**
@@ -202,6 +203,13 @@ export interface FluxionOptions {
      */
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  /**
+   * Use native file watcher (fs.watch) instead of chokidar.
+   * When set to true, uses the native Node.js fs.watch() for file watching.
+   * Defaults to false (uses chokidar for better cross-platform compatibility).
+   */
+  nativeWatcher?: boolean;
 }
 
 export interface NormalizedFluxionOptions {
@@ -218,6 +226,7 @@ export interface NormalizedFluxionOptions {
   include: string[];
   apiInclude: string[];
   exclude: string[];
+  nativeWatcher: boolean;
   https?: {
     key: string | Buffer;
     cert: string | Buffer;
@@ -228,7 +237,7 @@ export interface NormalizedFluxionOptions {
 export interface FluxionContext {
   options: NormalizedFluxionOptions;
   logger: FluxionLogger;
-  watcher: FluxionWatcher;
+  watcher: FluxionWatcher | FluxionNativeWatcher;
   router: FluxionRouter;
 }
 

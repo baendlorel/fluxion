@@ -119,6 +119,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
       '**/*.temp',
     ],
     https,
+    nativeWatcher = false,
   } = options as FluxionOptions;
   const logger = options.logger ?? 'one-line';
   expectLoggerOption(logger);
@@ -168,6 +169,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     include,
     apiInclude,
     exclude,
+    nativeWatcher,
     https: normalizeHttpsOptions(https, moduleDir),
   };
 }
