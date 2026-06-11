@@ -12,7 +12,7 @@
 
 Fluxion is a filesystem-routing dynamic server for Node.js.
 
-- Route files from a dynamic directory(by chokidar)
+- Route files from a dynamic directory by chokidar or native `fs.watch`
 - Load API handlers by extension, default: `.ts`
 - Serve other files as static resources
 - Run the business server in worker processes
@@ -283,6 +283,7 @@ interface FluxionOptions {
   port: number;
   reloadDelay?: number;
   metaPort?: number;
+  nativeWatcher?: boolean;
   injections?: InjectionConfig[];
   moduleDir?: string;
   workerOptions?: Partial<WorkerOptions>;
@@ -317,6 +318,28 @@ Primary meta API port. Defaults to `port + 1` and must be different from `port`.
 ### `reloadDelay`
 
 Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
+
+### `nativeWatcher`
+
+Use native file watcher (`fs.watch`) instead of chokidar. Defaults to `false`.
+
+When set to `true`, Fluxion uses Node.js built-in `fs.watch()` for file watching. When `false` (default), it uses `chokidar` for better cross-platform compatibility.
+
+**Trade-offs:**
+
+- `chokidar` (default): Better cross-platform support, more stable, handles edge cases
+- `fs.watch`: Native implementation, lighter weight, but may have platform-specific quirks
+
+Example:
+
+```ts
+fluxion({
+  dir: './dynamicDirectory',
+  host: '127.0.0.1',
+  port: 3000,
+  nativeWatcher: true,  // use native fs.watch instead of chokidar
+});
+```
 
 ### `apiExts`
 
@@ -427,6 +450,28 @@ Primary meta API port. Defaults to `port + 1` and must be different from `port`.
 ### `reloadDelay`
 
 Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
+
+### `nativeWatcher`
+
+Use native file watcher (`fs.watch`) instead of chokidar. Defaults to `false`.
+
+When set to `true`, Fluxion uses Node.js built-in `fs.watch()` for file watching. When `false` (default), it uses `chokidar` for better cross-platform compatibility.
+
+**Trade-offs:**
+
+- `chokidar` (default): Better cross-platform support, more stable, handles edge cases
+- `fs.watch`: Native implementation, lighter weight, but may have platform-specific quirks
+
+Example:
+
+```ts
+fluxion({
+  dir: './dynamicDirectory',
+  host: '127.0.0.1',
+  port: 3000,
+  nativeWatcher: true,  // use native fs.watch instead of chokidar
+});
+```
 
 ### `apiExts`
 
