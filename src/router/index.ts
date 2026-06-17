@@ -1,4 +1,4 @@
-import type { FluxionContext, FluxionHandler } from './types.js';
+import type { FluxionContext, FluxionHandler } from '../types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';

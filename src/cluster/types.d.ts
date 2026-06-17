@@ -1,5 +1,5 @@
 import type cluster from 'node:cluster';
-import type { PrimaryAction, WorkerAction } from './consts.ts';
+import type { PrimaryAction, WorkerAction } from './consts.js';
 
 export interface ClusterSchedulerDemoOptions {
   workerCount?: number;

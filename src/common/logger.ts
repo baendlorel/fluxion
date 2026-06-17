@@ -1,5 +1,5 @@
 import type { otherstring, InjectionConfig } from '@/common/types.js';
-import type { FluxionContext } from '@/core/types.js';
+import type { FluxionContext } from '@/types.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';

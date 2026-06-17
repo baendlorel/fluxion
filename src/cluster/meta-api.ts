@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import { getErrorMessage } from '@/common/logger.js';
 import { HttpCode, META_PREFIX } from '@/common/consts.js';
-import { sendJson } from '../utils/respond.js';
+import { sendJson } from '../http/respond.js';
 import { FluxionContext } from '../types.js';
 
 export function createPrimaryMetaApiServer(
