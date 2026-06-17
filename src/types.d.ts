@@ -249,3 +249,10 @@ export type FluxionHandler<
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
 ) => Promise<unknown> | unknown;
+
+export type FluxionDispose = () => Promise<void> | void;
+
+export interface FluxionModule {
+  handler: FluxionHandler;
+  disposer?: FluxionDispose;
+}

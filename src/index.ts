@@ -1,11 +1,33 @@
-import type { FluxionHandler, FluxionOptions } from './types.js';
+import type { FluxionDispose, FluxionHandler, FluxionModule } from './types.js';
 import { fluxion } from './fluxion.js';
+import { noop } from './common/consts.js';
 
-export { fluxion, type FluxionOptions as FluxionOptions };
+export { fluxion };
+export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
 
-const noop = () => {};
-export function defineFluxionHandler(handler: FluxionHandler, dispose: () => void = noop) {
-  return { handler, dispose };
+export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModule;
+export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModule;
+export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer: FluxionDispose = noop): FluxionModule {
+  if (typeof a === 'function') {
+    if (typeof disposer !== 'function') {
+      $throw(`Invalid disposer, expected a function but got ${typeof disposer}`);
+    }
+    return { handler: a, disposer };
+  }
+
+  if (typeof a !== 'object' || a === null) {
+    $throw(`Invalid argument, expected a FluxionModule object or a handler function, but got ${typeof a}`);
+  }
+
+  if (typeof a.handler !== 'function') {
+    $throw(`Invalid FluxionModule, "handler" must be a function`);
+  }
+
+  if (a.disposer !== undefined && typeof a.disposer !== 'function') {
+    $throw(`Invalid FluxionModule, "disposer" must be a function if provided`);
+  }
+
+  return a;
 }
 
 if (process.env.NODE_ENV !== 'production') {

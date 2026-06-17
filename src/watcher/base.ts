@@ -4,6 +4,8 @@ import type { FluxionContext } from '../types.js';
 
 export type WatcherContext = Pick<FluxionContext, 'options' | 'logger' | 'router'>;
 
+// TODO 这里可以选择fs.readFile + vm.runInThisContext 的方式来替代require。速度也许不一样但更安全
+
 export abstract class FluxionWatcherBase {
   protected readonly cx: WatcherContext;
 

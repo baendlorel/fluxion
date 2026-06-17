@@ -28,3 +28,5 @@ export const enum HandlerResult {
   NotFound,
   Handled,
 }
+
+export const noop = () => {};
