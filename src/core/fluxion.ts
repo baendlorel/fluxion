@@ -5,8 +5,8 @@ import { normalizeOptions } from './utils/options.js';
 import cluster from 'node:cluster';
 import { initPrimary } from './cluster/primary.js';
 import { initWorker } from './cluster/worker.js';
-import { FluxionWatcher } from './watch.js';
-import { FluxionNativeWatcher } from './watch.native.js';
+import { FluxionWatcher } from './watcher/chokidar.js';
+import { FluxionNativeWatcher } from './watcher/native.js';
 import { FluxionRouter } from './router.js';
 
 export async function fluxion(options: FluxionOptions) {

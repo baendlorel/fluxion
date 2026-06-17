@@ -2,8 +2,8 @@ import type http from 'node:http';
 import type { InjectionConfig } from '@/common/types.js';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router.ts';
-import type { FluxionWatcher } from './watch.ts';
-import type { FluxionNativeWatcher } from './watch.native.ts';
+import type { FluxionWatcher } from './watcher/chokidar.ts';
+import type { FluxionNativeWatcher } from './watcher/native.ts';
 
 export interface NormalizedRequest {
   /**

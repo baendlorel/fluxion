@@ -4,6 +4,7 @@ import https from 'node:https';
 import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
 import { HttpCode, META_PREFIX } from '@/common/consts.js';
+import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
 
 import { getRealIp } from '../utils/headers.js';
@@ -12,7 +13,6 @@ import { safeSendJson } from '../utils/respond.js';
 import { parseBody, type BodyPreview } from '../utils/body.js';
 import { parseQuery } from '../utils/query.js';
 import { parseCookie } from '../utils/cookie.js';
-import { PromiseTry } from '@/common/promise-try.js';
 
 export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
