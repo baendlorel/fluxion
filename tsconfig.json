@@ -21,6 +21,7 @@
   },
   "include": [
     "./dynamicDirectory/**/*.ts",
+    "./scripts/**/*.ts",
     "./src/**/*.ts",
     "./draft/**/*.ts",
     "*.config.ts",

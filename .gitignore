@@ -5,6 +5,7 @@
 dynamicDirectory
 .fluxion-private/
 .image.json
+local-test
 
 
 # Logs
