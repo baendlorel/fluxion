@@ -3,8 +3,9 @@ import { fluxion } from './fluxion.js';
 
 export { fluxion, type FluxionOptions as FluxionOptions };
 
-export function defineFluxionHandler(handler: FluxionHandler) {
-  return handler;
+const noop = () => {};
+export function defineFluxionHandler(handler: FluxionHandler, dispose: () => void = noop) {
+  return { handler, dispose };
 }
 
 if (process.env.NODE_ENV !== 'production') {
