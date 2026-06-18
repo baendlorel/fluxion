@@ -6,16 +6,12 @@ export type WatcherContext = Pick<FluxionContext, 'options' | 'logger' | 'router
 
 export abstract class FluxionWatcherBase {
   protected readonly cx: WatcherContext;
-  protected readonly directoryPath: string;
 
   private timer: NodeJS.Timeout | null = null;
   private readonly filesChanged: Set<string> = new Set();
 
   constructor(cx: WatcherContext) {
     this.cx = cx;
-    this.directoryPath = path.isAbsolute(this.cx.options.dir)
-      ? this.cx.options.dir
-      : path.join(process.cwd(), this.cx.options.dir);
   }
 
   /**
@@ -25,7 +21,8 @@ export abstract class FluxionWatcherBase {
     const registerRecursive = (dir: string, relativePath: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-      for (const entry of entries) {
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
         const entryPath = path.join(dir, entry.name);
         const entryRelativePath = path.join(relativePath, entry.name);
 
@@ -37,8 +34,8 @@ export abstract class FluxionWatcherBase {
       }
     };
 
-    if (fs.existsSync(this.directoryPath)) {
-      registerRecursive(this.directoryPath, '');
+    if (fs.existsSync(this.cx.options.dir)) {
+      registerRecursive(this.cx.options.dir, '');
       this.cx.logger.info(`Initial registration complete for directory: ${this.cx.options.dir}`);
     } else {
       this.cx.logger.warn(`Directory does not exist: ${this.cx.options.dir}`);

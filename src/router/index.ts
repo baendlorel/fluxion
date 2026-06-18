@@ -72,15 +72,15 @@ export class FluxionRouter {
    * 3. If file matches exclude patterns, skip registration;
    * 4. If file matches apiInclude patterns, register as API handler;
    * 5. Otherwise, register as static resource.
-   * @param filepath
+   * @param rp relative path.
    */
-  register(filepath: string) {
+  register(rp: string) {
     const fullpath = path.isAbsolute(this.cx.options.dir)
-      ? path.join(this.cx.options.dir, filepath)
-      : path.join(process.cwd(), this.cx.options.dir, filepath);
+      ? path.join(this.cx.options.dir, rp)
+      : path.join(process.cwd(), this.cx.options.dir, rp);
     if (!fs.existsSync(fullpath)) {
-      this.handlers.delete(filepath);
-      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${filepath}`);
+      this.handlers.delete(rp);
+      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${rp}`);
       return;
     }
 
@@ -88,39 +88,60 @@ export class FluxionRouter {
 
     // Step 2: Check if file matches include patterns (default: all files)
     // If not matching, skip registration
-    const matchesInclude = this.cx.options.include.some((pattern) => minimatch(filepath, pattern));
+    const matchesInclude = this.cx.options.include.some((pattern) => minimatch(rp, pattern));
     if (!matchesInclude) {
-      this.handlers.delete(filepath);
-      this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${filepath}`);
+      this.handlers.delete(rp);
+      this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${rp}`);
       return;
     }
 
     // Step 3: Check if file matches exclude patterns
     // If matching, skip registration
-    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(filepath, pattern));
+    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(rp, pattern));
     if (matchesExclude) {
-      this.handlers.delete(filepath);
-      this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${filepath}`);
+      this.handlers.delete(rp);
+      this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${rp}`);
       return;
     }
 
     // Step 4 & 5: Check if file matches apiInclude patterns
     // If matching, register as API handler; otherwise as static resource
-    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(filepath, pattern));
+    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(rp, pattern));
     if (matchesApiInclude) {
       const handler = loadFunction({ name: fullpath, modulePath: fullpath });
-      this.handlers.set(filepath, handler);
-      this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${filepath}`);
+      this.handlers.set(rp, handler);
+      this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${rp}`);
       return;
     }
 
     // register as static resource
-    this.handlers.set(filepath, this.makeStaticResource(filepath));
-    this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${filepath}`);
+    this.handlers.set(rp, this.makeStaticResource(rp));
+    this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${rp}`);
   }
 
   getHandler(url: URL): FluxionHandler | undefined {
     const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
     return this.handlers.get(relativePath);
+  }
+
+  /**
+   * If the path points to a file, it would be simple.
+   * But if it's a directory, we need to find all registered handlers under this directory and remove them.
+   *
+   * @param somepath
+   */
+  remove(somepath: string): void {
+    if (this.handlers.has(somepath)) {
+      this.handlers.delete(somepath);
+      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${somepath}`);
+    }
+    // & Not in handler map -> It is a directory
+    const prefix = somepath.endsWith('/') ? somepath : somepath + '/';
+    for (const key of this.handlers.keys()) {
+      if (key.startsWith(prefix)) {
+        this.handlers.delete(key);
+        this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${key}`);
+      }
+    }
   }
 }
