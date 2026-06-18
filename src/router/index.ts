@@ -78,8 +78,9 @@ export class FluxionRouter {
     const fullpath = path.isAbsolute(this.cx.options.dir)
       ? path.join(this.cx.options.dir, rp)
       : path.join(process.cwd(), this.cx.options.dir, rp);
+
     if (!fs.existsSync(fullpath)) {
-      this.handlers.delete(rp);
+      this.remove(rp);
       this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${rp}`);
       return;
     }
