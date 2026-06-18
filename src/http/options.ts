@@ -155,6 +155,8 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  dir = path.isAbsolute(dir) ? dir : path.join(process.cwd(), dir);
+
   return {
     dir,
     host,

@@ -20,9 +20,6 @@ export class FluxionRouter {
   }
 
   makeStaticResource(filepath: string): FluxionHandler {
-    const fullPath = path.isAbsolute(this.cx.options.dir)
-      ? path.join(this.cx.options.dir, filepath)
-      : path.join(process.cwd(), this.cx.options.dir, filepath);
     return async (normalized, _req, res) => {
       if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
         res.statusCode = 405;
@@ -31,13 +28,13 @@ export class FluxionRouter {
         return;
       }
 
-      if (!fs.existsSync(fullPath)) {
+      if (!fs.existsSync(filepath)) {
         res.statusCode = 404;
         res.end('Not Found');
         return;
       }
 
-      const stat = fs.statSync(fullPath);
+      const stat = fs.statSync(filepath);
       if (!stat.isFile()) {
         res.statusCode = 404;
         res.end('Not Found');
@@ -57,7 +54,7 @@ export class FluxionRouter {
       }
 
       return new Promise<symbol>((resolve, reject) => {
-        const stream = fs.createReadStream(fullPath);
+        const stream = fs.createReadStream(filepath);
         stream.on('error', reject);
         stream.on('end', () => resolve(this.StaticHandled));
         stream.pipe(res);
@@ -75,16 +72,16 @@ export class FluxionRouter {
    * @param rp relative path.
    */
   register(rp: string) {
-    const fullpath = path.isAbsolute(this.cx.options.dir)
-      ? path.join(this.cx.options.dir, rp)
-      : path.join(process.cwd(), this.cx.options.dir, rp);
+    const fullpath = path.join(this.cx.options.dir, rp);
 
     if (!fs.existsSync(fullpath)) {
-      this.remove(rp);
+      this.handlers.delete(rp);
+      // & Watcher will emit recursively, so there is no need to use this.remove(rp);
       this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${rp}`);
       return;
     }
 
+    // ! require.cache uses fullpath to be the key.
     delete require.cache[fullpath];
 
     // Step 2: Check if file matches include patterns (default: all files)
