@@ -4,28 +4,24 @@ import type { FluxionContext } from '../types.js';
 
 export type WatcherContext = Pick<FluxionContext, 'options' | 'logger' | 'router'>;
 
-// TODO 这里可以选择fs.readFile + vm.runInThisContext 的方式来替代require。速度也许不一样但更安全
-
 export abstract class FluxionWatcherBase {
   protected readonly cx: WatcherContext;
+  protected readonly directoryPath: string;
 
   private timer: NodeJS.Timeout | null = null;
   private readonly filesChanged: Set<string> = new Set();
 
   constructor(cx: WatcherContext) {
     this.cx = cx;
-  }
-
-  protected getDirectoryPath(): string {
-    return path.isAbsolute(this.cx.options.dir) ? this.cx.options.dir : path.join(process.cwd(), this.cx.options.dir);
+    this.directoryPath = path.isAbsolute(this.cx.options.dir)
+      ? this.cx.options.dir
+      : path.join(process.cwd(), this.cx.options.dir);
   }
 
   /**
    * Recursively register all files in the options directory.
    */
   protected init(): this {
-    const dirPath = this.getDirectoryPath();
-
     const registerRecursive = (dir: string, relativePath: string) => {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -41,8 +37,8 @@ export abstract class FluxionWatcherBase {
       }
     };
 
-    if (fs.existsSync(dirPath)) {
-      registerRecursive(dirPath, '');
+    if (fs.existsSync(this.directoryPath)) {
+      registerRecursive(this.directoryPath, '');
       this.cx.logger.info(`Initial registration complete for directory: ${this.cx.options.dir}`);
     } else {
       this.cx.logger.warn(`Directory does not exist: ${this.cx.options.dir}`);

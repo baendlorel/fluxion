@@ -23,10 +23,8 @@ export class FluxionWatcher extends FluxionWatcherBase {
     this.stop();
     this.init();
 
-    const dirPath = this.getDirectoryPath();
-
     this.watcher = chokidar
-      .watch(dirPath, {
+      .watch(this.directoryPath, {
         // Ignore dotfiles and common ignore patterns
         ignored: /(^|[\/\\])\../,
         // Keep the process running
@@ -46,7 +44,7 @@ export class FluxionWatcher extends FluxionWatcherBase {
           return;
         }
 
-        const relativePath = path.relative(dirPath, filename);
+        const relativePath = path.relative(this.directoryPath, filename);
         this.queueRefresh(relativePath);
       })
       .on('error', (err: unknown) => {

@@ -19,7 +19,7 @@ export class FluxionNativeWatcher extends FluxionWatcherBase {
     this.init();
 
     this.watcher = fs
-      .watch(this.getDirectoryPath(), { recursive: true }, (_eventType, filename) => {
+      .watch(this.directoryPath, { recursive: true }, (_eventType, filename) => {
         if (!filename) {
           return;
         }
