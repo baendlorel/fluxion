@@ -18,29 +18,30 @@ export abstract class FluxionWatcherBase {
    * Recursively register all files in the options directory.
    */
   protected init(): this {
-    const registerRecursive = (dir: string, relativePath: string) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const dir = this.cx.options.dir;
+    if (!fs.existsSync(dir)) {
+      this.cx.logger.warn(`Directory does not exist: ${dir}`);
+      return this;
+    }
+
+    const registerRecursive = (absoluteDir: string, relativeDir: string) => {
+      const entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
 
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
-        const entryPath = path.join(dir, entry.name);
-        const entryRelativePath = path.join(relativePath, entry.name);
+        const absolutePath = path.join(absoluteDir, entry.name);
+        const relativePath = path.join(relativeDir, entry.name);
 
         if (entry.isDirectory()) {
-          registerRecursive(entryPath, entryRelativePath);
+          registerRecursive(absolutePath, relativePath);
         } else if (entry.isFile()) {
-          this.register(entryRelativePath);
+          this.register(absolutePath, relativePath);
         }
       }
     };
 
-    if (fs.existsSync(this.cx.options.dir)) {
-      registerRecursive(this.cx.options.dir, '');
-      this.cx.logger.info(`Initial registration complete for directory: ${this.cx.options.dir}`);
-    } else {
-      this.cx.logger.warn(`Directory does not exist: ${this.cx.options.dir}`);
-    }
-
+    registerRecursive(dir, '');
+    this.cx.logger.info(`Initial registration complete for directory: ${dir}`);
     return this;
   }
 
@@ -51,13 +52,13 @@ export abstract class FluxionWatcherBase {
     }
 
     this.timer = setTimeout(() => {
-      this.filesChanged.forEach((p, _, s) => {
+      this.filesChanged.forEach((relativePath, absolutePath, s) => {
         try {
-          this.cx.router.register(p);
+          this.cx.router.register(absolutePath, relativePath);
         } catch (err) {
           this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
         } finally {
-          s.delete(p);
+          s.delete(absolutePath);
         }
       });
 
@@ -74,11 +75,11 @@ export abstract class FluxionWatcherBase {
     this.filesChanged.clear();
   }
 
-  private register(filepath: string): void {
+  private register(absolutePath: string, relativePath: string): void {
     try {
-      this.cx.router.register(filepath);
+      this.cx.router.register(absolutePath, relativePath);
     } catch (err) {
-      this.cx.logger.error(`Error registering [${filepath}]: ${(err as Error).message}`);
+      this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
     }
   }
 
