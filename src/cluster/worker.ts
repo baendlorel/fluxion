@@ -3,7 +3,7 @@ import type { FluxionContext } from '../types.js';
 import cluster from 'node:cluster';
 
 import { getErrorMessage } from '@/common/logger.js';
-import { loadFunction } from '@/common/injector.js';
+import { loadFluxionModule } from '@/common/injector.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
 import { sendToPrimary } from './communicate.js';
@@ -14,7 +14,7 @@ const inject = async (cx: FluxionContext) => {
   Reflect.set(globalThis, INJECTION_KEY, o);
   for (let i = 0; i < cx.options.injections.length; i++) {
     const injection = cx.options.injections[i];
-    const factory = loadFunction(injection);
+    const factory = loadFluxionModule(injection);
     const instance = await PromiseTry(factory);
     o[injection.name] = instance;
   }

@@ -1,17 +1,29 @@
-import type { InjectionConfig } from '@/common/types.js';
+import type { FluxionModule } from '@/types.js';
 
-// TODO 要改为能够加载FluxionModule的格式
-export function loadFunction(injectionConfig: InjectionConfig): (...args: any[]) => any {
-  const m = require(injectionConfig.modulePath);
-  if (typeof m === 'function') {
+function isFluxionModule(o: unknown): o is FluxionModule {
+  if (typeof o !== 'object' || o === null) {
+    return false;
+  }
+
+  if (typeof (o as FluxionModule).handler !== 'function') {
+    return false;
+  }
+
+  if ((o as FluxionModule).disposer !== undefined && typeof (o as FluxionModule).disposer !== 'function') {
+    return false;
+  }
+
+  return true;
+}
+
+export function loadFluxionModule(fullpath: string): FluxionModule {
+  delete require.cache[fullpath];
+  const m = require(fullpath);
+  if (isFluxionModule(m)) {
     return m;
-  } else if (typeof m.default === 'function') {
+  } else if (isFluxionModule(m.default)) {
     return m.default;
-  } else if (typeof m.handler === 'function') {
-    return m.handler;
   } else {
-    $throw(
-      `Invalid handler module '${injectionConfig.modulePath}', make sure it has a default export or named export called "handler" which is a function`,
-    );
+    $throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
 }

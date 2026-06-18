@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
-import { loadFunction } from '@/common/injector.js';
+import { loadFluxionModule } from '@/common/injector.js';
 import { cctl } from '@/common/color.js';
 
 export class FluxionRouter {
@@ -103,7 +103,7 @@ export class FluxionRouter {
     // If matching, register as API handler; otherwise as static resource
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
-      const handler = loadFunction({ name: absolutePath, modulePath: absolutePath });
+      const handler = loadFluxionModule({ name: absolutePath, modulePath: absolutePath });
       this.handlers.set(relativePath, handler);
       this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
       return;

@@ -3,7 +3,7 @@ import type { FluxionContext } from '@/types.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
-import { loadFunction } from './injector.js';
+import { loadFluxionModule } from './injector.js';
 import { cctl } from './color.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
@@ -75,7 +75,7 @@ function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): LoggerSink {
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  return loadFunction(loggerOption) as LoggerSink;
+  return loadFluxionModule(loggerOption) as LoggerSink;
 }
 
 export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger {
