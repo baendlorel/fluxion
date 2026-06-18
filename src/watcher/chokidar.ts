@@ -4,7 +4,7 @@ import chokidar from 'chokidar';
 
 import { FluxionWatcherBase, type WatcherContext } from './base.js';
 
-export class FluxionWatcher extends FluxionWatcherBase {
+export class FluxionChokidarWatcher extends FluxionWatcherBase {
   private watcher: FSWatcher | null = null;
 
   constructor(cx: WatcherContext) {
@@ -39,7 +39,6 @@ export class FluxionWatcher extends FluxionWatcherBase {
           return;
         }
 
-        // TODO 这里要改为既有绝对又有相对，绝对用于require.cache的缓存处理，相对则直接对应路由
         // & `filename` is absolute(Maybe because of watching an absolute path `dir`)
         this.queueUp(absolutePath, path.relative(dir, absolutePath));
       })

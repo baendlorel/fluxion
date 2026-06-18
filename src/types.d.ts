@@ -2,7 +2,7 @@ import type http from 'node:http';
 import type { InjectionConfig } from '@/common/types.js';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
-import type { FluxionWatcher } from './watcher/chokidar.ts';
+import type { FluxionChokidarWatcher } from './watcher/chokidar.ts';
 import type { FluxionNativeWatcher } from './watcher/native.ts';
 
 export interface NormalizedRequest {
@@ -240,7 +240,7 @@ export interface NormalizedFluxionOptions {
 export interface FluxionContext {
   options: NormalizedFluxionOptions;
   logger: FluxionLogger;
-  watcher: FluxionWatcher | FluxionNativeWatcher;
+  watcher: FluxionChokidarWatcher | FluxionNativeWatcher;
   router: FluxionRouter;
 }
 
