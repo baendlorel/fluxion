@@ -1,5 +1,4 @@
 import type http from 'node:http';
-import type { InjectionConfig } from '@/common/types.js';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
 import type { FluxionChokidarWatcher } from './watcher/chokidar.ts';
@@ -132,13 +131,6 @@ export interface FluxionOptions {
   metaPort?: number;
 
   /**
-   * Injections will be injected into `globalThis[Symbol.for('fluxion-injections')]`;
-   * - **name**: Name that you can use to refer to this injected dependency in your handlers.
-   * - **modulePath**: The `.mjs` path that exports the factory function to create the dependency instance.
-   */
-  injections?: InjectionConfig[];
-
-  /**
    * Inject Path that will be used like `path.join(moduleDir,modulepath)`
    * - default is `process.cwd()`
    */
@@ -221,11 +213,10 @@ export interface NormalizedFluxionOptions {
   port: number;
   reloadDelay: number;
   metaPort: number;
-  injections: InjectionConfig[];
   moduleDir: string;
   workerOptions: WorkerOptions;
   maxRequestBytes: number;
-  logger: LoggerOption | InjectionConfig;
+  logger: LoggerOption;
   include: string[];
   apiInclude: string[];
   exclude: string[];

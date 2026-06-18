@@ -1,9 +1,8 @@
-import type { otherstring, InjectionConfig } from '@/common/types.js';
 import type { FluxionContext } from '@/types.js';
+import type { otherstring } from '@/global.js';
 
 import { dtm } from './dtm.js';
 import { $keys, $stringify } from './native.js';
-import { loadFluxionModule } from './injector.js';
 import { cctl } from './color.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
@@ -16,9 +15,9 @@ interface LogEntry {
   [key: string]: unknown;
 }
 
-type LoggerSink = (entry: LogEntry) => void;
+export type LoggerOption = 'one-line' | 'json-line' | FluxionLoggerFn;
 
-export type LoggerOption = 'one-line' | 'json-line' | InjectionConfig;
+export type FluxionLoggerFn = (entry: LogEntry) => void;
 
 export interface FluxionLogger {
   /**
@@ -49,9 +48,8 @@ const ColoredLevels: Record<LogLevel, string> = {
   DEBUG: `${cctl.blue}DEBUG${cctl.reset}`,
   VERBOSE: `${cctl.purple}VERBOSE${cctl.reset}`,
 };
-const TimestampColor = 'rgb(22, 101, 52)';
 
-export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
+export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
   const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
 
   const timestamp = `${cctl.darkGreen}[${rawTimestamp}]${cctl.reset}`;
@@ -65,7 +63,7 @@ export const oneLineLogger: LoggerSink = (entry: LogEntry) => {
 /**
  * & Logger Options here is checked by normalizeOptions function.
  */
-function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): LoggerSink {
+function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): FluxionLoggerFn {
   const loggerOption = cx.options.logger;
   if (loggerOption === undefined || loggerOption === 'one-line') {
     return oneLineLogger;
@@ -75,7 +73,7 @@ function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): LoggerSink {
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 
-  return loadFluxionModule(loggerOption) as LoggerSink;
+  return loggerOption;
 }
 
 export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger {
@@ -153,4 +151,7 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
 /**
  * ! Error.isError needs Node.js 24
  */
-export const getErrorMessage = (error: unknown): string => (error as any)?.message || String(error);
+export const getErrorMessage =
+  typeof Error.isError === 'function'
+    ? (e: unknown): string => (Error.isError(e) ? e.message : String(e))
+    : (e: unknown): string => (e as any)?.message || String(e);

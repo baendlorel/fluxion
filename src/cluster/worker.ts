@@ -3,23 +3,9 @@ import type { FluxionContext } from '../types.js';
 import cluster from 'node:cluster';
 
 import { getErrorMessage } from '@/common/logger.js';
-import { loadFluxionModule } from '@/common/injector.js';
-import { PromiseTry } from '@/common/promise-try.js';
-import { WorkerAction, PrimaryAction, isPrimaryMessage, INJECTION_KEY } from './consts.js';
+import { WorkerAction, PrimaryAction, isPrimaryMessage } from './consts.js';
 import { sendToPrimary } from './communicate.js';
 import { createWorkerServer } from './server.js';
-
-const inject = async (cx: FluxionContext) => {
-  const o = {} as any;
-  Reflect.set(globalThis, INJECTION_KEY, o);
-  for (let i = 0; i < cx.options.injections.length; i++) {
-    const injection = cx.options.injections[i];
-    const factory = loadFluxionModule(injection);
-    const instance = await PromiseTry(factory);
-    o[injection.name] = instance;
-  }
-  cx.logger.info('injections loaded', Object.keys(o));
-};
 
 const startStatsReporter = () => {
   let previousCpuUsage = process.cpuUsage();
@@ -80,15 +66,14 @@ export function initWorker(cx: FluxionContext) {
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
   startStatsReporter();
 
-  PromiseTry(async () => {
-    await inject(cx);
+  try {
     createWorkerServer(cx);
     sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
-  }).catch((error) => {
+  } catch (e) {
     cx.logger.error('WorkerBootstrapFailed', {
       pid: process.pid,
-      error: getErrorMessage(error),
+      error: getErrorMessage(e),
     });
     process.exit(1);
-  });
+  }
 }

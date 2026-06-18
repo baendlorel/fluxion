@@ -1,7 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LoggerOption } from '@/common/logger.js';
-import type { InjectionConfig } from '@/common/types.js';
 import type { WorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
 
 /**
@@ -93,7 +91,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     host,
     port,
     metaPort,
-    injections = [],
     moduleDir = process.cwd(),
     workerOptions = {},
     maxRequestBytes = 8_000_000,
@@ -117,17 +114,10 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     https,
     nativeWatcher = false,
   } = options as FluxionOptions;
+
   const logger = options.logger ?? 'one-line';
-  if (
-    logger !== 'one-line' &&
-    logger !== 'json-line' &&
-    (typeof logger !== 'object' ||
-      logger === null ||
-      Array.isArray(logger) ||
-      typeof logger.modulePath !== 'string' ||
-      typeof logger.name !== 'string')
-  ) {
-    $throw(`Invalid logger option, must be 'one-line', 'json-line' or { modulePath: string; name: string; }`);
+  if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
+    $throw(`Invalid logger option, Must be 'one-line', 'json-line' or a custom logger function`);
   }
 
   if (typeof dir !== 'string') {
@@ -171,13 +161,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     $throw('FluxionOptions.metaPort must be different from FluxionOptions.port');
   }
 
-  if (
-    !Array.isArray(injections) ||
-    injections.some((item) => typeof item !== 'object' || item === null || Array.isArray(item))
-  ) {
-    $throw('FluxionOptions.injections must be an array of objects');
-  }
-
   if (typeof workerOptions !== 'object' || workerOptions === null || Array.isArray(workerOptions)) {
     $throw('FluxionOptions.workerOptions must be an object');
   }
@@ -197,7 +180,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     port,
     reloadDelay,
     metaPort,
-    injections,
     moduleDir,
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
