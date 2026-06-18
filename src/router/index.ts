@@ -1,64 +1,62 @@
-import type { FluxionContext, FluxionHandler } from '../types.js';
+import type { FluxionContext, FluxionModule } from '../types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
-import { STATIC_CONTENT_TYPES } from '@/common/consts.js';
+import { STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import { loadFluxionModule } from '@/common/injector.js';
 import { cctl } from '@/common/color.js';
+import { PromiseTry } from '@/common/promise-try.js';
 
 export class FluxionRouter {
-  /**
-   * This means the request has been handled by static resource handler, and no more response should be sent.
-   */
-  public readonly StaticHandled = Symbol.for('fluxion.router.StaticHandled');
-
   private readonly cx: Pick<FluxionContext, 'options' | 'logger'>;
-  private readonly handlers: Map<string, FluxionHandler> = new Map();
+  private readonly handlers: Map<string, FluxionModule> = new Map();
 
   constructor(cx: Pick<FluxionContext, 'options' | 'logger'>) {
     this.cx = cx;
   }
 
-  makeStaticResource(filepath: string): FluxionHandler {
-    return async (normalized, _req, res) => {
-      if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
-        res.statusCode = 405;
-        res.setHeader('Allow', 'GET, HEAD');
-        res.end();
-        return;
-      }
+  makeStaticResource(filepath: string): FluxionModule {
+    return {
+      handler: async (normalized, _req, res) => {
+        if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
+          res.statusCode = 405;
+          res.setHeader('Allow', 'GET, HEAD');
+          res.end();
+          return;
+        }
 
-      if (!fs.existsSync(filepath)) {
-        res.statusCode = 404;
-        res.end('Not Found');
-        return;
-      }
+        if (!fs.existsSync(filepath)) {
+          res.statusCode = 404;
+          res.end('Not Found');
+          return;
+        }
 
-      const stat = fs.statSync(filepath);
-      if (!stat.isFile()) {
-        res.statusCode = 404;
-        res.end('Not Found');
-        return;
-      }
+        const stat = fs.statSync(filepath);
+        if (!stat.isFile()) {
+          res.statusCode = 404;
+          res.end('Not Found');
+          return;
+        }
 
-      const extension = path.extname(filepath).toLowerCase();
-      const contentType = STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+        const extension = path.extname(filepath).toLowerCase();
+        const contentType = STATIC_CONTENT_TYPES[extension] ?? 'application/octet-stream';
 
-      res.statusCode = 200;
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', String(stat.size));
+        res.statusCode = 200;
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', String(stat.size));
 
-      if (normalized.method === 'HEAD') {
-        res.end();
-        return;
-      }
+        if (normalized.method === 'HEAD') {
+          res.end();
+          return;
+        }
 
-      return new Promise<symbol>((resolve, reject) => {
-        const stream = fs.createReadStream(filepath);
-        stream.on('error', reject);
-        stream.on('end', () => resolve(this.StaticHandled));
-        stream.pipe(res);
-      });
+        return new Promise<symbol>((resolve, reject) => {
+          const stream = fs.createReadStream(filepath);
+          stream.on('error', reject);
+          stream.on('end', () => resolve(STATIC_HANDLED_FLAG));
+          stream.pipe(res);
+        });
+      },
     };
   }
 
@@ -70,8 +68,15 @@ export class FluxionRouter {
    * 4. If file matches apiInclude patterns, register as API handler;
    * 5. Otherwise, register as static resource.
    */
-  register(absolutePath: string, relativePath: string) {
+  // TODO 检查使用的地方是否await了
+  async register(absolutePath: string, relativePath: string) {
     if (!fs.existsSync(absolutePath)) {
+      // Get the disposer and delete
+      const disposer = this.handlers.get(relativePath)?.disposer;
+      if (disposer) {
+        await PromiseTry(disposer);
+      }
+
       this.handlers.delete(relativePath);
       // & Watcher will emit recursively, so there is no need to use this.remove(rp);
       this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${relativePath}`);
@@ -103,7 +108,7 @@ export class FluxionRouter {
     // If matching, register as API handler; otherwise as static resource
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
-      const handler = loadFluxionModule({ name: absolutePath, modulePath: absolutePath });
+      const handler = loadFluxionModule(absolutePath);
       this.handlers.set(relativePath, handler);
       this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
       return;
@@ -114,7 +119,7 @@ export class FluxionRouter {
     this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
   }
 
-  getHandler(url: URL): FluxionHandler | undefined {
+  getModule(url: URL): FluxionModule | undefined {
     const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
     return this.handlers.get(relativePath);
   }
@@ -124,6 +129,7 @@ export class FluxionRouter {
    * But if it's a directory, we need to find all registered handlers under this directory and remove them.
    *
    * @param somepath
+   * @deprecated
    */
   remove(somepath: string): void {
     if (this.handlers.has(somepath)) {

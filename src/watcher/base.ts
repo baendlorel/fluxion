@@ -52,6 +52,7 @@ export abstract class FluxionWatcherBase {
     }
 
     this.timer = setTimeout(() => {
+      // ?? Foreach速度快了不止一两点，这里如何做到async完成它们？
       this.filesChanged.forEach((relativePath, absolutePath, s) => {
         try {
           this.cx.router.register(absolutePath, relativePath);

@@ -90,6 +90,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     dir,
     host,
     port,
+    handlerTimeoutMs = 5000,
     metaPort,
     moduleDir = process.cwd(),
     workerOptions = {},
@@ -130,6 +131,10 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
 
   if (typeof host !== 'string') {
     $throw('FluxionOptions.host must be a string');
+  }
+
+  if (!Number.isSafeInteger(handlerTimeoutMs) || handlerTimeoutMs <= 100) {
+    $throw('FluxionOptions.handlerTimeoutMs must be an integer greater than 100');
   }
 
   if (typeof reloadDelay !== 'number' || reloadDelay <= 0 || !Number.isSafeInteger(reloadDelay)) {
@@ -178,6 +183,7 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     dir,
     host,
     port,
+    handlerTimeoutMs,
     reloadDelay,
     metaPort,
     moduleDir,

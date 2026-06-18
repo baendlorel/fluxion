@@ -3,7 +3,7 @@ import https from 'node:https';
 
 import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
-import { HttpCode, META_PREFIX } from '@/common/consts.js';
+import { HttpCode, META_PREFIX, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
 
@@ -77,15 +77,16 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      const handler = await cx.router.getHandler(url);
-      if (!handler) {
+      const m = await cx.router.getModule(url);
+      if (!m) {
         safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
         return;
       }
 
-      const result = await PromiseTry(handler, normalized, req, res);
+      // TODO 准备加入超时机制、methods等更多选项
+      const result = await PromiseTry(m.handler, normalized, req, res);
 
-      if (result !== cx.router.StaticHandled) {
+      if (result !== STATIC_HANDLED_FLAG) {
         safeSendJson(res, result);
       }
     } catch (error) {

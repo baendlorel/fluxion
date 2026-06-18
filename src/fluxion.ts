@@ -10,9 +10,7 @@ import { FluxionNativeWatcher } from './watcher/native.js';
 import { FluxionRouter } from './router/index.js';
 
 export async function fluxion(options: FluxionOptions) {
-  const context: FluxionContext = {
-    options: normalizeOptions(options),
-  } as FluxionContext;
+  const context = { options: normalizeOptions(options) } as FluxionContext;
 
   context.logger = createLogger(context as Pick<FluxionContext, 'options'>);
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);

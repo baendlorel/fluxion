@@ -118,6 +118,11 @@ export interface FluxionOptions {
   port: number;
 
   /**
+   * Default to 5000ms.
+   */
+  handlerTimeoutMs?: number;
+
+  /**
    * Delay in milliseconds for reloading handlers after file changes are detected.
    *
    * Defaults to 500ms.
@@ -211,6 +216,7 @@ export interface NormalizedFluxionOptions {
   dir: string;
   host: string;
   port: number;
+  handlerTimeoutMs: number;
   reloadDelay: number;
   metaPort: number;
   moduleDir: string;
