@@ -255,4 +255,11 @@ export type FluxionDispose = () => Promise<void> | void;
 export interface FluxionModule {
   handler: FluxionHandler;
   disposer?: FluxionDispose;
+  handlerTimeoutMs?: number;
+}
+
+export interface NormalizedFluxionModule {
+  handler: FluxionHandler;
+  disposer: FluxionDispose;
+  handlerTimeoutMs: number;
 }

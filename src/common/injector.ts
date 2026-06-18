@@ -1,29 +1,40 @@
-import type { FluxionModule } from '@/types.js';
+import type { FluxionContext, FluxionModule, NormalizedFluxionModule } from '@/types.js';
+import { static_cast } from 'type-narrow';
 
 function isFluxionModule(o: unknown): o is FluxionModule {
   if (typeof o !== 'object' || o === null) {
     return false;
   }
 
-  if (typeof (o as FluxionModule).handler !== 'function') {
+  static_cast<FluxionModule>(o);
+
+  if (typeof o.handler !== 'function') {
     return false;
   }
 
-  if ((o as FluxionModule).disposer !== undefined && typeof (o as FluxionModule).disposer !== 'function') {
+  if (o.disposer !== undefined && typeof o.disposer !== 'function') {
+    return false;
+  }
+
+  if (o.handlerTimeoutMs !== undefined && typeof o.handlerTimeoutMs !== 'function') {
     return false;
   }
 
   return true;
 }
 
-export function loadFluxionModule(fullpath: string): FluxionModule {
+export function loadFluxionModule(
+  cx: Pick<FluxionContext, 'options' | 'logger'>,
+  fullpath: string,
+): NormalizedFluxionModule {
   delete require.cache[fullpath];
-  const m = require(fullpath);
+  let m = require(fullpath);
   if (isFluxionModule(m)) {
-    return m;
   } else if (isFluxionModule(m.default)) {
-    return m.default;
+    m = m.default;
   } else {
     $throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
+
+  return m;
 }

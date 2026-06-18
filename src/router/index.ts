@@ -108,7 +108,7 @@ export class FluxionRouter {
     // If matching, register as API handler; otherwise as static resource
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
-      const handler = loadFluxionModule(absolutePath);
+      const handler = loadFluxionModule(this.cx, absolutePath);
       this.handlers.set(relativePath, handler);
       this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
       return;
