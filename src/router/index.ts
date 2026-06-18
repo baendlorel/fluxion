@@ -69,52 +69,49 @@ export class FluxionRouter {
    * 3. If file matches exclude patterns, skip registration;
    * 4. If file matches apiInclude patterns, register as API handler;
    * 5. Otherwise, register as static resource.
-   * @param rp relative path.
    */
-  register(rp: string) {
-    const fullpath = path.join(this.cx.options.dir, rp);
-
-    if (!fs.existsSync(fullpath)) {
-      this.handlers.delete(rp);
+  register(absolutePath: string, relativePath: string) {
+    if (!fs.existsSync(absolutePath)) {
+      this.handlers.delete(relativePath);
       // & Watcher will emit recursively, so there is no need to use this.remove(rp);
-      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${rp}`);
+      this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${relativePath}`);
       return;
     }
 
     // ! require.cache uses fullpath to be the key.
-    delete require.cache[fullpath];
+    delete require.cache[absolutePath];
 
     // Step 2: Check if file matches include patterns (default: all files)
     // If not matching, skip registration
-    const matchesInclude = this.cx.options.include.some((pattern) => minimatch(rp, pattern));
+    const matchesInclude = this.cx.options.include.some((pattern) => minimatch(relativePath, pattern));
     if (!matchesInclude) {
-      this.handlers.delete(rp);
-      this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${rp}`);
+      this.handlers.delete(relativePath);
+      this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${relativePath}`);
       return;
     }
 
     // Step 3: Check if file matches exclude patterns
     // If matching, skip registration
-    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(rp, pattern));
+    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesExclude) {
-      this.handlers.delete(rp);
-      this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${rp}`);
+      this.handlers.delete(relativePath);
+      this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${relativePath}`);
       return;
     }
 
     // Step 4 & 5: Check if file matches apiInclude patterns
     // If matching, register as API handler; otherwise as static resource
-    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(rp, pattern));
+    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
-      const handler = loadFunction({ name: fullpath, modulePath: fullpath });
-      this.handlers.set(rp, handler);
-      this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${rp}`);
+      const handler = loadFunction({ name: absolutePath, modulePath: absolutePath });
+      this.handlers.set(relativePath, handler);
+      this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
       return;
     }
 
     // register as static resource
-    this.handlers.set(rp, this.makeStaticResource(rp));
-    this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${rp}`);
+    this.handlers.set(relativePath, this.makeStaticResource(relativePath));
+    this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
   }
 
   getHandler(url: URL): FluxionHandler | undefined {
