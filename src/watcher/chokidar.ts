@@ -23,29 +23,25 @@ export class FluxionWatcher extends FluxionWatcherBase {
     this.stop();
     this.init();
 
+    const dir = this.cx.options.dir;
     this.watcher = chokidar
-      .watch(this.cx.options.dir, {
-        // Ignore dotfiles and common ignore patterns
-        ignored: /(^|[\/\\])\../,
-        // Keep the process running
-        persistent: true,
-        // Don't emit 'add' events for initial scan
-        ignoreInitial: true,
-        // Use polling as fallback (helps with some network drives)
-        usePolling: false,
-        // Atomic writes handling
+      .watch(dir, {
+        persistent: true, // Keep the process running
+        ignoreInitial: true, // Don't emit 'add' events for initial scan
+        usePolling: false, // Use polling as fallback (helps with some network drives)
         awaitWriteFinish: {
           stabilityThreshold: 100,
           pollInterval: 50,
-        },
+        }, // Atomic writes handling
       })
-      .on('all', (_event, filename) => {
-        if (!filename) {
+      .on('all', (_event, absolutePath) => {
+        if (!absolutePath) {
           return;
         }
 
-        const relativePath = path.relative(this.cx.options.dir, filename);
-        this.queueRefresh(relativePath);
+        // TODO 这里要改为既有绝对又有相对，绝对用于require.cache的缓存处理，相对则直接对应路由
+        // & `filename` is absolute(Maybe because of watching an absolute path `dir`)
+        this.queueUp(absolutePath, path.relative(dir, absolutePath));
       })
       .on('error', (err: unknown) => {
         const error = err instanceof Error ? err : new Error(String(err));
@@ -54,10 +50,10 @@ export class FluxionWatcher extends FluxionWatcherBase {
         this.stop().start();
       })
       .on('ready', () => {
-        this.cx.logger.info(`Watcher ready and watching directory: ${this.cx.options.dir}`);
+        this.cx.logger.info(`Watcher ready and watching directory: ${dir}`);
       });
 
-    this.cx.logger.info(`Watcher started on directory: ${this.cx.options.dir}`);
+    this.cx.logger.info(`Watcher started on directory: ${dir}`);
     return this;
   }
 

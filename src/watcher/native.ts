@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import { FluxionWatcherBase, type WatcherContext } from './base.js';
 
@@ -18,13 +19,15 @@ export class FluxionNativeWatcher extends FluxionWatcherBase {
     this.stop();
     this.init();
 
+    const dir = this.cx.options.dir;
     this.watcher = fs
-      .watch(this.cx.options.dir, { recursive: true }, (_eventType, filename) => {
-        if (!filename) {
+      .watch(dir, { recursive: true }, (_eventType, relativePath) => {
+        if (!relativePath) {
           return;
         }
 
-        this.queueRefresh(String(filename));
+        // & Unlike chokidar, `filename` here is relativePath
+        this.queueUp(path.join(dir, relativePath), relativePath);
       })
       .on('error', (err) => {
         this.cx.logger.error(`Watcher error: ${err.message}`);
@@ -32,7 +35,7 @@ export class FluxionNativeWatcher extends FluxionWatcherBase {
         this.stop().start();
       });
 
-    this.cx.logger.info(`Watcher started on directory: ${this.cx.options.dir}`);
+    this.cx.logger.info(`Watcher started on directory: ${dir}`);
     return this;
   }
 

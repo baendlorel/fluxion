@@ -8,7 +8,7 @@ export abstract class FluxionWatcherBase {
   protected readonly cx: WatcherContext;
 
   private timer: NodeJS.Timeout | null = null;
-  private readonly filesChanged: Set<string> = new Set();
+  private readonly filesChanged = new Map<string, string>();
 
   constructor(cx: WatcherContext) {
     this.cx = cx;
@@ -44,8 +44,8 @@ export abstract class FluxionWatcherBase {
     return this;
   }
 
-  protected queueRefresh(filepath: string): void {
-    this.filesChanged.add(filepath);
+  protected queueUp(absolutePath: string, relativePath: string): void {
+    this.filesChanged.set(absolutePath, relativePath);
     if (this.timer) {
       return;
     }

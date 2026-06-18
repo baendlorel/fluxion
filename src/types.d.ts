@@ -213,6 +213,9 @@ export interface FluxionOptions {
 }
 
 export interface NormalizedFluxionOptions {
+  /**
+   * It's absolute path to the directory where dynamic files will be stored.
+   */
   dir: string;
   host: string;
   port: number;
