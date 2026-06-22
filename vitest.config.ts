@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 export default defineConfig(() => {
-  const packageDir = import.meta.dirname;
+  const packageDir = __dirname;
   return {
     test: {
       include: [path.join(packageDir, '**', '*.{test,spec,e2e-spec}.?(c|m)[jt]s?(x)')],
