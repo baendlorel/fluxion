@@ -3,7 +3,8 @@
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "Bundler",
-    "types": ["node"]
+    "types": ["node"],
+    "outDir": "dist"
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**", "./tests/**", "./document/**"]
