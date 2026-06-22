@@ -66,7 +66,7 @@ if (process.env.NODE_ENV !== 'production') {
     metaPort: int(process.env.META_PORT, 9001),
     reloadDelay: process.env.RELOAD_DELAY ? Number.parseInt(process.env.RELOAD_DELAY, 10) : undefined,
     workerOptions: {
-      maxWorkerCount: 1,
+      maxWorkerCount: 4,
     },
   });
 }
