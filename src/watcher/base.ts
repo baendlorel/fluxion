@@ -51,19 +51,14 @@ export abstract class FluxionWatcherBase {
       return;
     }
 
-    this.timer = setTimeout(() => {
-      // ?? Foreach速度快了不止一两点，这里如何做到async完成它们？
-      // TODO 根据测试，这里推荐使用[...map].map到promise再promise.all来完成。
-      this.filesChanged.forEach((relativePath, absolutePath, s) => {
-        try {
-          this.cx.router.register(absolutePath, relativePath);
-        } catch (err) {
-          this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
-        } finally {
-          s.delete(absolutePath);
-        }
-      });
-
+    this.timer = setTimeout(async () => {
+      const promises = [...this.filesChanged].map(([absolutePath, relativePath]) =>
+        this.cx.router
+          .register(absolutePath, relativePath)
+          .catch((err) => this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`))
+          .finally(() => this.filesChanged.delete(absolutePath)),
+      );
+      await Promise.all(promises);
       this.timer = null;
     }, this.cx.options.reloadDelay);
   }

@@ -83,9 +83,6 @@ export class FluxionRouter {
       return;
     }
 
-    // ! require.cache uses fullpath to be the key.
-    delete require.cache[absolutePath];
-
     // Step 2: Check if file matches include patterns (default: all files)
     // If not matching, skip registration
     const matchesInclude = this.cx.options.include.some((pattern) => minimatch(relativePath, pattern));
