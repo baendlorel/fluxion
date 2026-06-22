@@ -1,21 +1,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { WorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
+import type { WorkerOptions, NormalizedWorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
 
 /**
- * Resolves runtime options with framework defaults.
+ * Resolves worker options with framework defaults. All thresholds become
+ * concrete numbers (`Infinity` disables a check) so the primary can evaluate
+ * them without null-handling.
  */
-function resolveWorkerOptions(options: Partial<WorkerOptions>): WorkerOptions {
+function resolveWorkerOptions(options: WorkerOptions = {}): NormalizedWorkerOptions {
+  const rw = options.restartWhen ?? {};
+  const healthzTimeout = rw.healthzTimeout ?? 30_000;
+  // Ping runs every 5s; a threshold below 2x that would recycle healthy workers
+  // (a ready worker's lastPongAt is normally ~5s old). Infinity disables.
+  if (healthzTimeout !== Infinity && (!Number.isFinite(healthzTimeout) || healthzTimeout < 10_000)) {
+    $throw('workerOptions.restartWhen.healthzTimeout must be a finite number >= 10000 (ms) or Infinity');
+  }
   return {
     maxWorkerCount: options.maxWorkerCount ?? 4,
-    maxInflight: options.maxInflight ?? 64,
-    memorySoftLimitMb: options.memorySoftLimitMb ?? 96,
-    memoryHardLimitMb: options.memoryHardLimitMb ?? 128,
-    memorySampleIntervalMs: options.memorySampleIntervalMs ?? 5000,
-    maxOldGenerationSizeMb: options.maxOldGenerationSizeMb ?? 128,
-    maxYoungGenerationSizeMb: options.maxYoungGenerationSizeMb ?? 32,
-    stackSizeMb: options.stackSizeMb ?? 4,
-    maxResponseBytes: options.maxResponseBytes ?? 2 * 1024 * 1024,
+    restartWhen: {
+      memoryUsageGreaterThan: rw.memoryUsageGreaterThan ?? Infinity,
+      healthzTimeout,
+      uptimeGreaterThan: rw.uptimeGreaterThan ?? Infinity,
+    },
   };
 }
 

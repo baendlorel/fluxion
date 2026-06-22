@@ -57,12 +57,24 @@ export interface StatsMessage {
 export type WorkerMessage = CreatedMessage | ReadyMessage | PongMessage | StatsMessage;
 
 export interface WorkerState {
-  state: 'creating' | 'created' | 'ready';
+  /**
+   * `restarting` marks a worker the primary is proactively recycling
+   * (via restartWhen) so its exit is expected and a replacement is spawned.
+   */
+  state: 'creating' | 'created' | 'ready' | 'restarting';
   pid?: number;
+  /**
+   * Stable 1-based slot index (the WORKER_ID env). Survives fork cycles,
+   * unlike cluster's `worker.id` which changes on every fork — used as the
+   * key for restart history / anti-storm tracking.
+   */
+  slot: number;
   createdAt: number;
   readyAt?: number;
   lastPongAt?: number;
   lastRttMs?: number;
   lastStats?: WorkerRuntimeStats;
+  /** Human-readable reason this worker is being / was last recycled. */
+  restartReason?: string;
   instance: cluster.Worker;
 }

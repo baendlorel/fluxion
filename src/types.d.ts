@@ -44,62 +44,61 @@ export interface NormalizedRequest {
 }
 
 /**
- * Worker runtime tuning options.
+ * Conditions under which the primary proactively recycles a running worker.
+ *
+ * The primary observes every worker and restarts it when ANY configured
+ * condition is met. Thresholds are resolved at option-normalization time:
+ * `Infinity` disables a check, so that worker only restarts if it crashes on
+ * its own (respawn-on-exit then brings it back).
+ */
+export interface WorkerRestartWhen {
+  /**
+   * Recycle the worker when its RSS exceeds this many MB.
+   * Catches heap/native growth before the OS OOM-killer does.
+   * @default Infinity (disabled)
+   */
+  memoryUsageGreaterThan: number;
+
+  /**
+   * Recycle the worker when it has not answered a Ping within this many ms.
+   * Detects a wedged event loop (infinite loop, deadlock, GC storm).
+   * @default 30000
+   */
+  healthzTimeout: number;
+
+  /**
+   * Recycle the worker after it has run for this many ms (scheduled rotation).
+   * Reclaims slow growth / fragmentation even with no known leak.
+   * @default Infinity (disabled)
+   */
+  uptimeGreaterThan: number;
+}
+
+/**
+ * Worker options as supplied by the user. Everything is optional; omitted
+ * values fall back to the defaults resolved by `resolveWorkerOptions`.
  */
 export interface WorkerOptions {
   /**
    * Maximum number of worker processes to spawn.
    * @default 4
    */
+  maxWorkerCount?: number;
+
+  /**
+   * When to proactively recycle a worker. Partial is allowed; omitted
+   * thresholds fall back to their {@link WorkerRestartWhen} defaults.
+   */
+  restartWhen?: Partial<WorkerRestartWhen>;
+}
+
+/**
+ * Worker options after normalization. All thresholds are concrete numbers
+ * (`Infinity` for a disabled check), so evaluation needs no null-handling.
+ */
+export interface NormalizedWorkerOptions {
   maxWorkerCount: number;
-
-  /**
-   * Maximum concurrent requests allowed in the pool.
-   * @default 64
-   */
-  maxInflight: number;
-
-  /**
-   * Soft heap threshold in MB. Idle worker may restart after crossing it.
-   * @default 96
-   */
-  memorySoftLimitMb: number;
-
-  /**
-   * ! Hard heap threshold in MB. Worker is restarted once reached.
-   * @default 128
-   */
-  memoryHardLimitMb: number;
-
-  /**
-   * Memory telemetry interval in milliseconds.
-   * @default 5000
-   */
-  memorySampleIntervalMs: number;
-
-  /**
-   * ! V8 old-generation limit per worker in MB.
-   * @default 128
-   */
-  maxOldGenerationSizeMb: number;
-
-  /**
-   * ! V8 young-generation limit per worker in MB.
-   * @default 32
-   */
-  maxYoungGenerationSizeMb: number;
-
-  /**
-   * Worker stack size in MB.
-   * @default 4
-   */
-  stackSizeMb: number;
-
-  /**
-   * ! Maximum response payload bytes allowed from worker to main thread.
-   * @default 2097152 (2MB)
-   */
-  maxResponseBytes: number;
+  restartWhen: WorkerRestartWhen;
 }
 
 export interface FluxionOptions {
@@ -143,9 +142,9 @@ export interface FluxionOptions {
   moduleDir?: string;
 
   /**
-   * Base worker runtime option overrides.
+   * Worker pool tuning: max worker count and proactive recycle conditions.
    */
-  workerOptions?: Partial<WorkerOptions>;
+  workerOptions?: WorkerOptions;
 
   /**
    * Maximum request body bytes accepted by dynamic handlers.
@@ -222,7 +221,7 @@ export interface NormalizedFluxionOptions {
   reloadDelay: number;
   metaPort: number;
   moduleDir: string;
-  workerOptions: WorkerOptions;
+  workerOptions: NormalizedWorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption;
   include: string[];

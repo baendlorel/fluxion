@@ -286,7 +286,7 @@ interface FluxionOptions {
   nativeWatcher?: boolean;
   injections?: InjectionConfig[];
   moduleDir?: string;
-  workerOptions?: Partial<WorkerOptions>;
+  workerOptions?: WorkerOptions;
   maxRequestBytes?: number;
   logger?: 'one-line' | 'json-line' | InjectionConfig;
   apiExts?: string[];
@@ -393,24 +393,46 @@ globalThis[Symbol.for('fluxion.injection')]
 
 ### `workerOptions`
 
-Runtime tuning options:
+Worker pool tuning: how many workers to spawn, and when to proactively recycle one.
 
 ```ts
 interface WorkerOptions {
-  maxWorkerCount: number;
-  requestTimeoutMs: number;
-  maxInflight: number;
-  memorySoftLimitMb: number;
-  memoryHardLimitMb: number;
-  memorySampleIntervalMs: number;
-  maxOldGenerationSizeMb: number;
-  maxYoungGenerationSizeMb: number;
-  stackSizeMb: number;
-  maxResponseBytes: number;
+  maxWorkerCount?: number;
+  restartWhen?: Partial<WorkerRestartWhen>;
+}
+
+interface WorkerRestartWhen {
+  /** Recycle when RSS exceeds this many MB. Infinity (default) = disabled. */
+  memoryUsageGreaterThan: number;
+  /** Recycle when no Ping answer within this many ms. Default 30000. */
+  healthzTimeout: number;
+  /** Recycle after this many ms of uptime (scheduled rotation). Infinity (default) = disabled. */
+  uptimeGreaterThan: number;
 }
 ```
 
-Current implementation uses `maxWorkerCount` for process count and reports CPU/memory telemetry from workers.
+- `maxWorkerCount` defaults to `4`, clamped to the CPU count (minimum 1).
+- `restartWhen` lets the primary proactively recycle an unhealthy worker. The worker is hard-killed and immediately respawned when **any** configured condition is met (OR semantics):
+  - `memoryUsageGreaterThan` — RSS growth / native leak, caught before the OS OOM-killer. Disabled by default.
+  - `healthzTimeout` — a wedged event loop (worker stopped answering Ping: infinite loop, deadlock, GC storm). **Defaults to `30000`ms.**
+  - `uptimeGreaterThan` — scheduled rotation to reclaim slow growth / fragmentation. Disabled by default.
+- Conditions are evaluated by the primary against the telemetry it already collects (RSS from stats every ~2s, liveness from Ping every 5s, uptime).
+- A shared **anti-storm guard** bounds recycling: a given slot is restarted at most 3 times per rolling 60s, after which further restarts are suppressed and alerted instead of fork-bombing.
+- Independently of `restartWhen`, **any worker exit — crash, OOM, or proactive recycle — triggers a respawn**, so the pool stays at `maxWorkerCount`.
+
+```ts
+fluxion({
+  // ...
+  workerOptions: {
+    maxWorkerCount: 4,
+    restartWhen: {
+      memoryUsageGreaterThan: 256, // MB; recycle a leaking worker at 256MB RSS
+      // healthzTimeout defaults to 30000 — recycle wedged workers after 30s
+      // uptimeGreaterThan: 6 * 3600_000, // optionally rotate every 6h
+    },
+  },
+});
+```
 
 ### `https`
 
@@ -525,24 +547,46 @@ globalThis[Symbol.for('fluxion.injection')]
 
 ### `workerOptions`
 
-Runtime tuning options:
+Worker pool tuning: how many workers to spawn, and when to proactively recycle one.
 
 ```ts
 interface WorkerOptions {
-  maxWorkerCount: number;
-  requestTimeoutMs: number;
-  maxInflight: number;
-  memorySoftLimitMb: number;
-  memoryHardLimitMb: number;
-  memorySampleIntervalMs: number;
-  maxOldGenerationSizeMb: number;
-  maxYoungGenerationSizeMb: number;
-  stackSizeMb: number;
-  maxResponseBytes: number;
+  maxWorkerCount?: number;
+  restartWhen?: Partial<WorkerRestartWhen>;
+}
+
+interface WorkerRestartWhen {
+  /** Recycle when RSS exceeds this many MB. Infinity (default) = disabled. */
+  memoryUsageGreaterThan: number;
+  /** Recycle when no Ping answer within this many ms. Default 30000. */
+  healthzTimeout: number;
+  /** Recycle after this many ms of uptime (scheduled rotation). Infinity (default) = disabled. */
+  uptimeGreaterThan: number;
 }
 ```
 
-Current implementation uses `maxWorkerCount` for process count and reports CPU/memory telemetry from workers.
+- `maxWorkerCount` defaults to `4`, clamped to the CPU count (minimum 1).
+- `restartWhen` lets the primary proactively recycle an unhealthy worker. The worker is hard-killed and immediately respawned when **any** configured condition is met (OR semantics):
+  - `memoryUsageGreaterThan` — RSS growth / native leak, caught before the OS OOM-killer. Disabled by default.
+  - `healthzTimeout` — a wedged event loop (worker stopped answering Ping: infinite loop, deadlock, GC storm). **Defaults to `30000`ms.**
+  - `uptimeGreaterThan` — scheduled rotation to reclaim slow growth / fragmentation. Disabled by default.
+- Conditions are evaluated by the primary against the telemetry it already collects (RSS from stats every ~2s, liveness from Ping every 5s, uptime).
+- A shared **anti-storm guard** bounds recycling: a given slot is restarted at most 3 times per rolling 60s, after which further restarts are suppressed and alerted instead of fork-bombing.
+- Independently of `restartWhen`, **any worker exit — crash, OOM, or proactive recycle — triggers a respawn**, so the pool stays at `maxWorkerCount`.
+
+```ts
+fluxion({
+  // ...
+  workerOptions: {
+    maxWorkerCount: 4,
+    restartWhen: {
+      memoryUsageGreaterThan: 256, // MB; recycle a leaking worker at 256MB RSS
+      // healthzTimeout defaults to 30000 — recycle wedged workers after 30s
+      // uptimeGreaterThan: 6 * 3600_000, // optionally rotate every 6h
+    },
+  },
+});
+```
 
 ## Build and Test
 
