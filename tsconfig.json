@@ -20,9 +20,7 @@
     "./src/**/*.ts",
     "./draft/**/*.ts",
     "*.config.ts",
-    "./tests/**/*.ts",
-    "./document/**/*.ts",
-    "./document/**/*.tsx"
+    "./tests/**/*.ts"
   ],
   "exclude": ["**/dist/**/*.js", "**/dist/**/*.d.ts", "**/example/**/code/**"]
 }

@@ -19,7 +19,7 @@ interface RunningFluxionApp {
 
 const runningApps: RunningFluxionApp[] = [];
 const tempDirectories: string[] = [];
-const packageRoot = path.resolve(import.meta.dirname, '../..');
+const packageRoot = path.resolve(__dirname, '../..');
 const distEntry = path.join(packageRoot, 'dist', 'index.mjs');
 
 function spawnCommand(command: string, args: string[], cwd: string): Promise<void> {
@@ -115,9 +115,7 @@ async function startFluxionApp(options: {
     "  host: '127.0.0.1',",
     `  port: ${options.businessPort},`,
     options.metaPort === undefined ? '' : `  metaPort: ${options.metaPort},`,
-    options.maxWorkerCount === undefined
-      ? ''
-      : `  workerOptions: { maxWorkerCount: ${options.maxWorkerCount} },`,
+    options.maxWorkerCount === undefined ? '' : `  workerOptions: { maxWorkerCount: ${options.maxWorkerCount} },`,
     '});',
   ].filter((line) => line.length > 0);
   await writeFile(scriptPath, scriptLines.join('\n'));
@@ -179,17 +177,21 @@ async function startFluxionApp(options: {
   runningApps.push(app);
 
   try {
-    await waitFor(async () => {
-      if (child.exitCode !== null) {
-        throw new Error(`Fluxion process exited early (code=${child.exitCode})\n${logs.join('')}`);
-      }
-      try {
-        const response = await metaClient.get('/_fluxion/healthz');
-        return response.status === 200 && response.data?.ok === true;
-      } catch {
-        return false;
-      }
-    }, 10000, 100);
+    await waitFor(
+      async () => {
+        if (child.exitCode !== null) {
+          throw new Error(`Fluxion process exited early (code=${child.exitCode})\n${logs.join('')}`);
+        }
+        try {
+          const response = await metaClient.get('/_fluxion/healthz');
+          return response.status === 200 && response.data?.ok === true;
+        } catch {
+          return false;
+        }
+      },
+      10000,
+      100,
+    );
   } catch (error) {
     await app.stop();
     throw new Error(`Failed to start fluxion app: ${(error as Error).message}\n${logs.join('')}`);
@@ -219,7 +221,7 @@ describe('fluxion e2e (cluster runtime)', () => {
 
     await writeFile(
       path.join(dynamicDirectory, 'hello.mjs'),
-      "export default function handler() { return { ok: true, workerPid: process.pid }; }",
+      'export default function handler() { return { ok: true, workerPid: process.pid }; }',
     );
 
     const { businessPort, metaPort } = await getPortPair();
@@ -235,15 +237,19 @@ describe('fluxion e2e (cluster runtime)', () => {
     expect(healthzResponse.data?.ok).toBe(true);
     expect(healthzResponse.data?.role).toBe('primary');
 
-    await waitFor(async () => {
-      const response = await app.metaClient.get('/_fluxion/workers');
-      const workers = response.data?.workers?.workers;
-      return (
-        Array.isArray(workers) &&
-        workers.length === 2 &&
-        workers.every((worker: any) => worker.state === 'ready' && worker.stats !== null)
-      );
-    }, 12000, 200);
+    await waitFor(
+      async () => {
+        const response = await app.metaClient.get('/_fluxion/workers');
+        const workers = response.data?.workers?.workers;
+        return (
+          Array.isArray(workers) &&
+          workers.length === 2 &&
+          workers.every((worker: any) => worker.state === 'ready' && worker.stats !== null)
+        );
+      },
+      12000,
+      200,
+    );
 
     const workersResponse = await app.metaClient.get('/_fluxion/workers');
     const workers = workersResponse.data.workers.workers;
@@ -263,7 +269,10 @@ describe('fluxion e2e (cluster runtime)', () => {
     const dynamicDirectory = await createTempDirectory('fluxion-e2e-meta-default-');
     tempDirectories.push(dynamicDirectory);
 
-    await writeFile(path.join(dynamicDirectory, 'ping.mjs'), "export default function handler() { return { pong: true }; }");
+    await writeFile(
+      path.join(dynamicDirectory, 'ping.mjs'),
+      'export default function handler() { return { pong: true }; }',
+    );
 
     const { businessPort, metaPort } = await getPortPair();
     const app = await startFluxionApp({
