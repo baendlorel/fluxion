@@ -1,9 +1,15 @@
 import http from 'node:http';
 import https from 'node:https';
 
-import type { FluxionContext, NormalizedRequest } from '../types.js';
+import type { FluxionContext, FluxionModuleWithType, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
-import { HttpCode, HANDLER_TIMEOUT_FLAG, META_PREFIX, STATIC_HANDLED_FLAG } from '@/common/consts.js';
+import {
+  HttpCode,
+  HANDLER_TIMEOUT_FLAG,
+  META_PREFIX,
+  STATIC_HANDLED_FLAG,
+  FluxionModuleType,
+} from '@/common/consts.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
 
@@ -88,7 +94,11 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         return;
       }
 
-      const timeoutMs = m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs;
+      const timeoutMs =
+        m.type === FluxionModuleType.Api
+          ? (m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs)
+          : cx.options.staticResourceTimeoutMs;
+
       const result = await Promise.race([
         PromiseTry(m.handler, normalized, req, res),
         new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), timeoutMs)),

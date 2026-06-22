@@ -121,7 +121,7 @@ export interface FluxionOptions {
   /**
    * Default to 10 minutes 10*60*1000ms.
    */
-  staticResourceTimeoutMs: number;
+  staticResourceTimeoutMs?: number;
 
   /**
    * Delay in milliseconds for reloading handlers after file changes are detected.

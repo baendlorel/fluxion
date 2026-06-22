@@ -69,7 +69,6 @@ export class FluxionRouter {
    * 4. If file matches apiInclude patterns, register as API handler;
    * 5. Otherwise, register as static resource.
    */
-  // TODO 检查使用的地方是否await了
   async register(absolutePath: string, relativePath: string) {
     if (!fs.existsSync(absolutePath)) {
       // Get the disposer and delete
@@ -113,12 +112,11 @@ export class FluxionRouter {
     }
 
     // register as static resource
-    // TODO 这里制作的staticmodule要有特殊的判定，以便于区分返回值的timeout
     this.handlers.set(relativePath, this.makeStaticResource(relativePath));
     this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
   }
 
-  getModule(url: URL): FluxionModule | undefined {
+  getModule(url: URL): FluxionModuleWithType | undefined {
     const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
     return this.handlers.get(relativePath);
   }
