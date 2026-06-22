@@ -5,11 +5,6 @@
     "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "strict": true,
-    // "types": ["./src/global.d.ts"],
-
-    "jsx": "react-jsx",
-    "jsxImportSource": "kt.js",
-    "plugins": [{ "name": "@ktjs/ts-plugin" }],
     "types": ["node"],
 
     "declaration": false,

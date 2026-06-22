@@ -13,13 +13,16 @@
   "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs",
-      "default": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "files": [
@@ -44,7 +47,7 @@
     "doc:dev": "vite --config document/vite.config.ts",
     "doc:build": "vite build --config document/vite.config.ts",
     "image": "tsx ./scripts/build-image.ts",
-    "build": "vite build --mode=production",
+    "build": "tsdown",
     "pub": "tsx ./scripts/publish.ts",
     "test": "vitest",
     "lint": "oxlint ."
@@ -56,12 +59,11 @@
     "kt.js": "^0.40.26",
     "oxlint": "^1.67.0",
     "prettier": "^3.8.3",
+    "tsdown": "^0.22.3",
     "tslib": "^2.8.1",
     "tsx": "^4.22.4",
     "type-narrow": "^0.2.2",
     "typescript": "^6.0.3",
-    "unplugin-dts": "^1.0.2",
-    "vite": "^8.0.15",
     "vitest": "^4.1.7"
   },
   "dependencies": {
