@@ -44,7 +44,7 @@
     "dev": "tsx ./src/index.ts --watch",
     "build": "tsdown",
     "pub": "tsx ./scripts/publish.ts",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit -p tsconfig.build.json",
     "test": "vitest",
     "lint": "oxlint ."
   },
