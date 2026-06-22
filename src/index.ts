@@ -5,6 +5,11 @@ import { noop } from './common/consts.js';
 export { fluxion };
 export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
 
+/**
+ * Use handler function and optional disposer function to define a Fluxion module.
+ * @param handler Main function that handles request and response instances
+ * @param disposer
+ */
 export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModule;
 export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModule;
 export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer: FluxionDispose = noop): FluxionModule {

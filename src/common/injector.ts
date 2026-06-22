@@ -1,4 +1,4 @@
-import type { FluxionContext, FluxionModule, NormalizedFluxionModule } from '@/types.js';
+import type { FluxionContext, FluxionModule } from '@/types.js';
 import { static_cast } from 'type-narrow';
 
 function isFluxionModule(o: unknown): o is FluxionModule {
@@ -23,10 +23,7 @@ function isFluxionModule(o: unknown): o is FluxionModule {
   return true;
 }
 
-export function loadFluxionModule(
-  cx: Pick<FluxionContext, 'options' | 'logger'>,
-  fullpath: string,
-): NormalizedFluxionModule {
+export function loadFluxionModule(_cx: Pick<FluxionContext, 'options' | 'logger'>, fullpath: string): FluxionModule {
   delete require.cache[fullpath];
   let m = require(fullpath);
   if (isFluxionModule(m)) {
