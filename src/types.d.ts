@@ -52,12 +52,6 @@ export interface WorkerOptions {
   maxWorkerCount: number;
 
   /**
-   * Request timeout in milliseconds.
-   * @default 3000
-   */
-  requestTimeoutMs: number;
-
-  /**
    * Maximum concurrent requests allowed in the pool.
    * @default 64
    */

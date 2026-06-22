@@ -8,7 +8,6 @@ import type { WorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '..
 function resolveWorkerOptions(options: Partial<WorkerOptions>): WorkerOptions {
   return {
     maxWorkerCount: options.maxWorkerCount ?? 4,
-    requestTimeoutMs: options.requestTimeoutMs ?? 3000,
     maxInflight: options.maxInflight ?? 64,
     memorySoftLimitMb: options.memorySoftLimitMb ?? 96,
     memoryHardLimitMb: options.memoryHardLimitMb ?? 128,

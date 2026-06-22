@@ -22,7 +22,7 @@ export async function fluxion(options: FluxionOptions) {
     context.logger = createWorkerLogger(context.logger, process.pid);
     // Only worker creates the watcher
     const Watcher = context.options.nativeWatcher ? FluxionNativeWatcher : FluxionChokidarWatcher;
-    context.watcher = new Watcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
+    context.watcher = await new Watcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
     initWorker(context);
   }
 }
