@@ -19,9 +19,9 @@ export class FluxionChokidarWatcher extends FluxionWatcherBase {
    * - Better event handling and stability
    * - Automatic resource management
    */
-  start(): this {
+  async start(): Promise<this> {
     this.stop();
-    this.init();
+    await this.init();
 
     const dir = this.cx.options.dir;
     this.watcher = chokidar

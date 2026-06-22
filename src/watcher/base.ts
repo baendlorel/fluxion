@@ -17,12 +17,14 @@ export abstract class FluxionWatcherBase {
   /**
    * Recursively register all files in the options directory.
    */
-  protected init(): this {
+  protected async init(): Promise<this> {
     const dir = this.cx.options.dir;
     if (!fs.existsSync(dir)) {
       this.cx.logger.warn(`Directory does not exist: ${dir}`);
       return this;
     }
+
+    const registerList: Promise<void>[] = [];
 
     const registerRecursive = (absoluteDir: string, relativeDir: string) => {
       const entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
@@ -35,12 +37,17 @@ export abstract class FluxionWatcherBase {
         if (entry.isDirectory()) {
           registerRecursive(absolutePath, relativePath);
         } else if (entry.isFile()) {
-          this.register(absolutePath, relativePath);
+          const p = this.cx.router.register(absolutePath, relativePath).catch((e) => {
+            this.cx.logger.error(`Error registering file ${relativePath}: ${(e as Error).message}`);
+          });
+          registerList.push(p);
         }
       }
     };
 
     registerRecursive(dir, '');
+    await Promise.all(registerList);
+
     this.cx.logger.info(`Initial registration complete for directory: ${dir}`);
     return this;
   }
@@ -72,14 +79,6 @@ export abstract class FluxionWatcherBase {
     this.filesChanged.clear();
   }
 
-  private register(absolutePath: string, relativePath: string): void {
-    try {
-      this.cx.router.register(absolutePath, relativePath);
-    } catch (err) {
-      this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`);
-    }
-  }
-
-  abstract start(): this;
+  abstract start(): Promise<this>;
   abstract stop(): this;
 }

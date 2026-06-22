@@ -15,9 +15,9 @@ export class FluxionNativeWatcher extends FluxionWatcherBase {
    *
    * We could only record every file and reload them all.
    */
-  start(): this {
+  async start(): Promise<this> {
     this.stop();
-    this.init();
+    await this.init();
 
     const dir = this.cx.options.dir;
     this.watcher = fs

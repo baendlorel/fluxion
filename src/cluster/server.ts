@@ -3,7 +3,7 @@ import https from 'node:https';
 
 import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
-import { HttpCode, META_PREFIX, STATIC_HANDLED_FLAG } from '@/common/consts.js';
+import { HttpCode, HANDLER_TIMEOUT_FLAG, META_PREFIX, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
 
@@ -84,7 +84,20 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       }
 
       // TODO 准备加入超时机制、methods等更多选项
-      const result = await PromiseTry(m.handler, normalized, req, res);
+      const ms = m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs;
+      const result = await Promise.race([
+        PromiseTry(m.handler, normalized, req, res),
+        new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), ms)),
+      ]);
+
+      if (result === HANDLER_TIMEOUT_FLAG) {
+        cx.logger.warn('HandlerTimeout', {
+          method: normalized.method,
+          ip: normalized.ip,
+        });
+        safeSendJson(res, { message: 'Handler timed out' }, HttpCode.InternalServerError);
+        return;
+      }
 
       if (result !== STATIC_HANDLED_FLAG) {
         safeSendJson(res, result);
