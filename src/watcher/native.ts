@@ -32,7 +32,7 @@ export class FluxionNativeWatcher extends FluxionWatcherBase {
       .on('error', (err) => {
         this.cx.logger.error(`Watcher error: ${err.message}`);
         this.cx.logger.error(`Restarting watcher...`);
-        this.stop().start();
+        this.start();
       });
 
     this.cx.logger.info(`Watcher started on directory: ${dir}`);

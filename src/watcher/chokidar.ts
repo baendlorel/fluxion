@@ -46,7 +46,7 @@ export class FluxionChokidarWatcher extends FluxionWatcherBase {
         const error = err instanceof Error ? err : new Error(String(err));
         this.cx.logger.error(`Watcher error: ${error.message}`);
         this.cx.logger.error(`Restarting watcher...`);
-        this.stop().start();
+        this.start();
       })
       .on('ready', () => {
         this.cx.logger.info(`Watcher ready and watching directory: ${dir}`);
