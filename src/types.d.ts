@@ -4,6 +4,7 @@ import type { FluxionRouter } from './router/index.js';
 import type { FluxionChokidarWatcher } from './watcher/chokidar.ts';
 import type { FluxionNativeWatcher } from './watcher/native.ts';
 import type { otherstring } from './global.js';
+import type { FluxionModuleType } from './common/consts.js';
 
 export interface NormalizedRequest {
   /**
@@ -118,6 +119,11 @@ export interface FluxionOptions {
   handlerTimeoutMs?: number;
 
   /**
+   * Default to 10 minutes 10*60*1000ms.
+   */
+  staticResourceTimeoutMs: number;
+
+  /**
    * Delay in milliseconds for reloading handlers after file changes are detected.
    *
    * Defaults to 500ms.
@@ -212,6 +218,7 @@ export interface NormalizedFluxionOptions {
   host: string;
   port: number;
   handlerTimeoutMs: number;
+  staticResourceTimeoutMs: number;
   reloadDelay: number;
   metaPort: number;
   moduleDir: string;
@@ -285,3 +292,5 @@ export interface FluxionModule {
    */
   methods?: HTTPMethod[];
 }
+
+export type FluxionModuleWithType = FluxionModule & { type: FluxionModuleType };

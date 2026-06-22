@@ -88,11 +88,10 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         return;
       }
 
+      const timeoutMs = m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs;
       const result = await Promise.race([
         PromiseTry(m.handler, normalized, req, res),
-        new Promise((r) =>
-          setTimeout(() => r(HANDLER_TIMEOUT_FLAG), m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs),
-        ),
+        new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), timeoutMs)),
       ]);
 
       if (result === HANDLER_TIMEOUT_FLAG) {

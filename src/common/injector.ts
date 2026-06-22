@@ -1,5 +1,6 @@
-import type { FluxionContext, FluxionModule } from '@/types.js';
+import type { FluxionContext, FluxionModule, FluxionModuleWithType } from '@/types.js';
 import { static_cast } from 'type-narrow';
+import { FluxionModuleType } from './consts';
 
 function isFluxionModule(o: unknown): o is FluxionModule {
   if (typeof o !== 'object' || o === null) {
@@ -23,7 +24,10 @@ function isFluxionModule(o: unknown): o is FluxionModule {
   return true;
 }
 
-export function loadFluxionModule(_cx: Pick<FluxionContext, 'options' | 'logger'>, fullpath: string): FluxionModule {
+export function loadFluxionModule(
+  _cx: Pick<FluxionContext, 'options' | 'logger'>,
+  fullpath: string,
+): FluxionModuleWithType {
   delete require.cache[fullpath];
   let m = require(fullpath);
   if (isFluxionModule(m)) {
@@ -33,5 +37,5 @@ export function loadFluxionModule(_cx: Pick<FluxionContext, 'options' | 'logger'
     $throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
 
-  return m;
+  return { ...m, type: FluxionModuleType.Api };
 }

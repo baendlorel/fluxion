@@ -33,4 +33,9 @@ export const enum HandlerResult {
   Handled,
 }
 
+export const enum FluxionModuleType {
+  Api,
+  StaticResource,
+}
+
 export const noop = () => {};

@@ -1,22 +1,23 @@
-import type { FluxionContext, FluxionModule } from '../types.js';
+import type { FluxionContext, FluxionModule, FluxionModuleWithType } from '../types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
-import { STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
+import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import { loadFluxionModule } from '@/common/injector.js';
 import { cctl } from '@/common/color.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
 export class FluxionRouter {
   private readonly cx: Pick<FluxionContext, 'options' | 'logger'>;
-  private readonly handlers: Map<string, FluxionModule> = new Map();
+  private readonly handlers: Map<string, FluxionModuleWithType> = new Map();
 
   constructor(cx: Pick<FluxionContext, 'options' | 'logger'>) {
     this.cx = cx;
   }
 
-  makeStaticResource(filepath: string): FluxionModule {
+  makeStaticResource(filepath: string): FluxionModuleWithType {
     return {
+      type: FluxionModuleType.StaticResource,
       handler: async (normalized, _req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
           res.statusCode = 405;
