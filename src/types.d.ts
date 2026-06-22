@@ -3,6 +3,7 @@ import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
 import type { FluxionChokidarWatcher } from './watcher/chokidar.ts';
 import type { FluxionNativeWatcher } from './watcher/native.ts';
+import type { otherstring } from './global.js';
 
 export interface NormalizedRequest {
   /**
@@ -246,14 +247,41 @@ export type FluxionHandler<
 
 export type FluxionDispose = () => Promise<void> | void;
 
-export interface FluxionModule {
-  handler: FluxionHandler;
-  disposer?: FluxionDispose;
-  handlerTimeoutMs?: number;
-}
+/**
+ * Supported HTTP methods for FluxionModule
+ */
+export type HTTPMethod =
+  | 'GET'
+  | 'POST'
+  | 'PUT'
+  | 'DELETE'
+  | 'PATCH'
+  | 'HEAD'
+  | 'OPTIONS'
+  | 'TRACE'
+  | 'CONNECT'
+  | otherstring;
 
-export interface NormalizedFluxionModule {
+export interface FluxionModule {
+  /**
+   * Main handler for an api
+   */
   handler: FluxionHandler;
-  disposer: FluxionDispose;
-  handlerTimeoutMs: number;
+
+  /**
+   * This is meant to clear resources used by handler while it's down.
+   */
+  disposer?: FluxionDispose;
+
+  /**
+   * How many ms to wait until the request times out
+   */
+  handlerTimeoutMs?: number;
+
+  /**
+   * Allowed HTTP methods for this module.
+   * If specified, only these methods will be accepted.
+   * @example ['GET', 'POST']
+   */
+  methods?: HTTPMethod[];
 }

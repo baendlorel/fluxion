@@ -36,6 +36,10 @@ export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer:
     $throw(`Invalid FluxionModule, "disposer" must be a function if provided`);
   }
 
+  if (a.methods !== undefined && !Array.isArray(a.methods)) {
+    $throw(`Invalid FluxionModule, "methods" must be an array of strings if provided`);
+  }
+
   return a;
 }
 

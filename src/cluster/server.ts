@@ -83,11 +83,16 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         return;
       }
 
-      // TODO 准备加入超时机制、methods等更多选项
-      const ms = m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs;
+      if (req.method && m.methods && !m.methods.includes(req.method)) {
+        safeSendJson(res, { message: 'Method Not Allowed' }, HttpCode.MethodNotAllowed);
+        return;
+      }
+
       const result = await Promise.race([
         PromiseTry(m.handler, normalized, req, res),
-        new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), ms)),
+        new Promise((r) =>
+          setTimeout(() => r(HANDLER_TIMEOUT_FLAG), m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs),
+        ),
       ]);
 
       if (result === HANDLER_TIMEOUT_FLAG) {

@@ -21,6 +21,7 @@ export const STATIC_CONTENT_TYPES: Record<string, string> = {
 
 export const enum HttpCode {
   Ok = 200,
+  MethodNotAllowed = 405,
   BadRequest = 400,
   PayloadTooLarge = 413,
   NotFound = 404,

@@ -112,6 +112,7 @@ export class FluxionRouter {
     }
 
     // register as static resource
+    // TODO 这里制作的staticmodule要有特殊的判定，以便于区分返回值的timeout
     this.handlers.set(relativePath, this.makeStaticResource(relativePath));
     this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
   }
