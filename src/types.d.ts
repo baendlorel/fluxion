@@ -258,7 +258,11 @@ export type FluxionHandler<
 export type FluxionMiddleware<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
-> = (rawRequest: InstanceType<Request>, rawResponse: InstanceType<Response>) => Promise<unknown> | unknown;
+> = (
+  request: NormalizedRequest,
+  rawRequest: InstanceType<Request>,
+  rawResponse: InstanceType<Response>,
+) => Promise<unknown> | unknown;
 
 export type FluxionDispose = () => Promise<void> | void;
 

@@ -103,6 +103,14 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
           : cx.options.staticResourceTimeoutMs;
 
       // TODO 这里要加入中间件过场
+      if (m.middlewares) {
+        for (let i = 0; i < m.middlewares.length; i++) {
+          // Silent failure, more safe
+          await PromiseTry(m.middlewares[i], normalized, req, res).catch((e) =>
+            cx.logger.error(`middleware failure: ${e.message}`),
+          );
+        }
+      }
 
       const result = await waiter(PromiseTry(m.handler, normalized, req, res), timeoutMs);
 
