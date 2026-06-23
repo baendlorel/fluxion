@@ -255,11 +255,14 @@ export interface FluxionContext {
   router: FluxionRouter;
 }
 
+export type FluxionModuleContext = Pick<FluxionContext, 'logger'>;
+
 export type FluxionHandler<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
 > = (
   request: NormalizedRequest,
+  cx: FluxionModuleContext,
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
 ) => Promise<unknown> | unknown;
@@ -269,6 +272,7 @@ export type FluxionMiddleware<
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
 > = (
   request: NormalizedRequest,
+  cx: FluxionModuleContext,
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response>,
 ) => Promise<unknown> | unknown;

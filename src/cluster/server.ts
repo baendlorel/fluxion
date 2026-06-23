@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 
-import type { FluxionContext, NormalizedRequest } from '../types.js';
+import type { FluxionContext, FluxionModuleContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
 import {
   HttpCode,
@@ -26,6 +26,8 @@ const waiter = (mainPromise: Promise<any>, timeoutMs: number, flag: symbol) =>
   Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(flag), timeoutMs))]);
 
 export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
+  const moduleCx: FluxionModuleContext = Object.freeze({ logger: cx.logger });
+
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const method = req.method ?? 'GET';
     const ip = getRealIp(req);
@@ -109,7 +111,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       if (m.middlewares) {
         for (let i = 0; i < m.middlewares.length; i++) {
           const result = await waiter(
-            PromiseTry(m.middlewares[i], normalized, req, res),
+            PromiseTry(m.middlewares[i], normalized, moduleCx, req, res),
             cx.options.middlewareTimeoutMs,
             MIDDLEWARE_TIMEOUT_FLAG,
           );
@@ -132,7 +134,11 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         }
       }
 
-      const result = await waiter(PromiseTry(m.handler, normalized, req, res), timeoutMs, HANDLER_TIMEOUT_FLAG);
+      const result = await waiter(
+        PromiseTry(m.handler, normalized, moduleCx, req, res),
+        timeoutMs,
+        HANDLER_TIMEOUT_FLAG,
+      );
 
       if (result === HANDLER_TIMEOUT_FLAG) {
         cx.logger.warn('HandlerTimeout', {
