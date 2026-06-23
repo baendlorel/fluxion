@@ -10,8 +10,7 @@ type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | other
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
-  event: string;
-  message?: string;
+  message: string;
   [key: string]: unknown;
 }
 
@@ -23,13 +22,13 @@ export interface FluxionLogger {
   /**
    * [WARN] We assert that `fields` is an object or undefined.
    */
-  write(level: LogLevel, event: string, fields?: object): void;
-  info(event: string, fields?: object): void;
-  warn(event: string, fields?: object): void;
-  error(event: string, fields?: object): void;
-  succ(event: string, fields?: object): void;
-  debug(event: string, fields?: object): void;
-  verbose(event: string, fields?: object): void;
+  write(level: LogLevel, message: string, fields?: object): void;
+  info(message: string, fields?: object): void;
+  warn(message: string, fields?: object): void;
+  error(message: string, fields?: object): void;
+  succ(message: string, fields?: object): void;
+  debug(message: string, fields?: object): void;
+  verbose(message: string, fields?: object): void;
 }
 
 const safeStringify = (value: unknown): string => {
@@ -50,11 +49,11 @@ const ColoredLevels: Record<LogLevel, string> = {
 };
 
 export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
-  const { level: rawLevel, timestamp: rawTimestamp, event: rawEvent, message: rawMessage, ...fields } = entry;
+  const { level: rawLevel, timestamp: rawTimestamp, message: rawMessage, ...fields } = entry;
 
   const timestamp = `${cctl.darkGreen}[${rawTimestamp}]${cctl.reset}`;
   const level = ColoredLevels[rawLevel] ?? rawLevel;
-  const body = rawMessage ?? rawEvent;
+  const body = rawMessage;
   const fieldsText = $keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
   // eslint-disable-next-line @typescript-eslint/no-console
@@ -82,12 +81,12 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
   const sink = resolveLoggerSink(cx);
 
   const logger: FluxionLogger = {
-    write(level: LogLevel, event: string, fields: Record<string, unknown> = {}): void {
+    write(level: LogLevel, message: string, fields: Record<string, unknown> = {}): void {
       const entry: LogEntry = {
         ...fields,
         timestamp: dtm(),
         level,
-        event,
+        message,
       };
 
       try {
@@ -96,23 +95,23 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
         // Ignore logger sink failures to avoid breaking request handling.
       }
     },
-    info(event: string, fields?: Record<string, unknown>): void {
-      this.write('INFO', event, fields);
+    info(message: string, fields?: Record<string, unknown>): void {
+      this.write('INFO', message, fields);
     },
-    warn(event: string, fields?: Record<string, unknown>): void {
-      this.write('WARN', event, fields);
+    warn(message: string, fields?: Record<string, unknown>): void {
+      this.write('WARN', message, fields);
     },
-    error(event: string, fields?: Record<string, unknown>): void {
-      this.write('ERROR', event, fields);
+    error(message: string, fields?: Record<string, unknown>): void {
+      this.write('ERROR', message, fields);
     },
-    succ(event: string, fields?: Record<string, unknown>): void {
-      this.write('SUCC', event, fields);
+    succ(message: string, fields?: Record<string, unknown>): void {
+      this.write('SUCC', message, fields);
     },
-    debug(event: string, fields?: Record<string, unknown>): void {
-      this.write('DEBUG', event, fields);
+    debug(message: string, fields?: Record<string, unknown>): void {
+      this.write('DEBUG', message, fields);
     },
-    verbose(event: string, fields?: Record<string, unknown>): void {
-      this.write('VERBOSE', event, fields);
+    verbose(message: string, fields?: Record<string, unknown>): void {
+      this.write('VERBOSE', message, fields);
     },
   };
 
@@ -126,26 +125,26 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
   const pidPrefix = `[${pid}]`;
 
   return {
-    write(level: LogLevel, event: string, fields?: object): void {
-      baseLogger.write(level, `${pidPrefix} ${event}`, fields);
+    write(level: LogLevel, message: string, fields?: object): void {
+      baseLogger.write(level, `${pidPrefix} ${message}`, fields);
     },
-    info(event: string, fields?: object): void {
-      baseLogger.info(`${pidPrefix} ${event}`, fields);
+    info(message: string, fields?: object): void {
+      baseLogger.info(`${pidPrefix} ${message}`, fields);
     },
-    warn(event: string, fields?: object): void {
-      baseLogger.warn(`${pidPrefix} ${event}`, fields);
+    warn(message: string, fields?: object): void {
+      baseLogger.warn(`${pidPrefix} ${message}`, fields);
     },
-    error(event: string, fields?: object): void {
-      baseLogger.error(`${pidPrefix} ${event}`, fields);
+    error(message: string, fields?: object): void {
+      baseLogger.error(`${pidPrefix} ${message}`, fields);
     },
-    succ(event: string, fields?: object): void {
-      baseLogger.succ(`${pidPrefix} ${event}`, fields);
+    succ(message: string, fields?: object): void {
+      baseLogger.succ(`${pidPrefix} ${message}`, fields);
     },
-    debug(event: string, fields?: object): void {
-      baseLogger.debug(`${pidPrefix} ${event}`, fields);
+    debug(message: string, fields?: object): void {
+      baseLogger.debug(`${pidPrefix} ${message}`, fields);
     },
-    verbose(event: string, fields?: object): void {
-      baseLogger.verbose(`${pidPrefix} ${event}`, fields);
+    verbose(message: string, fields?: object): void {
+      baseLogger.verbose(`${pidPrefix} ${message}`, fields);
     },
   };
 }
