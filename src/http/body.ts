@@ -2,6 +2,7 @@ import type http from 'node:http';
 
 import { isTextualContentType } from './headers.js';
 import { parseQuery } from './query.js';
+import { PayloadTooLargeException } from './exceptions.js';
 
 export interface BodyPreview {
   exists: boolean;
@@ -10,14 +11,10 @@ export interface BodyPreview {
   truncated: boolean;
 }
 
-function createRequestBodyTooLargeError(receivedBytes: number, maxBytes: number): NodeJS.ErrnoException {
-  const sizeError = new Error(
+function createPayloadTooLargeException(receivedBytes: number, maxBytes: number): PayloadTooLargeException {
+  return new PayloadTooLargeException(
     `request body too large: ${receivedBytes.toString()} bytes exceeds ${maxBytes.toString()} bytes`,
-  ) as NodeJS.ErrnoException;
-
-  sizeError.code = 'REQUEST_BODY_TOO_LARGE';
-
-  return sizeError;
+  );
 }
 
 function getHeaderValue(headerValue: string | string[] | undefined): string | undefined {
@@ -83,7 +80,7 @@ async function readRequestBodyWithPreview(
   const declaredBytes = contentLengthRaw !== undefined ? Number.parseInt(contentLengthRaw, 10) : NaN;
 
   if (Number.isFinite(declaredBytes) && declaredBytes > maxBytes) {
-    throw createRequestBodyTooLargeError(declaredBytes, maxBytes);
+    throw createPayloadTooLargeException(declaredBytes, maxBytes);
   }
 
   return new Promise((resolve, reject) => {
@@ -118,7 +115,7 @@ async function readRequestBodyWithPreview(
         cleanup();
         req.resume();
         settle(() => {
-          reject(createRequestBodyTooLargeError(totalBytes, maxBytes));
+          reject(createPayloadTooLargeException(totalBytes, maxBytes));
         });
         return;
       }

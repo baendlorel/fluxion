@@ -20,7 +20,7 @@ export const STATIC_CONTENT_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-export const enum HttpCode {
+export enum HttpCode {
   // 2xx Success
   Ok = 200,
   Created = 201,

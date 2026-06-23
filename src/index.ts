@@ -9,6 +9,30 @@ import { fluxion } from './fluxion.js';
 import { FluxionModuleType, HttpCode, noop } from './common/consts.js';
 
 export { fluxion, HttpCode };
+
+// Export all HTTP exceptions
+export {
+  HttpException,
+  BadRequestException,
+  UnauthorizedException,
+  ForbiddenException,
+  NotFoundException,
+  MethodNotAllowedException,
+  NotAcceptableException,
+  RequestTimeoutException,
+  ConflictException,
+  GoneException,
+  PayloadTooLargeException,
+  UnsupportedMediaTypeException,
+  UnprocessableEntityException,
+  TooManyRequestsException,
+  InternalServerErrorException,
+  NotImplementedException,
+  BadGatewayException,
+  ServiceUnavailableException,
+  GatewayTimeoutException,
+} from './http/exceptions.js';
+
 export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
 
 /**

@@ -20,6 +20,7 @@ import { safeSendJson } from '../http/respond.js';
 import { parseBody, type BodyPreview } from '../http/body.js';
 import { parseQuery } from '../http/query.js';
 import { parseCookie } from '../http/cookie.js';
+import { HttpException } from '@/http/exceptions.js';
 
 const waiter = (mainPromise: Promise<any>, timeoutMs: number, flag: symbol) =>
   Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(flag), timeoutMs))]);
@@ -144,15 +145,28 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       if (result !== STATIC_HANDLED_FLAG) {
         safeSendJson(res, result);
       }
-    } catch (error) {
-      cx.logger.error('RequestFailed', {
-        method: normalized.method,
-        ip: normalized.ip,
-        path: normalized.url.pathname,
-        error: getErrorMessage(error),
-      });
-
-      safeSendJson(res, { message: getErrorMessage(error) }, (error as NodeJS.ErrnoException).errno);
+    } catch (e) {
+      if (e instanceof HttpException) {
+        cx.logger.error('RequestFailed', {
+          method: normalized.method,
+          ip: normalized.ip,
+          path: normalized.url.pathname,
+          error: e.message,
+        });
+        safeSendJson(res, { message: e.message }, e.errno);
+      } else {
+        cx.logger.error('RequestFailed', {
+          method: normalized.method,
+          ip: normalized.ip,
+          path: normalized.url.pathname,
+          error: getErrorMessage(e),
+        });
+        safeSendJson(
+          res,
+          { message: getErrorMessage(e) },
+          (e as NodeJS.ErrnoException).errno ?? HttpCode.InternalServerError,
+        );
+      }
     }
   };
 
