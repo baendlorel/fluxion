@@ -455,7 +455,7 @@ Relative paths are resolved relative to `moduleDir`. PEM content can be passed d
 
 ## Recent Updates
 
-### v0.10.1
+### v0.11.x
 
 **Middleware & Module System**
 
@@ -463,6 +463,18 @@ Relative paths are resolved relative to `moduleDir`. PEM content can be passed d
 - ✨ Middleware execution now supports timeout configuration via `MIDDLEWARE_TIMEOUT_FLAG`
 - ✨ Module context now includes logger support
 - ✨ Enhanced module type validation with more precise function checking
+- ✨ Added `meta` field for extended metadata support
+
+**Logging Improvements**
+
+- 🔄 Unified logging interface: merged `event` and `message` fields into single `message` field
+- ✨ Simplified logger API across all methods
+
+**Handler Parameters**
+
+- 🔄 Adjusted handler parameter order for better ergonomics
+
+### v0.10.x
 
 **HTTP Exception Handling**
 
@@ -470,22 +482,19 @@ Relative paths are resolved relative to `moduleDir`. PEM content can be passed d
 - ✨ Expanded `HttpCode` enum with additional HTTP status codes
 - ✨ Added `BadRequestError` and other HTTP exception classes
 - 📦 Exported exception classes for user applications
-
-**Logging Improvements**
-
-- 🔄 Unified logging interface: merged `event` and `message` fields into single `message` field
-- ✨ Simplified logger API across all methods
+- ✨ Handler catch blocks now directly send response ending
 
 **Worker Management**
 
 - ✨ Added proactive worker recycling conditions (memory usage, health timeout, uptime)
 - ✨ Enhanced worker pool tuning with `restartWhen` options
 
-### v0.9.6
+### v0.9.x
 
 - ✨ Added initial middleware support
 - ✨ Added `defineMiddleware()` for middleware type safety
 - ✨ Enhanced worker restart conditions for better memory management
+- ✨ Restructured build and publish flow with build scripts
 
 ## Build and Test
 
