@@ -41,6 +41,8 @@ export interface NormalizedRequest {
    * Parsed cookies from the Cookie header
    */
   cookie: Record<string, string>;
+
+  meta: Record<any, any>;
 }
 
 /**

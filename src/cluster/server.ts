@@ -43,6 +43,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       body: {},
       headers: req.headers,
       cookie: parseCookie(req.headers.cookie as string | undefined),
+      meta: {},
     };
 
     let bodyPreview: BodyPreview = {
