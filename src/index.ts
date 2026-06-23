@@ -1,4 +1,10 @@
-import type { FluxionDispose, FluxionHandler, FluxionModule, FluxionModuleWithType } from './types.js';
+import type {
+  FluxionDispose,
+  FluxionHandler,
+  FluxionMiddleware,
+  FluxionModule,
+  FluxionModuleWithType,
+} from './types.js';
 import { fluxion } from './fluxion.js';
 import { FluxionModuleType, noop } from './common/consts.js';
 
@@ -50,6 +56,13 @@ export function defineFluxionModule(
   }
 
   return { ...a, type: FluxionModuleType.Api };
+}
+
+export function defineFluxionMiddleware(middleware: FluxionMiddleware): FluxionMiddleware {
+  if (typeof middleware !== 'function') {
+    $throw(`Invalid FluxionMiddleware, expected a function but got ${typeof middleware}`);
+  }
+  return middleware;
 }
 
 if (process.env.NODE_ENV !== 'production') {
