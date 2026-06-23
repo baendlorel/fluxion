@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 
-import type { FluxionContext, FluxionModuleWithType, NormalizedRequest } from '../types.js';
+import type { FluxionContext, NormalizedRequest } from '../types.js';
 import { $keys } from '@/common/native.js';
 import {
   HttpCode,

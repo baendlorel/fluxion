@@ -86,18 +86,18 @@ function normalizeHttpsOptions(
 /**
  * Normalize options and create necessary resources like the dynamic directory and logger.
  */
-export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOptions {
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
+  if (typeof o !== 'object' || o === null || Array.isArray(o)) {
     $throw('FluxionOptions must be an object');
   }
 
-  let {
-    dir,
+  const {
+    dir = path.isAbsolute(o.dir) ? o.dir : path.join(process.cwd(), o.dir),
     host,
     port,
     handlerTimeoutMs = 5000,
     staticResourceTimeoutMs = 10 * 600000,
-    metaPort,
+    metaPort = port + 1,
     moduleDir = process.cwd(),
     workerOptions = {},
     maxRequestBytes = 8_000_000,
@@ -120,9 +120,9 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     ],
     https,
     nativeWatcher = false,
-  } = options as FluxionOptions;
+  } = o as FluxionOptions;
 
-  const logger = options.logger ?? 'one-line';
+  const logger = o.logger ?? 'one-line';
   if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
     $throw(`Invalid logger option, Must be 'one-line', 'json-line' or a custom logger function`);
   }
@@ -159,7 +159,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     $throw('FluxionOptions.port must be 1 ~ 65535');
   }
 
-  metaPort ??= port + 1;
   if (typeof metaPort !== 'number' || !Number.isSafeInteger(metaPort)) {
     $throw('FluxionOptions.metaPort must be a positive integer');
   }
@@ -180,7 +179,6 @@ export function normalizeOptions(options: FluxionOptions): NormalizedFluxionOpti
     $throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
-  dir = path.isAbsolute(dir) ? dir : path.join(process.cwd(), dir);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

@@ -1,9 +1,5 @@
 {
-  "extends": [
-    "oxlint:recommended",
-    "oxlint-plugin-prettier/recommended",
-    "oxlint-plugin-typescript/recommended"
-  ],
+  "extends": [],
   "ignorePatterns": [
     "draft/",
     "dist/",

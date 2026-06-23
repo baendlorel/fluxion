@@ -24,7 +24,7 @@ export abstract class FluxionWatcherBase {
       return this;
     }
 
-    const registerList: Promise<void>[] = [];
+    const registerList: Array<Promise<void>> = [];
 
     const registerRecursive = (absoluteDir: string, relativeDir: string) => {
       const entries = fs.readdirSync(absoluteDir, { withFileTypes: true });

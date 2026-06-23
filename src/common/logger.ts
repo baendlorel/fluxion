@@ -57,6 +57,7 @@ export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
   const body = rawMessage ?? rawEvent;
   const fieldsText = $keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
+  // eslint-disable-next-line @typescript-eslint/no-console
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
 };
 
@@ -70,6 +71,7 @@ function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): FluxionLoggerFn
   }
 
   if (loggerOption === 'json-line') {
+    // eslint-disable-next-line @typescript-eslint/no-console
     return (entry: LogEntry) => console.log(safeStringify(entry));
   }
 

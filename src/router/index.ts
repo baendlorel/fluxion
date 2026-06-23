@@ -1,4 +1,4 @@
-import type { FluxionContext, FluxionModule, FluxionModuleWithType } from '../types.js';
+import type { FluxionContext, FluxionModuleWithType } from '../types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
@@ -118,7 +118,7 @@ export class FluxionRouter {
   }
 
   getModule(url: URL): FluxionModuleWithType | undefined {
-    const relativePath = url.pathname.replace(/^[\/]+/, '').replace(/[\/]+$/, '');
+    const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
     return this.handlers.get(relativePath);
   }
 

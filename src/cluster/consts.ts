@@ -1,4 +1,4 @@
-import type { PrimaryMessage as PrimaryMessage, WorkerMessage as WorkerMessage } from './types.js';
+import type { PrimaryMessage, WorkerMessage } from './types.js';
 
 export const enum PrimaryAction {
   /**
