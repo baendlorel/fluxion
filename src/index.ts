@@ -6,9 +6,9 @@ import type {
   FluxionModuleWithType,
 } from './types.js';
 import { fluxion } from './fluxion.js';
-import { FluxionModuleType, noop } from './common/consts.js';
+import { FluxionModuleType, HttpCode, noop } from './common/consts.js';
 
-export { fluxion };
+export { fluxion, HttpCode };
 export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
 
 /**
