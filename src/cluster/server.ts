@@ -20,6 +20,9 @@ import { parseBody, type BodyPreview } from '../http/body.js';
 import { parseQuery } from '../http/query.js';
 import { parseCookie } from '../http/cookie.js';
 
+const waiter = (mainPromise: Promise<any>, timeoutMs: number) =>
+  Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), timeoutMs))]);
+
 export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const method = req.method ?? 'GET';
@@ -75,7 +78,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
     // * Start request handling
     try {
       if (normalized.url.pathname.startsWith(META_PREFIX + '/')) {
-        safeSendJson(res, { message: `Meta APIs are available on port ${cx.options.metaPort}` }, HttpCode.NotFound);
+        safeSendJson(res, { message: `Not Found` }, HttpCode.NotFound);
         return;
       }
 
@@ -99,10 +102,9 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
           ? (m.handlerTimeoutMs ?? cx.options.handlerTimeoutMs)
           : cx.options.staticResourceTimeoutMs;
 
-      const result = await Promise.race([
-        PromiseTry(m.handler, normalized, req, res),
-        new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), timeoutMs)),
-      ]);
+      // TODO 这里要加入中间件过场
+
+      const result = await waiter(PromiseTry(m.handler, normalized, req, res), timeoutMs);
 
       if (result === HANDLER_TIMEOUT_FLAG) {
         cx.logger.warn('HandlerTimeout', {

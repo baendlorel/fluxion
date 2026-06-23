@@ -303,6 +303,8 @@ export interface FluxionModule {
   // TODO 增加中间件数组
   /**
    * These functions will execute sequentially and be awaited.
+   *
+   * **Side Effect Accepted :** You can modify the arguments, and next middleware will use the modified version.
    */
   middlewares?: FluxionMiddleware[];
 }
