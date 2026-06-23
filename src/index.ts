@@ -1,6 +1,6 @@
-import type { FluxionDispose, FluxionHandler, FluxionModule } from './types.js';
+import type { FluxionDispose, FluxionHandler, FluxionModule, FluxionModuleWithType } from './types.js';
 import { fluxion } from './fluxion.js';
-import { noop } from './common/consts.js';
+import { FluxionModuleType, noop } from './common/consts.js';
 
 export { fluxion };
 export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
@@ -10,18 +10,21 @@ export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerMod
  * @param handler Main function that handles request and response instances
  * @param disposer Deal with resource cleanup when the server is about to close
  */
-export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModule;
+export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModuleWithType;
 
 /**
  * Provides type safety for defining Fluxion modules.
  */
-export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModule;
-export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer: FluxionDispose = noop): FluxionModule {
+export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModuleWithType;
+export function defineFluxionModule(
+  a: FluxionModule | FluxionHandler,
+  disposer: FluxionDispose = noop,
+): FluxionModuleWithType {
   if (typeof a === 'function') {
     if (typeof disposer !== 'function') {
       $throw(`Invalid disposer, expected a function but got ${typeof disposer}`);
     }
-    return { handler: a, disposer };
+    return { handler: a, disposer, type: FluxionModuleType.Api };
   }
 
   if (typeof a !== 'object' || a === null) {
@@ -40,7 +43,7 @@ export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer:
     $throw(`Invalid FluxionModule, "methods" must be an array of strings if provided`);
   }
 
-  return a;
+  return { ...a, type: FluxionModuleType.Api };
 }
 
 if (process.env.NODE_ENV !== 'production') {

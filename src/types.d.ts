@@ -155,6 +155,10 @@ export interface FluxionOptions {
   /**
    * Logger output mode or custom logger sink.
    * Defaults to `one-line`.
+   *
+   * Also accepts a logger function that will replace the default one.
+   *
+   * ! **ATTENTION** Fluxion calls the logging function synchronously and fails silently; make sure to handle exceptions yourself.
    */
   logger?: LoggerOption;
 
