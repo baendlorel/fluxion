@@ -1,7 +1,7 @@
 # Fluxion
 
-[![npm version](https://img.shields.io/npm/v/fluxion.svg)](https://www.npmjs.com/package/fluxion)
-[![npm downloads](https://img.shields.io/npm/dm/fluxion.svg)](https://www.npmjs.com/package/fluxion)
+[![npm version](https://img.shields.io/npm/v/fluxion.svg)](https://www.npmjs.org/package/fluxion)
+[![npm downloads](https://img.shields.io/npm/dm/fluxion.svg)](https://www.npmjs.org/package/fluxion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">
@@ -13,11 +13,12 @@
 Fluxion is a filesystem-routing dynamic server for Node.js.
 
 - Route files from a dynamic directory by chokidar or native `fs.watch`
-- Load API handlers by extension, default: `.ts`
+- Load API handlers by extension patterns (default: `*.ts`)
 - Serve other files as static resources
 - Run the business server in worker processes
 - Expose runtime status from the primary process through meta APIs
 - Automatically serialize handler return values as JSON
+- Built-in middleware system and HTTP exception handling
 
 ## Install
 
@@ -42,16 +43,14 @@ fluxion({
 Create `dynamicDirectory/hello.ts`:
 
 ```ts
-import { defineFluxionHandler } from 'fluxion';
+import { defineFluxionModule } from 'fluxion';
 
-// defineFluxionHandler is only for better type inference and editor support.
-// You can export the handler function directly without it.
-export default defineFluxionHandler(async function handler(req) {
+export default defineFluxionModule(async (req, cx) => {
   return {
     message: 'hello fluxion',
     path: req.url.pathname,
   };
-})
+});
 ```
 
 Run:
@@ -79,104 +78,206 @@ In this repository, `pnpm dev` runs `src/index.ts` directly and starts Fluxion u
 Default development options:
 
 ```ts
-// if process.env.FLUXION_COLORS === '0', colors will be disabled in logs
-
 fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
   host: process.env.HOST ?? 'localhost',
-  port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000,
-  reloadDelay: process.env.RELOAD_DELAY ? Number.parseInt(process.env.RELOAD_DELAY, 10) : undefined,
+  port: Number.parseInt(process.env.PORT ?? '9000', 10),
+  metaPort: Number.parseInt(process.env.META_PORT ?? '9001', 10),
   workerOptions: {
-    maxWorkerCount: 1,
+    maxWorkerCount: 4,
   },
 });
 ```
 
-Example:
-
-```bash
-pnpm dev
-curl http://localhost:3000/test.ts
-```
-
 ## Routing
 
-Fluxion registers every file under `dir` recursively.
+Fluxion registers files under `dir` based on glob patterns:
 
-With default options:
-
-- Files ending with `.ts` are API handlers.
-- Files with other extensions are static resources.
+- Files matching `apiInclude` (default: `*.ts`) are API handlers.
+- Other files are static resources.
 - Request paths match file paths relative to `dir`.
 - File extensions are part of the route path.
 
 Examples:
 
-| File                               | Route              | Type        |
-| ---------------------------------- | ------------------ | ----------- |
-| `dynamicDirectory/test.ts`         | `/test.ts`         | API handler |
-| `dynamicDirectory/user/profile.ts` | `/user/profile.ts` | API handler |
-| `dynamicDirectory/index.html`      | `/index.html`      | Static file |
-| `dynamicDirectory/assets/app.js`   | `/assets/app.js`   | Static file |
-
-A request to `/hello` does not match `hello.ts`; request `/hello.ts` or change `apiExts`/routing behavior in code.
+| File                                    | Route              | Type        |
+| --------------------------------------- | ------------------ | ----------- |
+| `dynamicDirectory/test.ts`              | `/test.ts`         | API handler |
+| `dynamicDirectory/user/profile.ts`      | `/user/profile.ts` | API handler |
+| `dynamicDirectory/index.html`           | `/index.html`      | Static file |
+| `dynamicDirectory/assets/app.js`        | `/assets/app.js`   | Static file |
 
 ## API Handlers
 
-An API file must export a function by one of these forms:
+An API handler **MUST** use `defineFluxionModule()` to define the module. This provides type safety and ensures proper module structure.
+
+### Basic Handler
 
 ```ts
-export default async function handler(req, rawReq, rawRes) {
+import { defineFluxionModule } from 'fluxion';
+
+export default defineFluxionModule(async (req, cx) => {
   return { ok: true };
-}
-```
-
-```ts
-export async function handler(req, rawReq, rawRes) {
-  return { ok: true };
-}
-```
-
-Common local style:
-
-```ts
-import { defineFluxionHandler } from '@/index.js';
-
-export default defineFluxionHandler(async (req) => {
-  return req.url.pathname + '成功';
 });
 ```
 
 ### Handler Arguments
 
+Handlers receive 4 parameters:
+
 ```ts
-handler(normalizedRequest, rawRequest, rawResponse)
+handler(req, cx, rawReq, rawRes)
 ```
 
-`normalizedRequest` contains:
+- **`req`**: Normalized request object
+  ```ts
+  {
+    method: string;           // HTTP method
+    ip: string;               // Client IP
+    url: URL;                 // Parsed URL
+    query: Record<string, string | string[]>;  // Query params
+    body: Record<string, any>; // Parsed body
+    headers: IncomingHttpHeaders;
+    cookie: Record<string, string>;
+    meta: Record<any, any>;   // Custom metadata
+  }
+  ```
+
+- **`cx`**: Module context
+  ```ts
+  {
+    logger: FluxionLogger;    // Logger instance
+  }
+  ```
+
+- **`rawReq`**: Node.js `http.IncomingMessage`
+
+- **`rawRes`**: Node.js `http.ServerResponse`
+
+### Advanced Module Configuration
 
 ```ts
-{
-  method: string;
-  ip: string;
-  url: URL;
-  query: Record<string, string | string[]>;
-  body: Record<string, any>;
-  headers: IncomingHttpHeaders;
-  cookie: Record<string, string>;
+import { defineFluxionModule, defineFluxionMiddleware } from 'fluxion';
+
+const logMiddleware = defineFluxionMiddleware(async (req, cx) => {
+  cx.logger.info('Request received', { path: req.url.pathname });
+});
+
+export default defineFluxionModule({
+  handler: async (req, cx) => {
+    return { message: 'hello' };
+  },
+  middlewares: [logMiddleware],
+  methods: ['GET', 'POST'],
+  handlerTimeoutMs: 10000,
+});
+```
+
+### Module Options
+
+```ts
+interface FluxionModule {
+  handler: FluxionHandler;          // Required: main handler function
+  middlewares?: FluxionMiddleware[];  // Optional: middleware array
+  methods?: HTTPMethod[];           // Optional: allowed HTTP methods
+  handlerTimeoutMs?: number;         // Optional: handler timeout (ms)
+  disposer?: FluxionDispose;        // Optional: cleanup function
 }
 ```
 
-`rawRequest` and `rawResponse` are Node.js HTTP objects.
+## Middleware
+
+Middleware functions execute sequentially before the handler. They can modify request parameters through side effects.
+
+```ts
+import { defineFluxionMiddleware, defineFluxionModule } from 'fluxion';
+
+const authMiddleware = defineFluxionMiddleware(async (req, cx, rawReq, rawRes) => {
+  const token = req.headers.authorization;
+  if (!token) {
+    rawRes.statusCode = 401;
+    rawRes.end('Unauthorized');
+    return;
+  }
+  // Modify request for next middleware/handler
+  req.meta.user = await verifyToken(token);
+});
+
+export default defineFluxionModule({
+  handler: async (req) => {
+    return { user: req.meta.user };
+  },
+  middlewares: [authMiddleware],
+});
+```
+
+**Important**: Middleware timeout defaults to 3000ms. Configure via `middlewareTimeoutMs` option.
+
+## HTTP Exceptions
+
+Fluxion provides built-in HTTP exception classes for better error handling:
+
+```ts
+import {
+  defineFluxionModule,
+  BadRequestException,
+  UnauthorizedException,
+  NotFoundException,
+} from 'fluxion';
+
+export default defineFluxionModule(async (req) => {
+  if (!req.query.id) {
+    throw new BadRequestException('Missing required parameter: id');
+  }
+
+  const user = await getUser(req.query.id);
+  if (!user) {
+    throw new NotFoundException('User not found');
+  }
+
+  return { user };
+});
+```
+
+Available exception classes:
+
+- `BadRequestException` (400)
+- `UnauthorizedException` (401)
+- `ForbiddenException` (403)
+- `NotFoundException` (404)
+- `MethodNotAllowedException` (405)
+- `RequestTimeoutException` (408)
+- `ConflictException` (409)
+- `UnsupportedMediaTypeException` (415)
+- `UnprocessableEntityException` (422)
+- `TooManyRequestsException` (429)
+- `InternalServerErrorException` (500)
+- `NotImplementedException` (501)
+- `BadGatewayException` (502)
+- `ServiceUnavailableException` (503)
+- `GatewayTimeoutException` (504)
+
+## Request Body
+
+Fluxion parses request bodies before calling handlers (except for `GET` and `HEAD`).
+
+Supported parsing:
+
+- **JSON**: Objects assigned directly; primitives become `{ value }`; invalid JSON becomes `{ raw }`
+- **Form data**: Parsed into key/value fields
+- **Text**: Stored as `{ raw }`
+- **Binary**: Read for size checking; body remains `{}`
+
+Requests larger than `maxRequestBytes` return `413 Payload Too Large`.
 
 ## Response Behavior
 
 If the handler returns a value, Fluxion responds with JSON:
 
 ```ts
-export default async function handler() {
+export default defineFluxionModule(async () => {
   return { ok: true };
-}
+});
 ```
 
 Response:
@@ -188,30 +289,17 @@ Content-Type: application/json; charset=utf-8
 {"ok":true}
 ```
 
-You can also write to `rawResponse` manually:
+You can also write to `rawRes` manually:
 
 ```ts
-export default async function handler(_req, _rawReq, res) {
+export default defineFluxionModule(async (_req, _cx, _rawReq, res) => {
   res.statusCode = 201;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.end('created');
-}
+});
 ```
 
 When `res` has already ended, Fluxion will not send another JSON response.
-
-## Request Body
-
-Fluxion parses request bodies before calling the handler, except for `GET` and `HEAD`.
-
-Supported parsing:
-
-- JSON content types: object values are assigned directly; primitive values become `{ value }`; invalid JSON becomes `{ raw }`.
-- `application/x-www-form-urlencoded`: parsed into key/value fields.
-- Textual content types: stored as `{ raw }`.
-- Other binary bodies are read for size checking/log preview but `body` remains `{}`.
-
-Requests larger than `maxRequestBytes` return `413`.
 
 ## Static Files
 
@@ -222,13 +310,9 @@ Supported methods:
 - `GET`
 - `HEAD`
 
-Other methods return `405` with:
+Other methods return `405 Method Not Allowed`.
 
-```http
-Allow: GET, HEAD
-```
-
-Known content types include `.html`, `.css`, `.js`, `.json`, `.png`, `.jpg`, `.jpeg`, `.svg`, `.txt`, `.webp`, `.ico`, and `.map`. Unknown extensions use `application/octet-stream`.
+Known content types: `.html`, `.css`, `.js`, `.json`, `.png`, `.jpg`, `.jpeg`, `.svg`, `.txt`, `.webp`, `.ico`, `.map`. Unknown extensions use `application/octet-stream`.
 
 ## File Watching
 
@@ -236,33 +320,27 @@ Workers watch the dynamic directory recursively.
 
 On file changes:
 
-- existing files are re-registered;
-- deleted files are removed from the router;
-- updates are debounced by `reloadDelay`, default `300ms`.
+- Existing files are re-registered
+- Deleted files are removed from the router
+- Updates are debounced by `reloadDelay` (default: `500ms`)
 
 ## Cluster Runtime
 
 Fluxion uses Node.js `cluster`:
 
-- The primary process starts meta APIs and manages worker state.
-- Worker processes watch the dynamic directory and serve business traffic.
-- `workerOptions.maxWorkerCount` controls worker count. Default is capped by CPU count.
+- **Primary process**: Starts meta APIs and manages worker state
+- **Worker processes**: Watch the dynamic directory and serve business traffic
+- **Worker count**: Controlled by `workerOptions.maxWorkerCount` (default: `4`, capped by CPU count)
 
 ## Meta APIs
 
-Meta APIs are served by the primary process on `metaPort`.
+Meta APIs are served by the primary process on `metaPort` (default: `port + 1`).
 
-Default:
-
-```ts
-metaPort = port + 1
-```
-
-Endpoints:
+Available endpoints:
 
 ```http
-GET /_fluxion/healthz
-GET /_fluxion/workers
+GET /_fluxion/healthz   # Health check
+GET /_fluxion/workers   # Worker status
 ```
 
 Example:
@@ -272,25 +350,51 @@ curl http://127.0.0.1:3001/_fluxion/healthz
 curl http://127.0.0.1:3001/_fluxion/workers
 ```
 
-If a meta API path is requested on the business port, Fluxion returns `404` and points to the meta port.
-
 ## Options
 
 ```ts
 interface FluxionOptions {
-  dir: string;
-  host: string;
-  port: number;
-  reloadDelay?: number;
-  metaPort?: number;
-  nativeWatcher?: boolean;
-  injections?: InjectionConfig[];
-  moduleDir?: string;
-  workerOptions?: WorkerOptions;
-  maxRequestBytes?: number;
-  logger?: 'one-line' | 'json-line' | InjectionConfig;
-  apiExts?: string[];
-  routerExclude?: string[];
+  dir: string;                    // Required: dynamic directory
+  host: string;                   // Required: server host
+  port: number;                   // Required: business server port
+
+  // Optional timeout configurations
+  handlerTimeoutMs?: number;       // Default: 5000ms
+  middlewareTimeoutMs?: number;   // Default: 3000ms
+  staticResourceTimeoutMs?: number; // Default: 10min
+
+  // File watching
+  reloadDelay?: number;            // Default: 500ms
+  nativeWatcher?: boolean;        // Use fs.watch instead of chokidar
+
+  // File registration patterns
+  include?: string[];             // Files to register (default: all)
+  apiInclude?: string[];          // Files as API handlers (default: ['*.ts'])
+  exclude?: string[];              // Files to exclude
+
+  // Meta API
+  metaPort?: number;               // Default: port + 1
+
+  // Worker management
+  workerOptions?: {
+    maxWorkerCount?: number;      // Default: 4
+    restartWhen?: {
+      memoryUsageGreaterThan?: number;  // MB
+      healthzTimeout?: number;         // Default: 30000ms
+      uptimeGreaterThan?: number;      // ms
+    };
+  };
+
+  // Request handling
+  maxRequestBytes?: number;        // Default: 8_000_000
+
+  // Logging
+  logger?: 'one-line' | 'json-line' | FluxionLoggerFn;
+
+  // Module system
+  moduleDir?: string;              // Default: process.cwd()
+
+  // HTTPS
   https?: {
     key: string | Buffer;
     cert: string | Buffer;
@@ -299,144 +403,43 @@ interface FluxionOptions {
 }
 ```
 
-### `dir`
-
-Dynamic directory root. Created automatically if missing.
-
-### `host`
-
-Host passed to `server.listen`.
-
-### `port`
-
-Business server port.
-
-### `metaPort`
-
-Primary meta API port. Defaults to `port + 1` and must be different from `port`.
-
-### `reloadDelay`
-
-Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
-
-### `nativeWatcher`
-
-Use native file watcher (`fs.watch`) instead of chokidar. Defaults to `false`.
-
-When set to `true`, Fluxion uses Node.js built-in `fs.watch()` for file watching. When `false` (default), it uses `chokidar` for better cross-platform compatibility.
-
-**Trade-offs:**
-
-- `chokidar` (default): Better cross-platform support, more stable, handles edge cases
-- `fs.watch`: Native implementation, lighter weight, but may have platform-specific quirks
-
-Example:
+### Timeout Configurations
 
 ```ts
 fluxion({
-  dir: './dynamicDirectory',
-  host: '127.0.0.1',
-  port: 3000,
-  nativeWatcher: true,  // use native fs.watch instead of chokidar
+  // ...other options
+  handlerTimeoutMs: 10000,         // Handler execution timeout
+  middlewareTimeoutMs: 5000,       // Middleware execution timeout
+  staticResourceTimeoutMs: 600000, // Static file serving timeout
 });
 ```
 
-### `apiExts`
-
-Extensions registered as API handlers. Defaults to:
-
-```ts
-['.ts']
-```
-
-Example:
+### File Registration Patterns
 
 ```ts
 fluxion({
-  dir: './dynamicDirectory',
-  host: '127.0.0.1',
-  port: 3000,
-  apiExts: ['.ts', '.mjs'],
+  apiInclude: ['*.ts', '*.api.js'],  // Register as API handlers
+  include: ['*.ts', '*.js', '*.html'], // Register any matching file
+  exclude: ['*.test.ts', '*.spec.ts'], // Exclude from registration
 });
 ```
 
-### `routerExclude`
-
-Extensions excluded from both API and static registration.
-
-Example:
-
-```ts
-routerExclude: ['.map']
-```
-
-### `maxRequestBytes`
-
-Maximum accepted request body size. Defaults to `8_000_000`.
-
-### `logger`
-
-Built-in modes:
-
-- `one-line`
-- `json-line`
-
-A custom logger can be loaded through an injection config object whose module exports a function.
-
-### `injections`
-
-Worker startup injections. Each item is loaded with `require(modulePath)` and called as a factory. The resulting instances are stored on:
-
-```ts
-globalThis[Symbol.for('fluxion.injection')]
-```
-
-### `workerOptions`
-
-Worker pool tuning: how many workers to spawn, and when to proactively recycle one.
-
-```ts
-interface WorkerOptions {
-  maxWorkerCount?: number;
-  restartWhen?: Partial<WorkerRestartWhen>;
-}
-
-interface WorkerRestartWhen {
-  /** Recycle when RSS exceeds this many MB. Infinity (default) = disabled. */
-  memoryUsageGreaterThan: number;
-  /** Recycle when no Ping answer within this many ms. Default 30000. */
-  healthzTimeout: number;
-  /** Recycle after this many ms of uptime (scheduled rotation). Infinity (default) = disabled. */
-  uptimeGreaterThan: number;
-}
-```
-
-- `maxWorkerCount` defaults to `4`, clamped to the CPU count (minimum 1).
-- `restartWhen` lets the primary proactively recycle an unhealthy worker. The worker is hard-killed and immediately respawned when **any** configured condition is met (OR semantics):
-  - `memoryUsageGreaterThan` — RSS growth / native leak, caught before the OS OOM-killer. Disabled by default.
-  - `healthzTimeout` — a wedged event loop (worker stopped answering Ping: infinite loop, deadlock, GC storm). **Defaults to `30000`ms.**
-  - `uptimeGreaterThan` — scheduled rotation to reclaim slow growth / fragmentation. Disabled by default.
-- Conditions are evaluated by the primary against the telemetry it already collects (RSS from stats every ~2s, liveness from Ping every 5s, uptime).
-- A shared **anti-storm guard** bounds recycling: a given slot is restarted at most 3 times per rolling 60s, after which further restarts are suppressed and alerted instead of fork-bombing.
-- Independently of `restartWhen`, **any worker exit — crash, OOM, or proactive recycle — triggers a respawn**, so the pool stays at `maxWorkerCount`.
+### Worker Restart Conditions
 
 ```ts
 fluxion({
-  // ...
   workerOptions: {
     maxWorkerCount: 4,
     restartWhen: {
-      memoryUsageGreaterThan: 256, // MB; recycle a leaking worker at 256MB RSS
-      // healthzTimeout defaults to 30000 — recycle wedged workers after 30s
-      // uptimeGreaterThan: 6 * 3600_000, // optionally rotate every 6h
+      memoryUsageGreaterThan: 256,  // MB - recycle at 256MB RSS
+      healthzTimeout: 30000,        // ms - recycle after 30s no response
+      uptimeGreaterThan: 6 * 3600_000, // ms - rotate every 6 hours
     },
   },
 });
 ```
 
-### `https`
-
-HTTPS server configuration. When provided, Fluxion creates an HTTPS server instead of HTTP.
+### HTTPS Configuration
 
 ```ts
 fluxion({
@@ -444,9 +447,9 @@ fluxion({
   host: '127.0.0.1',
   port: 9443,
   https: {
-    key: './certs/private-key.pem',  // 私钥文件路径或内容
-    cert: './certs/certificate.pem', // 证书文件路径或内容
-    ca: './certs/ca-bundle.crt',    // 可选：CA 证书链
+    key: './certs/private-key.pem',
+    cert: './certs/certificate.pem',
+    ca: './certs/ca-bundle.crt',  // Optional
   },
 });
 ```
@@ -459,42 +462,41 @@ Relative paths are resolved relative to `moduleDir`. PEM content can be passed d
 
 **Middleware & Module System**
 
-- ✨ Added `defineMiddleware()` and `defineFluxionModule()` functions for enhanced type safety
-- ✨ Middleware execution now supports timeout configuration via `MIDDLEWARE_TIMEOUT_FLAG`
-- ✨ Module context now includes logger support
-- ✨ Enhanced module type validation with more precise function checking
-- ✨ Added `meta` field for extended metadata support
+- ✨ Added `defineFluxionModule()` and `defineFluxionMiddleware()` for type safety
+- ✨ Middleware execution with timeout support via `middlewareTimeoutMs`
+- ✨ Module context includes logger support
+- ✨ Enhanced module type validation
+- ✨ Added `meta` field for custom metadata
 
-**Logging Improvements**
+**Logging**
 
-- 🔄 Unified logging interface: merged `event` and `message` fields into single `message` field
+- 🔄 Unified logging interface: merged `event` and `message` into single `message` field
 - ✨ Simplified logger API across all methods
 
 **Handler Parameters**
 
-- 🔄 Adjusted handler parameter order for better ergonomics
+- 🔄 Handler signature: `(req, cx, rawReq, rawRes)` - 4 parameters for better ergonomics
+- ✨ Module context (`cx`) provides logger access
 
 ### v0.10.x
 
 **HTTP Exception Handling**
 
-- 🔄 Refactored HTTP exception classes: renamed error types to exception types
-- ✨ Expanded `HttpCode` enum with additional HTTP status codes
-- ✨ Added `BadRequestError` and other HTTP exception classes
+- 🔄 Refactored HTTP exception classes with proper error codes
+- ✨ Expanded `HttpCode` enum with additional status codes
+- ✨ Added comprehensive HTTP exception classes
 - 📦 Exported exception classes for user applications
-- ✨ Handler catch blocks now directly send response ending
 
 **Worker Management**
 
-- ✨ Added proactive worker recycling conditions (memory usage, health timeout, uptime)
+- ✨ Proactive worker recycling (memory, health, uptime)
 - ✨ Enhanced worker pool tuning with `restartWhen` options
 
 ### v0.9.x
 
-- ✨ Added initial middleware support
-- ✨ Added `defineMiddleware()` for middleware type safety
-- ✨ Enhanced worker restart conditions for better memory management
-- ✨ Restructured build and publish flow with build scripts
+- ✨ Initial middleware support
+- ✨ Worker restart conditions for memory management
+- ✨ Restructured build and publish flow
 
 ## Build and Test
 
@@ -503,4 +505,3 @@ pnpm build
 pnpm test
 pnpm lint
 ```
-
