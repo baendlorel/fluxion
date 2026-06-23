@@ -7,6 +7,7 @@ const isDev = process.env.NODE_ENV === 'development';
 
 export default defineConfig({
   entry: ['src/index.ts'],
+  // entry: ['local-test/test.ts'],
   format: ['esm', 'cjs'] as ModuleFormat[],
   dts: true,
   clean: true,
@@ -26,5 +27,7 @@ export default defineConfig({
       '$throw("': `throw new Error("[fluxion error] `,
     }),
   ],
-  deps: { skipNodeModulesBundle: true },
+  deps: {
+    onlyBundle: ['type-narrow'],
+  },
 });
