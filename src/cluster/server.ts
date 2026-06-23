@@ -9,6 +9,7 @@ import {
   META_PREFIX,
   STATIC_HANDLED_FLAG,
   FluxionModuleType,
+  MIDDLEWARE_TIMEOUT_FLAG,
 } from '@/common/consts.js';
 import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
@@ -20,8 +21,8 @@ import { parseBody, type BodyPreview } from '../http/body.js';
 import { parseQuery } from '../http/query.js';
 import { parseCookie } from '../http/cookie.js';
 
-const waiter = (mainPromise: Promise<any>, timeoutMs: number) =>
-  Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(HANDLER_TIMEOUT_FLAG), timeoutMs))]);
+const waiter = (mainPromise: Promise<any>, timeoutMs: number, flag: symbol) =>
+  Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(flag), timeoutMs))]);
 
 export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -105,8 +106,20 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       // Middleware execution
       if (m.middlewares) {
         for (let i = 0; i < m.middlewares.length; i++) {
-          await waiter(PromiseTry(m.middlewares[i], normalized, req, res), cx.options.middlewareTimeoutMs);
+          const result = await waiter(
+            PromiseTry(m.middlewares[i], normalized, req, res),
+            cx.options.middlewareTimeoutMs,
+            MIDDLEWARE_TIMEOUT_FLAG,
+          );
 
+          if (result === MIDDLEWARE_TIMEOUT_FLAG) {
+            cx.logger.warn('MiddlewareTimeout', {
+              method: normalized.method,
+              ip: normalized.ip,
+            });
+            safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
+            return;
+          }
           if (res.writableEnded) {
             return;
           }
@@ -117,7 +130,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         }
       }
 
-      const result = await waiter(PromiseTry(m.handler, normalized, req, res), timeoutMs);
+      const result = await waiter(PromiseTry(m.handler, normalized, req, res), timeoutMs, HANDLER_TIMEOUT_FLAG);
 
       if (result === HANDLER_TIMEOUT_FLAG) {
         cx.logger.warn('HandlerTimeout', {

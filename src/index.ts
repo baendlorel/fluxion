@@ -46,7 +46,7 @@ export function defineFluxionModule(
     a.middlewares !== undefined &&
     (!Array.isArray(a.middlewares) || a.middlewares.some((v) => typeof v !== 'function'))
   ) {
-    $throw(`Invalid FluxionModule, "methods" must be an array of strings if provided`);
+    $throw(`Invalid FluxionModule, "middlewares" must be an array of functions if provided`);
   }
 
   return { ...a, type: FluxionModuleType.Api };

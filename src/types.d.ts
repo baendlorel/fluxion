@@ -311,7 +311,6 @@ export interface FluxionModule {
    */
   methods?: HTTPMethod[];
 
-  // TODO 增加中间件数组
   /**
    * These functions will execute sequentially and be awaited.
    *
