@@ -1,6 +1,6 @@
 {
   "name": "fluxion-ts",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "author": {
     "name": "Kasukabe Tsumugi",
     "email": "futami16237@gmail.com"
@@ -42,14 +42,15 @@
   "scripts": {
     "start": "code-server --bind-addr 0.0.0.0:3000 /app/dynamic && node /app/index.js",
     "dev": "tsx ./src/index.ts --watch",
-    "build": "tsdown",
-    "pub": "tsx ./scripts/publish.ts",
+    "build": "tsx ./scripts/index.ts --build",
+    "pub": "tsx ./scripts/index.ts --publish",
     "check": "tsc --noEmit -p tsconfig.build.json",
     "test": "vitest",
     "lint": "oxlint ."
   },
   "license": "MIT",
   "devDependencies": {
+    "@rollup/plugin-replace": "^6.0.3",
     "@types/node": "^25.9.1",
     "axios": "^1.16.1",
     "kt.js": "^0.40.26",
