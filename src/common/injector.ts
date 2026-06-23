@@ -17,7 +17,8 @@ function isFluxionModule(o: unknown): o is FluxionModule {
     return false;
   }
 
-  if (o.handlerTimeoutMs !== undefined && typeof o.handlerTimeoutMs !== 'function') {
+  const ms = o.handlerTimeoutMs;
+  if (ms !== undefined && (!Number.isSafeInteger(ms) || ms < 100)) {
     return false;
   }
 

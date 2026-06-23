@@ -70,13 +70,14 @@ export class FluxionRouter {
    * 5. Otherwise, register as static resource.
    */
   async register(absolutePath: string, relativePath: string) {
-    if (!fs.existsSync(absolutePath)) {
-      // Get the disposer and delete
-      const disposer = this.handlers.get(relativePath)?.disposer;
-      if (disposer) {
-        await PromiseTry(disposer);
-      }
+    // Get the disposer and delete
+    const disposer = this.handlers.get(relativePath)?.disposer;
+    if (disposer) {
+      await PromiseTry(disposer);
+    }
 
+    // # Delete
+    if (!fs.existsSync(absolutePath)) {
       this.handlers.delete(relativePath);
       // & Watcher will emit recursively, so there is no need to use this.remove(rp);
       this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${relativePath}`);
@@ -105,8 +106,8 @@ export class FluxionRouter {
     // If matching, register as API handler; otherwise as static resource
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
-      const handler = loadFluxionModule(this.cx, absolutePath);
-      this.handlers.set(relativePath, handler);
+      const m = loadFluxionModule(this.cx, absolutePath);
+      this.handlers.set(relativePath, m);
       this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
       return;
     }
