@@ -1,6 +1,6 @@
 import { HttpCode } from '@/common/consts.js';
 
-export class BadRequestError extends Error implements NodeJS.ErrnoException {
+export class BadRequestException extends Error implements NodeJS.ErrnoException {
   errno?: number | undefined;
   code?: string | undefined;
   constructor(message: string) {

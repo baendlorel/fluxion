@@ -152,11 +152,7 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
         error: getErrorMessage(error),
       });
 
-      if ((error as NodeJS.ErrnoException).code === 'REQUEST_BODY_TOO_LARGE') {
-        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.PayloadTooLarge);
-      } else {
-        safeSendJson(res, { message: getErrorMessage(error) }, HttpCode.InternalServerError);
-      }
+      safeSendJson(res, { message: getErrorMessage(error) }, (error as NodeJS.ErrnoException).errno);
     }
   };
 
