@@ -453,140 +453,39 @@ fluxion({
 
 Relative paths are resolved relative to `moduleDir`. PEM content can be passed directly as strings.
 
-### `dir`
+## Recent Updates
 
-Dynamic directory root. Created automatically if missing.
+### v0.10.1
 
-### `host`
+**Middleware & Module System**
 
-Host passed to `server.listen`.
+- ✨ Added `defineMiddleware()` and `defineFluxionModule()` functions for enhanced type safety
+- ✨ Middleware execution now supports timeout configuration via `MIDDLEWARE_TIMEOUT_FLAG`
+- ✨ Module context now includes logger support
+- ✨ Enhanced module type validation with more precise function checking
 
-### `port`
+**HTTP Exception Handling**
 
-Business server port.
+- 🔄 Refactored HTTP exception classes: renamed error types to exception types
+- ✨ Expanded `HttpCode` enum with additional HTTP status codes
+- ✨ Added `BadRequestError` and other HTTP exception classes
+- 📦 Exported exception classes for user applications
 
-### `metaPort`
+**Logging Improvements**
 
-Primary meta API port. Defaults to `port + 1` and must be different from `port`.
+- 🔄 Unified logging interface: merged `event` and `message` fields into single `message` field
+- ✨ Simplified logger API across all methods
 
-### `reloadDelay`
+**Worker Management**
 
-Debounce delay for file re-registration. Defaults to `300` and must be at least `50`.
+- ✨ Added proactive worker recycling conditions (memory usage, health timeout, uptime)
+- ✨ Enhanced worker pool tuning with `restartWhen` options
 
-### `nativeWatcher`
+### v0.9.6
 
-Use native file watcher (`fs.watch`) instead of chokidar. Defaults to `false`.
-
-When set to `true`, Fluxion uses Node.js built-in `fs.watch()` for file watching. When `false` (default), it uses `chokidar` for better cross-platform compatibility.
-
-**Trade-offs:**
-
-- `chokidar` (default): Better cross-platform support, more stable, handles edge cases
-- `fs.watch`: Native implementation, lighter weight, but may have platform-specific quirks
-
-Example:
-
-```ts
-fluxion({
-  dir: './dynamicDirectory',
-  host: '127.0.0.1',
-  port: 3000,
-  nativeWatcher: true,  // use native fs.watch instead of chokidar
-});
-```
-
-### `apiExts`
-
-Extensions registered as API handlers. Defaults to:
-
-```ts
-['.ts']
-```
-
-Example:
-
-```ts
-fluxion({
-  dir: './dynamicDirectory',
-  host: '127.0.0.1',
-  port: 3000,
-  apiExts: ['.ts', '.mjs'],
-});
-```
-
-### `routerExclude`
-
-Extensions excluded from both API and static registration.
-
-Example:
-
-```ts
-routerExclude: ['.map']
-```
-
-### `maxRequestBytes`
-
-Maximum accepted request body size. Defaults to `8_000_000`.
-
-### `logger`
-
-Built-in modes:
-
-- `one-line`
-- `json-line`
-
-A custom logger can be loaded through an injection config object whose module exports a function.
-
-### `injections`
-
-Worker startup injections. Each item is loaded with `require(modulePath)` and called as a factory. The resulting instances are stored on:
-
-```ts
-globalThis[Symbol.for('fluxion.injection')]
-```
-
-### `workerOptions`
-
-Worker pool tuning: how many workers to spawn, and when to proactively recycle one.
-
-```ts
-interface WorkerOptions {
-  maxWorkerCount?: number;
-  restartWhen?: Partial<WorkerRestartWhen>;
-}
-
-interface WorkerRestartWhen {
-  /** Recycle when RSS exceeds this many MB. Infinity (default) = disabled. */
-  memoryUsageGreaterThan: number;
-  /** Recycle when no Ping answer within this many ms. Default 30000. */
-  healthzTimeout: number;
-  /** Recycle after this many ms of uptime (scheduled rotation). Infinity (default) = disabled. */
-  uptimeGreaterThan: number;
-}
-```
-
-- `maxWorkerCount` defaults to `4`, clamped to the CPU count (minimum 1).
-- `restartWhen` lets the primary proactively recycle an unhealthy worker. The worker is hard-killed and immediately respawned when **any** configured condition is met (OR semantics):
-  - `memoryUsageGreaterThan` — RSS growth / native leak, caught before the OS OOM-killer. Disabled by default.
-  - `healthzTimeout` — a wedged event loop (worker stopped answering Ping: infinite loop, deadlock, GC storm). **Defaults to `30000`ms.**
-  - `uptimeGreaterThan` — scheduled rotation to reclaim slow growth / fragmentation. Disabled by default.
-- Conditions are evaluated by the primary against the telemetry it already collects (RSS from stats every ~2s, liveness from Ping every 5s, uptime).
-- A shared **anti-storm guard** bounds recycling: a given slot is restarted at most 3 times per rolling 60s, after which further restarts are suppressed and alerted instead of fork-bombing.
-- Independently of `restartWhen`, **any worker exit — crash, OOM, or proactive recycle — triggers a respawn**, so the pool stays at `maxWorkerCount`.
-
-```ts
-fluxion({
-  // ...
-  workerOptions: {
-    maxWorkerCount: 4,
-    restartWhen: {
-      memoryUsageGreaterThan: 256, // MB; recycle a leaking worker at 256MB RSS
-      // healthzTimeout defaults to 30000 — recycle wedged workers after 30s
-      // uptimeGreaterThan: 6 * 3600_000, // optionally rotate every 6h
-    },
-  },
-});
-```
+- ✨ Added initial middleware support
+- ✨ Added `defineMiddleware()` for middleware type safety
+- ✨ Enhanced worker restart conditions for better memory management
 
 ## Build and Test
 
