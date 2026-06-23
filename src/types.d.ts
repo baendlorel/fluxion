@@ -255,6 +255,11 @@ export type FluxionHandler<
   rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
 ) => Promise<unknown> | unknown;
 
+export type FluxionMiddleware<
+  Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
+  Response extends typeof http.ServerResponse = typeof http.ServerResponse,
+> = (rawRequest: InstanceType<Request>, rawResponse: InstanceType<Response>) => Promise<unknown> | unknown;
+
 export type FluxionDispose = () => Promise<void> | void;
 
 /**
@@ -294,6 +299,12 @@ export interface FluxionModule {
    * @example ['GET', 'POST']
    */
   methods?: HTTPMethod[];
+
+  // TODO 增加中间件数组
+  /**
+   * These functions will execute sequentially and be awaited.
+   */
+  middlewares?: FluxionMiddleware[];
 }
 
 export type FluxionModuleWithType = FluxionModule & { type: FluxionModuleType };

@@ -11,7 +11,6 @@ export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerMod
  * @param disposer Deal with resource cleanup when the server is about to close
  */
 export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModuleWithType;
-
 /**
  * Provides type safety for defining Fluxion modules.
  */
@@ -39,7 +38,14 @@ export function defineFluxionModule(
     $throw(`Invalid FluxionModule, "disposer" must be a function if provided`);
   }
 
-  if (a.methods !== undefined && !Array.isArray(a.methods)) {
+  if (a.methods !== undefined && (!Array.isArray(a.methods) || a.methods.some((v) => typeof v !== 'string'))) {
+    $throw(`Invalid FluxionModule, "methods" must be an array of strings if provided`);
+  }
+
+  if (
+    a.middlewares !== undefined &&
+    (!Array.isArray(a.middlewares) || a.middlewares.some((v) => typeof v !== 'function'))
+  ) {
     $throw(`Invalid FluxionModule, "methods" must be an array of strings if provided`);
   }
 
