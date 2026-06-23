@@ -106,9 +106,15 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       if (m.middlewares) {
         for (let i = 0; i < m.middlewares.length; i++) {
           // Silent failure, more safe
-          await PromiseTry(m.middlewares[i], normalized, req, res).catch((e) =>
-            cx.logger.error(`middleware failure: ${e.message}`),
-          );
+          await waiter(PromiseTry(m.middlewares[i], normalized, req, res), timeoutMs);
+
+          if (res.writableEnded) {
+            return;
+          }
+          if (res.headersSent) {
+            res.end();
+            return;
+          }
         }
       }
 
