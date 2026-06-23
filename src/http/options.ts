@@ -96,6 +96,7 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     host,
     port,
     handlerTimeoutMs = 5000,
+    middlewareTimeoutMs = 3000,
     staticResourceTimeoutMs = 10 * 600000,
     metaPort = port + 1,
     moduleDir = process.cwd(),
@@ -143,6 +144,10 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     $throw('FluxionOptions.handlerTimeoutMs must be an integer greater than 100');
   }
 
+  if (!Number.isSafeInteger(middlewareTimeoutMs) || middlewareTimeoutMs <= 100) {
+    $throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
+  }
+
   if (typeof reloadDelay !== 'number' || reloadDelay <= 0 || !Number.isSafeInteger(reloadDelay)) {
     $throw('FluxionOptions.reloadDelay must be a positive integer');
   }
@@ -188,6 +193,7 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     host,
     port,
     handlerTimeoutMs,
+    middlewareTimeoutMs,
     staticResourceTimeoutMs,
     reloadDelay,
     metaPort,

@@ -118,6 +118,12 @@ export interface FluxionOptions {
   handlerTimeoutMs?: number;
 
   /**
+   * Timeout for each middleware execution.
+   * Default to 3000ms.
+   */
+  middlewareTimeoutMs?: number;
+
+  /**
    * Default to 10 minutes 10*60*1000ms.
    */
   staticResourceTimeoutMs?: number;
@@ -221,6 +227,7 @@ export interface NormalizedFluxionOptions {
   host: string;
   port: number;
   handlerTimeoutMs: number;
+  middlewareTimeoutMs: number;
   staticResourceTimeoutMs: number;
   reloadDelay: number;
   metaPort: number;
