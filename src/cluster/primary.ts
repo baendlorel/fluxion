@@ -29,7 +29,8 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
   const cpuCount = Math.max(1, os.cpus().length);
   const workerCount = Math.max(1, Math.min(workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount));
 
-  cx.logger.info('PrimaryStarted', {
+  cx.logger.info({
+    message: 'PrimaryStarted',
     pid: process.pid,
     workers: workerCount,
     host: cx.options.host,
@@ -115,7 +116,8 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
       if (w.state === 'restarting') return; // another recycle in flight; retried next tick
     }
     if (isStorming(info.slot)) {
-      cx.logger.warn('WorkerRecycleSuppressed', {
+      cx.logger.warn({
+        message: 'WorkerRecycleSuppressed',
         slot: info.slot,
         pid: info.pid,
         reason,
@@ -127,7 +129,12 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
     recordRestart(info.slot);
     info.state = 'restarting';
     info.restartReason = reason;
-    cx.logger.warn('WorkerRecycling', { slot: info.slot, pid: info.pid, reason });
+    cx.logger.warn({
+      message: 'WorkerRecycling',
+      slot: info.slot,
+      pid: info.pid,
+      reason,
+    });
     info.instance.kill();
   };
 
@@ -195,14 +202,24 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
         workerInfo.state = 'ready';
         workerInfo.pid = raw.pid;
         workerInfo.readyAt = Date.now();
-        cx.logger.info('WorkerReady', { workerId: worker.id, slot, pid: raw.pid });
+        cx.logger.info({
+          message: 'WorkerReady',
+          workerId: worker.id,
+          slot,
+          pid: raw.pid,
+        });
         return;
       }
 
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
         workerInfo.pid = raw.pid;
-        cx.logger.info('WorkerCreated', { workerId: worker.id, slot, pid: raw.pid });
+        cx.logger.info({
+          message: 'WorkerCreated',
+          workerId: worker.id,
+          slot,
+          pid: raw.pid,
+        });
         return;
       }
 
@@ -222,7 +239,8 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
       const expected = info?.state === 'restarting';
       const reason = info?.restartReason ?? null;
 
-      cx.logger.warn('WorkerExited', {
+      cx.logger.warn({
+        message: 'WorkerExited',
         workerId: worker.id,
         slot: exitedSlot ?? null,
         pid: worker.process.pid ?? 'unknown',
@@ -243,7 +261,8 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
       // Unexpected crash: count it, then respawn unless anti-storm trips.
       recordRestart(exitedSlot);
       if (isStorming(exitedSlot)) {
-        cx.logger.error('WorkerRespawnSuppressed', {
+        cx.logger.error({
+          message: 'WorkerRespawnSuppressed',
           slot: exitedSlot,
           windowMs: RESTART_WINDOW_MS,
           max: MAX_RESTARTS_PER_WINDOW,

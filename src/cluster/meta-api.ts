@@ -44,7 +44,8 @@ export function createPrimaryMetaApiServer(
   });
 
   server.on('listening', () => {
-    cx.logger.info('MetaApiStarted', {
+    cx.logger.info({
+      message: 'MetaApiStarted',
       pid: process.pid,
       host: cx.options.host,
       port: cx.options.metaPort,
@@ -53,7 +54,8 @@ export function createPrimaryMetaApiServer(
   });
 
   server.on('error', (error: NodeJS.ErrnoException) => {
-    cx.logger.error('MetaApiError', {
+    cx.logger.error({
+      message: 'MetaApiError',
       host: cx.options.host,
       port: cx.options.metaPort,
       code: error.code,

@@ -53,12 +53,13 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       truncated: false,
     };
 
-    cx.logger.info('Req', { method, ip, path: url.pathname });
+    cx.logger.info({ message: 'request', method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
-      const fields: Record<string, unknown> = {
+      const o: Record<string, unknown> = {
         workerId: process.env.WORKER_ID ?? '[primary]',
+        message: 'response',
         method,
         ip,
         path: url.pathname,
@@ -67,16 +68,16 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       };
 
       if (Object.keys(normalized.query).length > 0) {
-        fields.query = normalized.query;
+        o.query = normalized.query;
       }
 
       if (bodyPreview.exists) {
-        fields.body = bodyPreview.value;
-        fields.bodyBytes = bodyPreview.bytes;
-        fields.bodyTruncated = bodyPreview.truncated;
+        o.body = bodyPreview.value;
+        o.bodyBytes = bodyPreview.bytes;
+        o.bodyTruncated = bodyPreview.truncated;
       }
 
-      cx.logger.info('Res', fields);
+      cx.logger.info(o);
     });
 
     // * Start request handling
@@ -116,7 +117,8 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
           );
 
           if (result === MIDDLEWARE_TIMEOUT_FLAG) {
-            cx.logger.warn('MiddlewareTimeout', {
+            cx.logger.warn({
+              message: 'MiddlewareTimeout',
               method: normalized.method,
               ip: normalized.ip,
             });
@@ -140,10 +142,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       );
 
       if (result === HANDLER_TIMEOUT_FLAG) {
-        cx.logger.warn('HandlerTimeout', {
-          method: normalized.method,
-          ip: normalized.ip,
-        });
+        cx.logger.warn({ message: 'HandlerTimeout', method: normalized.method, ip: normalized.ip });
         safeSendJson(res, { message: 'Handler timed out' }, HttpCode.InternalServerError);
         return;
       }
@@ -153,7 +152,8 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       }
     } catch (e) {
       if (e instanceof HttpException) {
-        cx.logger.error('RequestFailed', {
+        cx.logger.error({
+          message: 'RequestFailed',
           method: normalized.method,
           ip: normalized.ip,
           path: normalized.url.pathname,
@@ -161,7 +161,8 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
         });
         safeSendJson(res, { message: e.message }, e.errno);
       } else {
-        cx.logger.error('RequestFailed', {
+        cx.logger.error({
+          message: 'RequestFailed',
           method: normalized.method,
           ip: normalized.ip,
           path: normalized.url.pathname,
@@ -191,7 +192,8 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
     let listening = false;
 
     server.on('close', () => {
-      cx.logger.info('ServerClosed', {
+      cx.logger.info({
+        message: 'ServerClosed',
         host: cx.options.host,
         port: cx.options.port,
       });
@@ -199,18 +201,23 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
 
     server.once('listening', () => {
       listening = true;
-      cx.logger.info('ServerStarted', {
+      cx.logger.info({
+        message: 'ServerStarted',
         pid: process.pid,
         protocol: cx.options.https ? 'https' : 'http',
         host: cx.options.host,
         port: cx.options.port,
       });
-      cx.logger.info('DynamicDirectory', { directory: cx.options.dir });
+      cx.logger.info({
+        message: 'DynamicDirectory',
+        directory: cx.options.dir,
+      });
       resolve(server);
     });
 
     server.on('error', (error) => {
-      cx.logger.error('ServerError', {
+      cx.logger.error({
+        message: 'ServerError',
         error: getErrorMessage(error),
       });
       if (listening) {

@@ -17,17 +17,19 @@ export type LoggerOption = 'one-line' | 'json-line' | FluxionLoggerFn;
 
 export type FluxionLoggerFn = (entry: LogEntry) => void;
 
+export type MessageObject = { [key: string]: unknown; message?: string };
+
 export interface FluxionLogger {
   /**
    * [WARN] We assert that `fields` is an object or undefined.
    */
-  write(level: LogLevel, messageOrObject: string | object): void;
-  info(messageOrObject: string | object): void;
-  warn(messageOrObject: string | object): void;
-  error(messageOrObject: string | object): void;
-  succ(messageOrObject: string | object): void;
-  debug(messageOrObject: string | object): void;
-  verbose(messageOrObject: string | object): void;
+  write(level: LogLevel, messageOrObject: string | MessageObject): void;
+  info(messageOrObject: string | MessageObject): void;
+  warn(messageOrObject: string | MessageObject): void;
+  error(messageOrObject: string | MessageObject): void;
+  succ(messageOrObject: string | MessageObject): void;
+  debug(messageOrObject: string | MessageObject): void;
+  verbose(messageOrObject: string | MessageObject): void;
 }
 
 const safeStringify = (value: unknown): string => {
@@ -100,22 +102,22 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
         // Ignore logger sink failures to avoid breaking request handling.
       }
     },
-    info(messageOrObject: string | object): void {
+    info(messageOrObject: string | MessageObject): void {
       this.write('INFO', messageOrObject);
     },
-    warn(messageOrObject: string | object): void {
+    warn(messageOrObject: string | MessageObject): void {
       this.write('WARN', messageOrObject);
     },
-    error(messageOrObject: string | object): void {
+    error(messageOrObject: string | MessageObject): void {
       this.write('ERROR', messageOrObject);
     },
-    succ(messageOrObject: string | object): void {
+    succ(messageOrObject: string | MessageObject): void {
       this.write('SUCC', messageOrObject);
     },
-    debug(messageOrObject: string | object): void {
+    debug(messageOrObject: string | MessageObject): void {
       this.write('DEBUG', messageOrObject);
     },
-    verbose(messageOrObject: string | object): void {
+    verbose(messageOrObject: string | MessageObject): void {
       this.write('VERBOSE', messageOrObject);
     },
   };
@@ -130,25 +132,25 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
   const pidPrefix = `[${pid}]`;
 
   return {
-    write(level: LogLevel, messageOrObject: string | object): void {
+    write(level: LogLevel, messageOrObject: string | MessageObject): void {
       baseLogger.write(level, `${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    info(messageOrObject: string | object): void {
+    info(messageOrObject: string | MessageObject): void {
       baseLogger.info(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    warn(messageOrObject: string | object): void {
+    warn(messageOrObject: string | MessageObject): void {
       baseLogger.warn(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    error(messageOrObject: string | object): void {
+    error(messageOrObject: string | MessageObject): void {
       baseLogger.error(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    succ(messageOrObject: string | object): void {
+    succ(messageOrObject: string | MessageObject): void {
       baseLogger.succ(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    debug(messageOrObject: string | object): void {
+    debug(messageOrObject: string | MessageObject): void {
       baseLogger.debug(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    verbose(messageOrObject: string | object): void {
+    verbose(messageOrObject: string | MessageObject): void {
       baseLogger.verbose(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
   };
