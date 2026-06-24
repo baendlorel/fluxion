@@ -1,5 +1,7 @@
 import type { PrimaryMessage } from './types.js';
 import type { FluxionContext } from '../types.js';
+import type http from 'node:http';
+import type https from 'node:https';
 import cluster from 'node:cluster';
 
 import { getErrorMessage } from '@/common/logger.js';
@@ -66,14 +68,47 @@ export function initWorker(cx: FluxionContext) {
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
   startStatsReporter();
 
-  try {
-    createWorkerServer(cx);
-    sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
-  } catch (e) {
-    cx.logger.error('WorkerBootstrapFailed', {
-      pid: process.pid,
-      error: getErrorMessage(e),
+  // # Start creation
+  let server: http.Server | https.Server | undefined;
+  let exiting = false;
+
+  const shutdown = (signal: NodeJS.Signals) => {
+    if (exiting) {
+      return;
+    }
+    exiting = true;
+    cx.logger.warn('WorkerShuttingDown', { pid: process.pid, signal });
+    cx.watcher.stop();
+
+    if (!server) {
+      process.exit(0);
+    }
+
+    const timer = setTimeout(() => process.exit(1), 10_000);
+    timer.unref();
+    server.close((error) => {
+      if (error) {
+        cx.logger.error('WorkerShutdownFailed', { pid: process.pid, error: getErrorMessage(error) });
+        process.exit(1);
+      }
+      process.exit(0);
     });
-    process.exit(1);
-  }
+  };
+
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+
+  createWorkerServer(cx)
+    .then((s) => {
+      server = s;
+      sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
+    })
+    .catch((e) => {
+      cx.logger.error('WorkerBootstrapFailed', {
+        pid: process.pid,
+        error: getErrorMessage(e),
+      });
+      cx.watcher.stop();
+      process.exit(1);
+    });
 }

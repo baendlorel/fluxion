@@ -18,7 +18,7 @@ export class FluxionRouter {
   makeStaticResource(filepath: string): FluxionModuleWithType {
     return {
       type: FluxionModuleType.StaticResource,
-      handler: async (normalized, _req, res) => {
+      handler: async (normalized, _cx, _req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
           res.statusCode = 405;
           res.setHeader('Allow', 'GET, HEAD');

@@ -25,7 +25,7 @@ import { HttpException } from '@/http/exceptions.js';
 const waiter = (mainPromise: Promise<any>, timeoutMs: number, flag: symbol) =>
   Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(flag), timeoutMs))]);
 
-export function createWorkerServer(cx: FluxionContext): http.Server | https.Server {
+export function createWorkerServer(cx: FluxionContext): Promise<http.Server | https.Server> {
   const moduleCx: FluxionModuleContext = Object.freeze({ logger: cx.logger });
 
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -188,28 +188,38 @@ export function createWorkerServer(cx: FluxionContext): http.Server | https.Serv
       )
     : http.createServer(requestHandler);
 
-  server.on('close', () => {
-    cx.logger.info('ServerClosed', {
-      host: cx.options.host,
-      port: cx.options.port,
-    });
-  });
+  return new Promise((resolve, reject) => {
+    let listening = false;
 
-  server.listen(cx.options.port, cx.options.host, () => {
-    cx.logger.info('ServerStarted', {
-      pid: process.pid,
-      protocol: cx.options.https ? 'https' : 'http',
-      host: cx.options.host,
-      port: cx.options.port,
+    server.on('close', () => {
+      cx.logger.info('ServerClosed', {
+        host: cx.options.host,
+        port: cx.options.port,
+      });
     });
-    cx.logger.info('DynamicDirectory', { directory: cx.options.dir });
-  });
 
-  server.on('error', (error) => {
-    cx.logger.error('ServerError', {
-      error: getErrorMessage(error),
+    server.once('listening', () => {
+      listening = true;
+      cx.logger.info('ServerStarted', {
+        pid: process.pid,
+        protocol: cx.options.https ? 'https' : 'http',
+        host: cx.options.host,
+        port: cx.options.port,
+      });
+      cx.logger.info('DynamicDirectory', { directory: cx.options.dir });
+      resolve(server);
     });
-  });
 
-  return server;
+    server.on('error', (error) => {
+      cx.logger.error('ServerError', {
+        error: getErrorMessage(error),
+      });
+      if (listening) {
+        process.exit(1);
+      }
+      reject(error);
+    });
+
+    server.listen(cx.options.port, cx.options.host);
+  });
 }

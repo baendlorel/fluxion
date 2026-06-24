@@ -52,10 +52,11 @@ export function createPrimaryMetaApiServer(
     });
   });
 
-  server.on('error', (error) => {
+  server.on('error', (error: NodeJS.ErrnoException) => {
     cx.logger.error('MetaApiError', {
       host: cx.options.host,
       port: cx.options.metaPort,
+      code: error.code,
       error: getErrorMessage(error),
     });
     process.exit(1);
