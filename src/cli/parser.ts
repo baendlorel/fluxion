@@ -17,7 +17,51 @@ function validate(command: string | null, options: Array<{ option: string; value
     }
   });
 
-  return { command, options } as FluxionCommand;
+  if (command === null) {
+    if (options.length !== 1) {
+      quit('Command [start] requires exactly one option [--config]');
+    }
+
+    const config = options[0];
+    if (config.option !== 'config') {
+      quit('Only accepts option [--config]');
+    }
+
+    if (config.value === null || config.value.trim() === '') {
+      quit('Option [--config] requires a non-empty value');
+    }
+
+    return {
+      command: null,
+      options: [{ option: 'config', value: config.value }],
+    };
+  }
+
+  if (command === 'status') {
+    if (options.length !== 0) {
+      quit(`Command [${command}] does not accept any options`);
+    }
+
+    return { command: 'status', options: [] };
+  }
+
+  if (command === 'stop') {
+    if (options.length !== 0) {
+      quit(`Command [${command}] does not accept any options`);
+    }
+
+    return { command: 'stop', options: [] };
+  }
+
+  if (command === 'stop') {
+    if (options.length !== 0) {
+      quit(`Command [${command}] does not accept any options`);
+    }
+    return { command: 'logs', options: [] };
+  }
+
+  // ! Normally nothing needed
+  quit('Unknown command');
 }
 
 export function parseCommand(): FluxionCommand {
@@ -42,7 +86,7 @@ export function parseCommand(): FluxionCommand {
       if (options.some((v) => v.option === key)) {
         quit(`Duplicate option [${key}]`);
       }
-      options.push({ option: key, value: args[i + 1] ?? null });
+      options.push({ option: key, value });
       continue;
     }
 
