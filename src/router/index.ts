@@ -113,7 +113,7 @@ export class FluxionRouter {
     }
 
     // register as static resource
-    this.handlers.set(relativePath, this.makeStaticResource(relativePath));
+    this.handlers.set(relativePath, this.makeStaticResource(absolutePath));
     this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
   }
 

@@ -39,9 +39,9 @@ export function loadFluxionModule(
 ): FluxionModuleWithType {
   delete require.cache[fullpath];
   let m = require(fullpath);
-  if (isFluxionModule(cx, m)) {
-  } else if (isFluxionModule(cx, m.default)) {
+  if (isFluxionModule(cx, m.default)) {
     m = m.default;
+  } else if (isFluxionModule(cx, m)) {
   } else {
     $throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
   }

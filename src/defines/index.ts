@@ -17,7 +17,7 @@ export function defineFluxionModule(
   disposer?: FluxionDispose,
 ): FluxionModuleWithType {
   if (typeof a === 'function') {
-    if (typeof disposer !== 'function') {
+    if (disposer !== undefined && typeof disposer !== 'function') {
       $throw(`Invalid disposer, expected a function but got ${typeof disposer}`);
     }
     return { handler: a, disposer, type: FluxionModuleType.Api };

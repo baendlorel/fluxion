@@ -58,7 +58,7 @@ export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
   const fieldsText = Object.keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
   // eslint-disable-next-line @typescript-eslint/no-console
-  console.log(`${timestamp} ${level} ${body}${fieldsText}`);
+  console.log(`${timestamp} ${level} ${body} ${fieldsText}`);
 };
 
 /**

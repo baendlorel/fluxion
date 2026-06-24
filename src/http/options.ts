@@ -92,14 +92,14 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
   }
 
   const {
-    dir = path.isAbsolute(o.dir) ? o.dir : path.join(process.cwd(), o.dir),
+    dir: rawDir,
     host,
     port,
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
     staticResourceTimeoutMs = 10 * 600000,
     metaPort = port + 1,
-    moduleDir = process.cwd(),
+    moduleDir: rawModuleDir = process.cwd(),
     workerOptions = {},
     maxRequestBytes = 8_000_000,
     reloadDelay = 500,
@@ -128,13 +128,15 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     $throw(`Invalid logger option, Must be 'one-line', 'json-line' or a custom logger function`);
   }
 
-  if (typeof dir !== 'string') {
+  if (typeof rawDir !== 'string') {
     $throw('FluxionOptions.dir must be a string');
   }
+  const dir = path.resolve(rawDir);
 
-  if (typeof moduleDir !== 'string') {
+  if (typeof rawModuleDir !== 'string') {
     $throw('FluxionOptions.moduleDir must be a string');
   }
+  const moduleDir = path.resolve(rawModuleDir);
 
   if (typeof host !== 'string') {
     $throw('FluxionOptions.host must be a string');
