@@ -6,9 +6,11 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fluxion } from '../fluxion.js';
 import { parseCommand } from './parser.js';
+import { executor } from './executor.js';
 
 function main() {
-  const { command, options } = parseCommand();
+  const command = parseCommand();
+  executor(command);
 }
 
 main();

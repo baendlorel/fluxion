@@ -32,7 +32,7 @@ function validate(command: string | null, options: Array<{ option: string; value
     }
 
     return {
-      command: null,
+      name: null,
       options: [{ option: 'config', value: config.value }],
     };
   }
@@ -42,7 +42,7 @@ function validate(command: string | null, options: Array<{ option: string; value
       quit(`Command [${command}] does not accept any options`);
     }
 
-    return { command: 'status', options: [] };
+    return { name: 'status', options: [] };
   }
 
   if (command === 'stop') {
@@ -50,14 +50,14 @@ function validate(command: string | null, options: Array<{ option: string; value
       quit(`Command [${command}] does not accept any options`);
     }
 
-    return { command: 'stop', options: [] };
+    return { name: 'stop', options: [] };
   }
 
   if (command === 'stop') {
     if (options.length !== 0) {
       quit(`Command [${command}] does not accept any options`);
     }
-    return { command: 'logs', options: [] };
+    return { name: 'logs', options: [] };
   }
 
   // ! Normally nothing needed

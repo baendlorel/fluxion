@@ -1,17 +1,17 @@
 export type FluxionCommand =
   | {
       options: Array<{ option: 'config'; value: string }>;
-      command: null;
+      name: null;
     }
   | {
       options: [];
-      command: 'status';
+      name: 'status';
     }
   | {
       options: [];
-      command: 'stop';
+      name: 'stop';
     }
   | {
       options: [];
-      command: 'logs';
+      name: 'logs';
     };
