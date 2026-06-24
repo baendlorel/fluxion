@@ -17,7 +17,7 @@ export class FluxionRouter {
   makeStaticResource(filepath: string): FluxionModuleWithType {
     return {
       type: FluxionModuleType.StaticResource,
-      handler: async (normalized, _cx, _req, res) => {
+      handler: async (normalized, _cx, req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
           res.statusCode = 405;
           res.setHeader('Allow', 'GET, HEAD');
@@ -52,8 +52,35 @@ export class FluxionRouter {
 
         return new Promise<symbol>((resolve, reject) => {
           const stream = fs.createReadStream(filepath);
-          stream.on('error', reject);
-          stream.on('end', () => resolve(STATIC_HANDLED_FLAG));
+
+          const cleanup = () => {
+            stream.off('error', onError);
+            stream.off('end', onEnd);
+            res.off('close', onClientClose);
+            req.off('aborted', onClientClose);
+          };
+
+          const onError = (error: Error) => {
+            cleanup();
+            reject(error);
+          };
+
+          const onEnd = () => {
+            cleanup();
+            resolve(STATIC_HANDLED_FLAG);
+          };
+
+          const onClientClose = () => {
+            cleanup();
+            stream.destroy();
+            resolve(STATIC_HANDLED_FLAG);
+          };
+
+          stream.on('error', onError);
+          stream.on('end', onEnd);
+          res.on('close', onClientClose);
+          req.on('aborted', onClientClose);
+
           stream.pipe(res);
         });
       },
