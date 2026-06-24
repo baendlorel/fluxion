@@ -187,8 +187,17 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     $throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
-  if (metaSecret !== undefined && (typeof metaSecret !== 'string' || metaSecret.length < 20)) {
-    $throw('FluxionOptions.metaSecret must be a string and length > 20');
+  if (
+    metaSecret !== undefined &&
+    (typeof metaSecret !== 'string' ||
+      metaSecret.length < 20 ||
+      /\s/.test(metaSecret) ||
+      !/[A-Za-z]/.test(metaSecret) ||
+      !/\d/.test(metaSecret))
+  ) {
+    $throw(
+      'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace',
+    );
   }
 
   if (!fs.existsSync(dir)) {

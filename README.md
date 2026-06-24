@@ -341,7 +341,7 @@ Available endpoints:
 ```http
 GET /_fluxion/healthz                 # Health check
 GET /_fluxion/workers                 # Worker status
-GET /_fluxion/routes?secret=<secret>  # Router snapshot, only enabled when metaSecret is >= 20 chars
+GET /_fluxion/routes?secret=<secret>  # Router snapshot, enabled when metaSecret is >= 20 chars with letters and digits, no whitespace
 ```
 
 Example:
@@ -349,7 +349,7 @@ Example:
 ```bash
 curl http://127.0.0.1:3001/_fluxion/healthz
 curl http://127.0.0.1:3001/_fluxion/workers
-curl 'http://127.0.0.1:3001/_fluxion/routes?secret=your-20-char-secret'
+curl 'http://127.0.0.1:3001/_fluxion/routes?secret=your-20-char-secret1'
 ```
 
 ## Options
@@ -376,7 +376,7 @@ interface FluxionOptions {
 
   // Meta API
   metaPort?: number;               // Default: port + 1
-  metaSecret?: string;             // Enables routes meta API when length >= 20
+  metaSecret?: string;             // Enables routes meta API when >= 20 chars, letters+digits, no whitespace
 
   // Worker management
   workerOptions?: {

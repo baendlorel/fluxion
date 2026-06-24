@@ -222,8 +222,10 @@ export interface FluxionOptions {
 
   /**
    * Secret for enabling the route meta API.
-   * Only strings with at least 20 characters enable `GET /_fluxion/routes?secret=...`.
-   * Defaults to undefined, which disables this API.
+   *
+   * **Enable Condition:** Only strings with at least 20 characters, both letters and digits, and no whitespace enable `GET /_fluxion/routes?secret=...`.
+   *
+   * Defaults to `undefined`, which disables this API.
    */
   metaSecret?: string;
 }
