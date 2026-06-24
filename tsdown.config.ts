@@ -1,14 +1,11 @@
 import { defineConfig } from 'tsdown';
 import replace from '@rollup/plugin-replace';
 
-type ModuleFormat = 'es' | 'cjs' | 'esm' | 'module' | 'commonjs' | 'iife' | 'umd';
-
 const isDev = process.env.NODE_ENV === 'development';
 
 export default defineConfig({
   entry: ['src/index.ts'],
-  // entry: ['local-test/test.ts'],
-  format: ['esm', 'cjs'] as ModuleFormat[],
+  format: ['esm', 'cjs'],
   dts: true,
   clean: true,
   sourcemap: true,
