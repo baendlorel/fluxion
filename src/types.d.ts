@@ -256,6 +256,9 @@ export interface NormalizedFluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  // !security check
+  normalizedFlag: symbol;
 }
 
 export interface FluxionRouteMeta {

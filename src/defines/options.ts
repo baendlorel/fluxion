@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { WorkerOptions, NormalizedWorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
+import { OPTIONS_NORMALIZED_FLAG } from '@/common/consts.js';
 
 /**
  * Resolves worker options with framework defaults. All thresholds become
@@ -223,5 +224,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     nativeWatcher,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
+    // !
+    normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
 }
