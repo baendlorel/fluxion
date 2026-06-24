@@ -1,7 +1,7 @@
+import stringify from 'fast-json-stable-stringify';
 import { fluxion } from './fluxion.js';
 import { HttpCode } from './common/consts.js';
 import { defineFluxionLogger } from './defines/index.js';
-import stringify from 'fast-json-stable-stringify';
 
 export { fluxion, HttpCode };
 
@@ -30,7 +30,12 @@ export {
 
 export * from './defines/index.js';
 
-export type { FluxionDispose, FluxionHandler, FluxionModule as FluxionHandlerModule, FluxionOptions } from './types.js';
+export type {
+  FluxionDisposer as FluxionDispose,
+  FluxionHandler,
+  FluxionModule as FluxionHandlerModule,
+  FluxionOptions,
+} from './types.js';
 
 if (process.env.NODE_ENV !== 'production') {
   globalThis.$throw = (message: string) => {
@@ -49,6 +54,7 @@ if (process.env.NODE_ENV !== 'production') {
   };
 
   const logger = defineFluxionLogger((entry) => {
+    // eslint-disable-next-line @typescript-eslint/no-console
     console.log(stringify(entry));
   });
 

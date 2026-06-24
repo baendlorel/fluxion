@@ -17,7 +17,10 @@ export type LoggerOption = 'one-line' | 'json-line' | FluxionLoggerFn;
 
 export type FluxionLoggerFn = (entry: LogEntry) => void;
 
-export type MessageObject = { [key: string]: unknown; message?: string };
+export interface MessageObject {
+  [key: string]: unknown;
+  message?: string;
+}
 
 export interface FluxionLogger {
   /**

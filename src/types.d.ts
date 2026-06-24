@@ -293,7 +293,7 @@ export type FluxionMiddleware<
   rawResponse: InstanceType<Response>,
 ) => Promise<unknown> | unknown;
 
-export type FluxionDispose = () => Promise<void> | void;
+export type FluxionDisposer = () => Promise<void> | void;
 
 /**
  * Supported HTTP methods for FluxionModule
@@ -319,7 +319,7 @@ export interface FluxionModule {
   /**
    * This is meant to clear resources used by handler while it's down.
    */
-  disposer?: FluxionDispose;
+  disposer?: FluxionDisposer;
 
   /**
    * How many ms to wait until the request times out

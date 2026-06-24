@@ -1,20 +1,26 @@
-import { FluxionModuleType } from '@/common/consts';
-import { FluxionLoggerFn } from '@/common/logger';
-import { FluxionHandler, FluxionDispose, FluxionModuleWithType, FluxionModule, FluxionMiddleware } from '@/types';
+import type {
+  FluxionHandler,
+  FluxionDisposer,
+  FluxionModuleWithType,
+  FluxionModule,
+  FluxionMiddleware,
+} from '@/types.js';
+import type { FluxionLoggerFn } from '@/common/logger.js';
+import { FluxionModuleType } from '@/common/consts.js';
 
 /**
  * Use handler function and optional disposer function to define a Fluxion module.
  * @param handler Main function that handles request and response instances
  * @param disposer Deal with resource cleanup when the server is about to close
  */
-export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDispose): FluxionModuleWithType;
+export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDisposer): FluxionModuleWithType;
 /**
  * Provides type safety for defining Fluxion modules.
  */
 export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModuleWithType;
 export function defineFluxionModule(
   a: FluxionModule | FluxionHandler,
-  disposer?: FluxionDispose,
+  disposer?: FluxionDisposer,
 ): FluxionModuleWithType {
   if (typeof a === 'function') {
     if (disposer !== undefined && typeof disposer !== 'function') {
