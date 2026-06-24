@@ -25,6 +25,6 @@ export default defineConfig({
     }),
   ],
   deps: {
-    onlyBundle: ['type-narrow'],
+    onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
   },
 });

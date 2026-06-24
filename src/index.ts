@@ -1,12 +1,7 @@
-import type {
-  FluxionDispose,
-  FluxionHandler,
-  FluxionMiddleware,
-  FluxionModule,
-  FluxionModuleWithType,
-} from './types.js';
 import { fluxion } from './fluxion.js';
-import { FluxionModuleType, HttpCode, noop } from './common/consts.js';
+import { HttpCode } from './common/consts.js';
+import { defineFluxionLogger } from './defines/index.js';
+import stringify from 'fast-json-stable-stringify';
 
 export { fluxion, HttpCode };
 
@@ -53,6 +48,10 @@ if (process.env.NODE_ENV !== 'production') {
     return parsed;
   };
 
+  const logger = defineFluxionLogger((entry) => {
+    console.log(stringify(entry));
+  });
+
   fluxion({
     dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
     host: process.env.HOST ?? 'localhost',
@@ -62,5 +61,6 @@ if (process.env.NODE_ENV !== 'production') {
     workerOptions: {
       maxWorkerCount: 4,
     },
+    logger,
   });
 }

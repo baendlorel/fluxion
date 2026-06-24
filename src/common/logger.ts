@@ -50,15 +50,15 @@ const ColoredLevels: Record<LogLevel, string> = {
 };
 
 export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
-  const { level: rawLevel, timestamp: rawTimestamp, message: rawMessage, ...fields } = entry;
+  const { level: rawLevel, timestamp: rawTimestamp, message: rawMessage, pid, ...fields } = entry;
 
   const timestamp = `${cctl.darkGreen}[${rawTimestamp}]${cctl.reset}`;
   const level = ColoredLevels[rawLevel] ?? rawLevel;
-  const body = rawMessage;
-  const fieldsText = Object.keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
+  const pidText = pid === undefined ? '' : ` [${pid}]`;
+  const fieldsText = Object.keys(fields).length > 0 ? ` ${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
   // eslint-disable-next-line @typescript-eslint/no-console
-  console.log(`${timestamp} ${level} ${body} ${fieldsText}`);
+  console.log(`${timestamp} ${level}${pidText} ${rawMessage}${fieldsText}`);
 };
 
 /**
@@ -129,29 +129,30 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
  * Create a worker logger that prefixes all log messages with the worker PID.
  */
 export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): FluxionLogger {
-  const pidPrefix = `[${pid}]`;
-
   return {
     write(level: LogLevel, messageOrObject: string | MessageObject): void {
-      baseLogger.write(level, `${pidPrefix} ${stringify(messageOrObject)}`);
+      baseLogger.write(
+        level,
+        typeof messageOrObject === 'string' ? { message: messageOrObject, pid } : { ...messageOrObject, pid },
+      );
     },
     info(messageOrObject: string | MessageObject): void {
-      baseLogger.info(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('INFO', messageOrObject);
     },
     warn(messageOrObject: string | MessageObject): void {
-      baseLogger.warn(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('WARN', messageOrObject);
     },
     error(messageOrObject: string | MessageObject): void {
-      baseLogger.error(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('ERROR', messageOrObject);
     },
     succ(messageOrObject: string | MessageObject): void {
-      baseLogger.succ(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('SUCC', messageOrObject);
     },
     debug(messageOrObject: string | MessageObject): void {
-      baseLogger.debug(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('DEBUG', messageOrObject);
     },
     verbose(messageOrObject: string | MessageObject): void {
-      baseLogger.verbose(`${pidPrefix} ${stringify(messageOrObject)}`);
+      this.write('VERBOSE', messageOrObject);
     },
   };
 }
