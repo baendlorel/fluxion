@@ -1,4 +1,4 @@
-import type { FluxionContext } from '../types.js';
+import type { FluxionContext, FluxionRouteMeta } from '../types.js';
 import http from 'node:http';
 
 import { getErrorMessage } from '@/common/logger.js';
@@ -8,19 +8,20 @@ import { sendJson } from '../http/respond.js';
 export function createPrimaryMetaApiServer(
   cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>,
   getWorkersSnapshot: () => unknown,
+  getRoutesSnapshot: () => Promise<FluxionRouteMeta[]>,
 ): http.Server {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const method = req.method ?? 'GET';
 
-    let pathname = '/';
+    let url: URL;
     try {
-      pathname = new URL(req.url ?? '/', 'http://fluxion.local').pathname;
+      url = new URL(req.url ?? '/', 'http://fluxion.local');
     } catch {
       sendJson(res, { message: 'Bad Request: invalid url' }, HttpCode.BadRequest);
       return;
     }
 
-    if (method === 'GET' && pathname === META_PREFIX + '/healthz') {
+    if (method === 'GET' && url.pathname === META_PREFIX + '/healthz') {
       sendJson(res, {
         ok: true,
         role: 'primary',
@@ -31,12 +32,28 @@ export function createPrimaryMetaApiServer(
       return;
     }
 
-    if (method === 'GET' && pathname === META_PREFIX + '/workers') {
+    if (method === 'GET' && url.pathname === META_PREFIX + '/workers') {
       sendJson(res, {
         ok: true,
         now: Date.now(),
         workers: getWorkersSnapshot(),
       });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname === META_PREFIX + '/routes') {
+      if (!cx.options.metaSecret) {
+        sendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
+        return;
+      }
+
+      if (url.searchParams.get('secret') !== cx.options.metaSecret) {
+        sendJson(res, { message: 'Forbidden' }, HttpCode.Forbidden);
+        return;
+      }
+
+      const routes = await getRoutesSnapshot();
+      sendJson(res, { ok: true, now: Date.now(), routes });
       return;
     }
 

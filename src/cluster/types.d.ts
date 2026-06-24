@@ -1,5 +1,6 @@
 import type cluster from 'node:cluster';
 import type { PrimaryAction, WorkerAction } from './consts.js';
+import type { FluxionRouteMeta } from '../types.js';
 
 export interface ClusterSchedulerDemoOptions {
   workerCount?: number;
@@ -11,7 +12,12 @@ export interface PingMessage {
   sentAt: number;
 }
 
-export type PrimaryMessage = PingMessage;
+export interface RoutesRequestMessage {
+  type: PrimaryAction.Routes;
+  requestId: number;
+}
+
+export type PrimaryMessage = PingMessage | RoutesRequestMessage;
 
 export interface CreatedMessage {
   type: WorkerAction.Created;
@@ -54,7 +60,14 @@ export interface StatsMessage {
   stats: WorkerRuntimeStats;
 }
 
-export type WorkerMessage = CreatedMessage | ReadyMessage | PongMessage | StatsMessage;
+export interface RoutesMessage {
+  type: WorkerAction.Routes;
+  pid: number;
+  requestId: number;
+  routes: FluxionRouteMeta[];
+}
+
+export type WorkerMessage = CreatedMessage | ReadyMessage | PongMessage | StatsMessage | RoutesMessage;
 
 export interface WorkerState {
   /**

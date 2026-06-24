@@ -1,5 +1,5 @@
 import type { WorkerMessage, WorkerState, WorkerRuntimeStats } from './types.js';
-import type { FluxionContext } from '../types.js';
+import type { FluxionContext, FluxionRouteMeta } from '../types.js';
 import os from 'node:os';
 import cluster from 'node:cluster';
 
@@ -39,6 +39,8 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
   });
 
   const workers = new Map<number, WorkerState>();
+  const routeRequests = new Map<number, { resolve: (routes: FluxionRouteMeta[]) => void; timer: NodeJS.Timeout }>();
+  let routeRequestId = 0;
 
   // slot -> recent restart timestamps (pruned to RESTART_WINDOW_MS on access).
   // Keyed by the stable 1-based slot, not cluster's worker.id (which changes
@@ -105,7 +107,29 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
     };
   };
 
-  createPrimaryMetaApiServer(cx, getWorkersSnapshot);
+  createPrimaryMetaApiServer(cx, getWorkersSnapshot, () => {
+    const worker = Array.from(workers.values()).find((info) => info.state === 'ready' && info.instance.isConnected());
+    if (!worker) {
+      return Promise.resolve([]);
+    }
+
+    return new Promise((resolve) => {
+      const requestId = ++routeRequestId;
+      const timer = setTimeout(() => {
+        routeRequests.delete(requestId);
+        resolve([]);
+      }, 1000);
+      timer.unref();
+      routeRequests.set(requestId, { resolve, timer });
+      try {
+        sendToWorker(worker.instance, { type: PrimaryAction.Routes, requestId });
+      } catch {
+        clearTimeout(timer);
+        routeRequests.delete(requestId);
+        resolve([]);
+      }
+    });
+  });
 
   // Recycle a worker via hard kill (SIGTERM). Guards enforce one-at-a-time
   // (so a workload-wide condition rolls restarts instead of nuking the pool)
@@ -228,6 +252,16 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
         workerInfo.lastStats = raw.stats;
         if (workerInfo.state === 'ready') {
           evaluateResourceConditions(workerInfo, raw.stats);
+        }
+        return;
+      }
+
+      if (raw.type === WorkerAction.Routes) {
+        const request = routeRequests.get(raw.requestId);
+        if (request) {
+          clearTimeout(request.timer);
+          routeRequests.delete(raw.requestId);
+          request.resolve(raw.routes);
         }
       }
     });

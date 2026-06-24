@@ -219,6 +219,13 @@ export interface FluxionOptions {
    * Defaults to false (uses chokidar for better cross-platform compatibility).
    */
   nativeWatcher?: boolean;
+
+  /**
+   * Secret for enabling the route meta API.
+   * Only strings with at least 20 characters enable `GET /_fluxion/routes?secret=...`.
+   * Defaults to undefined, which disables this API.
+   */
+  metaSecret?: string;
 }
 
 export interface NormalizedFluxionOptions {
@@ -241,11 +248,18 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   exclude: string[];
   nativeWatcher: boolean;
+  metaSecret?: string;
   https?: {
     key: string | Buffer;
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+}
+
+export interface FluxionRouteMeta {
+  path: string;
+  type: 'api' | 'static';
+  methods: HTTPMethod[] | null;
 }
 
 export interface FluxionContext {

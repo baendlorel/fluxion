@@ -63,6 +63,15 @@ export function initWorker(cx: FluxionContext) {
       sendToPrimary({ type: WorkerAction.Pong, pid: process.pid, sentAt: raw.sentAt, receivedAt: Date.now() });
       return;
     }
+
+    if (raw.type === PrimaryAction.Routes) {
+      sendToPrimary({
+        type: WorkerAction.Routes,
+        pid: process.pid,
+        requestId: raw.requestId,
+        routes: cx.router.getRoutes(),
+      });
+    }
   });
 
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });

@@ -1,10 +1,9 @@
-import type { FluxionContext, FluxionModuleWithType } from '../types.js';
+import type { FluxionContext, FluxionModuleWithType, FluxionRouteMeta } from '../types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import { loadFluxionModule } from '@/common/injector.js';
-import { cctl } from '@/common/color.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
 export class FluxionRouter {
@@ -79,9 +78,7 @@ export class FluxionRouter {
     // # Delete
     if (!fs.existsSync(absolutePath)) {
       this.handlers.delete(relativePath);
-      // & Watcher will emit recursively, so there is no need to use this.remove(rp);
-      // this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${relativePath}`);
-      this.cx.logger.info(`Deleted  - ${relativePath}`);
+      this.cx.logger.info({ action: 'Delete', url: relativePath });
       return;
     }
 
@@ -90,8 +87,7 @@ export class FluxionRouter {
     const matchesInclude = this.cx.options.include.some((pattern) => minimatch(relativePath, pattern));
     if (!matchesInclude) {
       this.handlers.delete(relativePath);
-      // this.cx.logger.info(`${cctl.yellow}Skipped ${cctl.reset} - ${relativePath}`);
-      this.cx.logger.info(`Skipped  - ${relativePath}`);
+      this.cx.logger.info({ action: 'Skip', url: relativePath });
       return;
     }
 
@@ -100,8 +96,7 @@ export class FluxionRouter {
     const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesExclude) {
       this.handlers.delete(relativePath);
-      // this.cx.logger.info(`${cctl.orange}Excluded${cctl.reset} - ${relativePath}`);
-      this.cx.logger.info(`Excluded - ${relativePath}`);
+      this.cx.logger.info({ action: 'Exclude', url: relativePath });
       return;
     }
 
@@ -111,15 +106,13 @@ export class FluxionRouter {
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
       this.handlers.set(relativePath, m);
-      // this.cx.logger.info(`${cctl.green}Api     ${cctl.reset} - ${relativePath}`);
-      this.cx.logger.info(`Api      - ${relativePath}`);
+      this.cx.logger.info({ action: 'RegisterApi', url: relativePath });
       return;
     }
 
     // register as static resource
     this.handlers.set(relativePath, this.makeStaticResource(absolutePath));
-    // this.cx.logger.info(`${cctl.brightBlue}Static  ${cctl.reset} - ${relativePath}`);
-    this.cx.logger.info(`Static   - ${relativePath}`);
+    this.cx.logger.info({ action: 'RegisterStatic', url: relativePath });
   }
 
   getModule(url: URL): FluxionModuleWithType | undefined {
@@ -127,27 +120,15 @@ export class FluxionRouter {
     return this.handlers.get(relativePath);
   }
 
-  /**
-   * If the path points to a file, it would be simple.
-   * But if it's a directory, we need to find all registered handlers under this directory and remove them.
-   *
-   * @param somepath
-   * @deprecated
-   */
-  // remove(somepath: string): void {
-  //   if (this.handlers.has(somepath)) {
-  //     this.handlers.delete(somepath);
-  //     // this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${somepath}`);
-  //     this.cx.logger.info(`Deleted  - ${somepath}`);
-  //   }
-  //   // & Not in handler map -> It is a directory
-  //   const prefix = somepath.endsWith('/') ? somepath : somepath + '/';
-  //   for (const key of this.handlers.keys()) {
-  //     if (key.startsWith(prefix)) {
-  //       this.handlers.delete(key);
-  //       // this.cx.logger.info(`${cctl.red}Deleted ${cctl.reset} - ${key}`);
-  //       this.cx.logger.info(`Deleted  - ${key}`);
-  //     }
-  //   }
-  // }
+  getRoutes(): FluxionRouteMeta[] {
+    return [...this.handlers.entries()]
+      .map(
+        ([relativePath, m]): FluxionRouteMeta => ({
+          path: '/' + relativePath,
+          type: m.type === FluxionModuleType.Api ? 'api' : 'static',
+          methods: m.methods ? [...m.methods] : null,
+        }),
+      )
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
 }

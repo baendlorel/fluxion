@@ -5,6 +5,11 @@ export const enum PrimaryAction {
    * Health check message, the worker should respond with Pong and the latency information
    */
   Ping = 100,
+
+  /**
+   * Ask a worker for its current router snapshot.
+   */
+  Routes,
 }
 
 export const enum WorkerAction {
@@ -28,9 +33,17 @@ export const enum WorkerAction {
    * Runtime telemetry snapshot from worker process.
    */
   Stats,
+
+  /**
+   * Current router snapshot from worker process.
+   */
+  Routes,
 }
 
-export const isPrimaryMessage = (v: PrimaryMessage): v is PrimaryMessage => [PrimaryAction.Ping].includes(v?.type);
+export const isPrimaryMessage = (v: PrimaryMessage): v is PrimaryMessage =>
+  [PrimaryAction.Ping, PrimaryAction.Routes].includes(v?.type);
 
 export const isWorkerMessage = (v: WorkerMessage): v is WorkerMessage =>
-  [WorkerAction.Pong, WorkerAction.Created, WorkerAction.Ready, WorkerAction.Stats].includes(v?.type);
+  [WorkerAction.Pong, WorkerAction.Created, WorkerAction.Ready, WorkerAction.Stats, WorkerAction.Routes].includes(
+    v?.type,
+  );

@@ -339,8 +339,9 @@ Meta APIs are served by the primary process on `metaPort` (default: `port + 1`).
 Available endpoints:
 
 ```http
-GET /_fluxion/healthz   # Health check
-GET /_fluxion/workers   # Worker status
+GET /_fluxion/healthz                 # Health check
+GET /_fluxion/workers                 # Worker status
+GET /_fluxion/routes?secret=<secret>  # Router snapshot, only enabled when metaSecret is >= 20 chars
 ```
 
 Example:
@@ -348,6 +349,7 @@ Example:
 ```bash
 curl http://127.0.0.1:3001/_fluxion/healthz
 curl http://127.0.0.1:3001/_fluxion/workers
+curl 'http://127.0.0.1:3001/_fluxion/routes?secret=your-20-char-secret'
 ```
 
 ## Options
@@ -374,6 +376,7 @@ interface FluxionOptions {
 
   // Meta API
   metaPort?: number;               // Default: port + 1
+  metaSecret?: string;             // Enables routes meta API when length >= 20
 
   // Worker management
   workerOptions?: {

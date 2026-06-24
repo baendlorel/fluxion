@@ -121,6 +121,7 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     ],
     https,
     nativeWatcher = false,
+    metaSecret,
   } = o as FluxionOptions;
 
   const logger = o.logger ?? 'one-line';
@@ -186,6 +187,10 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     $throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
+  if (metaSecret !== undefined && (typeof metaSecret !== 'string' || metaSecret.length < 20)) {
+    $throw('FluxionOptions.metaSecret must be a string and length > 20');
+  }
+
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -207,6 +212,7 @@ export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
     apiInclude,
     exclude,
     nativeWatcher,
+    metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
   };
 }
