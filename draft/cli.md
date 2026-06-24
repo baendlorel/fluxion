@@ -101,21 +101,23 @@ worker：实际 HTTP 服务与动态路由
 
 ## 配置文件规范
 
-只支持具名导出 `config`：
+对外推荐使用 `defineFluxionOptions` 并具名导出 `config`：
 
 ```ts
 // fluxion.config.ts
-import type { FluxionOptions } from 'fluxion-ts';
+import { defineFluxionOptions } from 'fluxion-ts';
 
-export const config: FluxionOptions = {
+export const config = defineFluxionOptions({
   dir: 'dynamicDirectory',
   host: 'localhost',
   port: 9000,
   workerOptions: {
     maxWorkerCount: 4,
   },
-};
+});
 ```
+
+第一阶段要求配置文件导出 `config` 对象；文档与示例统一使用 `defineFluxionOptions(...)` 返回标准配置项。
 
 不做旧版兼容，不支持以下形式，除非后续明确需要：
 

@@ -4,13 +4,18 @@ import replace from '@rollup/plugin-replace';
 const isDev = process.env.NODE_ENV === 'development';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/cli.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
   sourcemap: true,
   minify: !isDev,
   target: 'node24',
+  exports: {
+    bin: {
+      fluxion: './src/cli.ts',
+    },
+  },
   treeshake: !isDev,
   plugins: [
     replace({

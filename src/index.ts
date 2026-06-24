@@ -1,7 +1,5 @@
-import stringify from 'fast-json-stable-stringify';
 import { fluxion } from './fluxion.js';
 import { HttpCode } from './common/consts.js';
-import { defineFluxionLogger } from './defines/index.js';
 
 export { fluxion, HttpCode };
 
@@ -30,43 +28,4 @@ export {
 
 export * from './defines/index.js';
 
-export type {
-  FluxionDisposer as FluxionDispose,
-  FluxionHandler,
-  FluxionModule as FluxionHandlerModule,
-  FluxionOptions,
-} from './types.js';
-
-if (process.env.NODE_ENV !== 'production') {
-  globalThis.$throw = (message: string) => {
-    throw new Error('[fluxion error]' + message);
-  };
-
-  const int = (n: string | undefined, defaultValue: number): number => {
-    if (n === undefined) {
-      return defaultValue;
-    }
-    const parsed = Number.parseInt(n, 10);
-    if (Number.isNaN(parsed)) {
-      return defaultValue;
-    }
-    return parsed;
-  };
-
-  const logger = defineFluxionLogger((entry) => {
-    // eslint-disable-next-line @typescript-eslint/no-console
-    console.log(stringify(entry));
-  });
-
-  fluxion({
-    dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
-    host: process.env.HOST ?? 'localhost',
-    port: int(process.env.PORT, 9000),
-    metaPort: int(process.env.META_PORT, 9001),
-    reloadDelay: process.env.RELOAD_DELAY ? Number.parseInt(process.env.RELOAD_DELAY, 10) : undefined,
-    workerOptions: {
-      maxWorkerCount: 4,
-    },
-    logger,
-  });
-}
+export type { FluxionDisposer, FluxionHandler, FluxionModule, FluxionOptions } from './types.js';

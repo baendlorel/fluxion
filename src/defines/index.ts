@@ -8,6 +8,8 @@ import type {
 import type { FluxionLoggerFn } from '@/common/logger.js';
 import { FluxionModuleType } from '@/common/consts.js';
 
+export { defineFluxionOptions } from './options.js';
+
 /**
  * Use handler function and optional disposer function to define a Fluxion module.
  * @param handler Main function that handles request and response instances
