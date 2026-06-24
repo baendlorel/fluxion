@@ -1,10 +1,26 @@
 import type { FluxionCommand } from './types.js';
 import { quit } from './utils.js';
 
-export function parseCommand() {
+function validate(command: string | null, options: Array<{ option: string; value: string | null }>): FluxionCommand {
   const OPTS = ['config'];
   const CMDS = [null, 'status', 'stop', 'logs'];
 
+  // # Validating
+
+  if (!CMDS.includes(command)) {
+    quit(`Unknown command [${command}], please use one of [${CMDS.join(', ')}]`);
+  }
+
+  options.forEach((v) => {
+    if (!OPTS.includes(v.option)) {
+      quit(`Unknown option [${v.option}], please use one of [${OPTS.join(', ')}]`);
+    }
+  });
+
+  return { command, options } as FluxionCommand;
+}
+
+export function parseCommand(): FluxionCommand {
   const args = process.argv.slice(2);
 
   const options: Array<{ option: string; value: string | null }> = [];
@@ -36,17 +52,5 @@ export function parseCommand() {
     command = a;
   }
 
-  // # Validating
-
-  if (!CMDS.includes(command)) {
-    quit(`Unknown command [${command}], please use one of [${CMDS.join(', ')}]`);
-  }
-
-  options.forEach((v) => {
-    if (!OPTS.includes(v.option)) {
-      quit(`Unknown option [${v.option}], please use one of [${OPTS.join(', ')}]`);
-    }
-  });
-
-  return { command, options } as FluxionCommand;
+  return validate(command, options);
 }
