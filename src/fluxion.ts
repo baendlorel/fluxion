@@ -1,7 +1,7 @@
 import type { FluxionContext, FluxionOptions } from './types.js';
 
 import { createLogger, createWorkerLogger } from '@/common/logger.js';
-import { normalizeOptions } from './http/options.js';
+import { defineFluxionOptions } from './defines/options.js';
 import cluster from 'node:cluster';
 import { initPrimary } from './cluster/primary.js';
 import { initWorker } from './cluster/worker.js';
@@ -10,7 +10,7 @@ import { FluxionNativeWatcher } from './watcher/native.js';
 import { FluxionRouter } from './router/index.js';
 
 export async function fluxion(options: FluxionOptions) {
-  const context = { options: normalizeOptions(options) } as FluxionContext;
+  const context = { options: defineFluxionOptions(options) } as FluxionContext;
 
   context.logger = createLogger(context as Pick<FluxionContext, 'options'>);
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);

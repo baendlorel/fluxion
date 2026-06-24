@@ -86,7 +86,7 @@ function normalizeHttpsOptions(
 /**
  * Normalize options and create necessary resources like the dynamic directory and logger.
  */
-export function normalizeOptions(o: FluxionOptions): NormalizedFluxionOptions {
+export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOptions {
   if (typeof o !== 'object' || o === null || Array.isArray(o)) {
     $throw('FluxionOptions must be an object');
   }

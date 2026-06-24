@@ -64,3 +64,10 @@ worker优化：
 1. if !include return
 2. if exclude return
 3. if apiinclude -> 注册为api else 注册为静态文件资源
+---
+
+现在希望做到：
+1、fluxion像一个命令一样，fluxion --config xx.config.ts。然后就会导入xx.config.ts的config对象，并以fluxion(config)启动运行。且是tsx环境
+2、像pm2一样有守护进程，会自动重启，是否现在的primary已经可以做到？
+
+请你设计实现方案

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FluxionRouter } from '../src/router/index.js';
-import { normalizeOptions } from '../src/http/options.js';
+import { defineFluxionOptions } from '../src/defines/options.js';
 import { createLogger } from '../src/common/logger.js';
 import { createWorkerServer } from '../src/cluster/server.js';
 import { createPrimaryMetaApiServer } from '../src/cluster/meta-api.js';
@@ -45,7 +45,7 @@ const writeApi = (dir: string, relativePath: string, body: string) => {
 };
 
 const makeContext = (dir: string, port = nextPort(), metaPort = nextPort(), metaSecret?: string) => {
-  const options = normalizeOptions({
+  const options = defineFluxionOptions({
     dir,
     host: '127.0.0.1',
     port,
@@ -136,7 +136,7 @@ describe('flexible router registration', () => {
       "exports.default = { type: 0, methods: ['POST'], handler: (req) => ({ method: req.method }) };\n",
     );
 
-    const options = normalizeOptions({
+    const options = defineFluxionOptions({
       dir,
       host: '127.0.0.1',
       port: nextPort(),
@@ -290,21 +290,21 @@ describe('meta api', () => {
     const message =
       'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace';
 
-    expect(normalizeOptions({ ...base, metaSecret: undefined }).metaSecret).toBeUndefined();
-    expect(() => normalizeOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '' })).toThrow(
+    expect(defineFluxionOptions({ ...base, metaSecret: undefined }).metaSecret).toBeUndefined();
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '' })).toThrow(
       message,
     );
     expect(() =>
-      normalizeOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abcdefghijklmnopqrst' }),
+      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abcdefghijklmnopqrst' }),
     ).toThrow(message);
     expect(() =>
-      normalizeOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '12345678901234567890' }),
+      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '12345678901234567890' }),
     ).toThrow(message);
     expect(() =>
-      normalizeOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc123 4567890123456' }),
+      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc123 4567890123456' }),
     ).toThrow(message);
     expect(
-      normalizeOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc12345678901234567' })
+      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc12345678901234567' })
         .metaSecret,
     ).toBe('abc12345678901234567');
   });
