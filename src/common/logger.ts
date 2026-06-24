@@ -1,8 +1,8 @@
 import type { FluxionContext } from '@/types.js';
 import type { otherstring } from '@/global.js';
+import stringify from 'fast-json-stable-stringify';
 
 import { dtm } from './dtm.js';
-import { $keys, $stringify } from './native.js';
 import { cctl } from './color.js';
 
 type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
@@ -10,7 +10,6 @@ type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | other
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
-  message: string;
   [key: string]: unknown;
 }
 
@@ -33,7 +32,7 @@ export interface FluxionLogger {
 
 const safeStringify = (value: unknown): string => {
   try {
-    return $stringify(value);
+    return stringify(value);
   } catch {
     return '[unserializable]';
   }
@@ -54,7 +53,7 @@ export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
   const timestamp = `${cctl.darkGreen}[${rawTimestamp}]${cctl.reset}`;
   const level = ColoredLevels[rawLevel] ?? rawLevel;
   const body = rawMessage;
-  const fieldsText = $keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
+  const fieldsText = Object.keys(fields).length > 0 ? `${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
   // eslint-disable-next-line @typescript-eslint/no-console
   console.log(`${timestamp} ${level} ${body}${fieldsText}`);
@@ -81,12 +80,11 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
   const sink = resolveLoggerSink(cx);
 
   const logger: FluxionLogger = {
-    write(level: LogLevel, message: string, fields: Record<string, unknown> = {}): void {
+    write(level: LogLevel, o: Record<string, unknown> = {}): void {
       const entry: LogEntry = {
-        ...fields,
+        ...o,
         timestamp: dtm(),
         level,
-        message,
       };
 
       try {
@@ -94,6 +92,10 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
       } catch {
         // Ignore logger sink failures to avoid breaking request handling.
       }
+    },
+    newInfo(messageOrObject: string | Record<string, unknown>): void {
+      stringify(messageOrObject);
+      this.write('INFO', stringify(messageOrObject));
     },
     info(message: string, fields?: Record<string, unknown>): void {
       this.write('INFO', message, fields);

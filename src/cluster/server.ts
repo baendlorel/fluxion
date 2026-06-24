@@ -2,7 +2,6 @@ import http from 'node:http';
 import https from 'node:https';
 
 import type { FluxionContext, FluxionModuleContext, NormalizedRequest } from '../types.js';
-import { $keys } from '@/common/native.js';
 import {
   HttpCode,
   HANDLER_TIMEOUT_FLAG,
@@ -67,7 +66,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
         duration: (performance.now() - start).toFixed(4),
       };
 
-      if ($keys(normalized.query).length > 0) {
+      if (Object.keys(normalized.query).length > 0) {
         fields.query = normalized.query;
       }
 

@@ -11,6 +11,9 @@ importers:
       chokidar:
         specifier: 4.0.3
         version: 4.0.3
+      fast-json-stable-stringify:
+        specifier: ^2.1.0
+        version: 2.1.0
       minimatch:
         specifier: ^10.2.5
         version: 10.2.5
@@ -808,6 +811,9 @@ packages:
   expect-type@1.3.0:
     resolution: {integrity: sha512-knvyeauYhqjOYvQ66MznSMs83wmHrCycNEN6Ao+2AeYEfxUIkuiVxdEa1qlGEPK+We3n0THiDciYSsCcgW/DoA==}
     engines: {node: '>=12.0.0'}
+
+  fast-json-stable-stringify@2.1.0:
+    resolution: {integrity: sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -1813,6 +1819,8 @@ snapshots:
       '@types/estree': 1.0.9
 
   expect-type@1.3.0: {}
+
+  fast-json-stable-stringify@2.1.0: {}
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
