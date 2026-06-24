@@ -21,13 +21,13 @@ export interface FluxionLogger {
   /**
    * [WARN] We assert that `fields` is an object or undefined.
    */
-  write(level: LogLevel, message: string, fields?: object): void;
-  info(message: string, fields?: object): void;
-  warn(message: string, fields?: object): void;
-  error(message: string, fields?: object): void;
-  succ(message: string, fields?: object): void;
-  debug(message: string, fields?: object): void;
-  verbose(message: string, fields?: object): void;
+  write(level: LogLevel, messageOrObject: string | object): void;
+  info(messageOrObject: string | object): void;
+  warn(messageOrObject: string | object): void;
+  error(messageOrObject: string | object): void;
+  succ(messageOrObject: string | object): void;
+  debug(messageOrObject: string | object): void;
+  verbose(messageOrObject: string | object): void;
 }
 
 const safeStringify = (value: unknown): string => {
@@ -80,12 +80,19 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
   const sink = resolveLoggerSink(cx);
 
   const logger: FluxionLogger = {
-    write(level: LogLevel, o: Record<string, unknown> = {}): void {
-      const entry: LogEntry = {
-        ...o,
-        timestamp: dtm(),
-        level,
-      };
+    write(level: LogLevel, o: string | object): void {
+      const entry: LogEntry =
+        typeof o === 'string'
+          ? {
+              message: o,
+              timestamp: dtm(),
+              level,
+            }
+          : {
+              ...o,
+              timestamp: dtm(),
+              level,
+            };
 
       try {
         sink(entry);
@@ -93,27 +100,23 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
         // Ignore logger sink failures to avoid breaking request handling.
       }
     },
-    newInfo(messageOrObject: string | Record<string, unknown>): void {
-      stringify(messageOrObject);
-      this.write('INFO', stringify(messageOrObject));
+    info(messageOrObject: string | object): void {
+      this.write('INFO', messageOrObject);
     },
-    info(message: string, fields?: Record<string, unknown>): void {
-      this.write('INFO', message, fields);
+    warn(messageOrObject: string | object): void {
+      this.write('WARN', messageOrObject);
     },
-    warn(message: string, fields?: Record<string, unknown>): void {
-      this.write('WARN', message, fields);
+    error(messageOrObject: string | object): void {
+      this.write('ERROR', messageOrObject);
     },
-    error(message: string, fields?: Record<string, unknown>): void {
-      this.write('ERROR', message, fields);
+    succ(messageOrObject: string | object): void {
+      this.write('SUCC', messageOrObject);
     },
-    succ(message: string, fields?: Record<string, unknown>): void {
-      this.write('SUCC', message, fields);
+    debug(messageOrObject: string | object): void {
+      this.write('DEBUG', messageOrObject);
     },
-    debug(message: string, fields?: Record<string, unknown>): void {
-      this.write('DEBUG', message, fields);
-    },
-    verbose(message: string, fields?: Record<string, unknown>): void {
-      this.write('VERBOSE', message, fields);
+    verbose(messageOrObject: string | object): void {
+      this.write('VERBOSE', messageOrObject);
     },
   };
 
@@ -127,26 +130,26 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
   const pidPrefix = `[${pid}]`;
 
   return {
-    write(level: LogLevel, message: string, fields?: object): void {
-      baseLogger.write(level, `${pidPrefix} ${message}`, fields);
+    write(level: LogLevel, messageOrObject: string | object): void {
+      baseLogger.write(level, `${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    info(message: string, fields?: object): void {
-      baseLogger.info(`${pidPrefix} ${message}`, fields);
+    info(messageOrObject: string | object): void {
+      baseLogger.info(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    warn(message: string, fields?: object): void {
-      baseLogger.warn(`${pidPrefix} ${message}`, fields);
+    warn(messageOrObject: string | object): void {
+      baseLogger.warn(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    error(message: string, fields?: object): void {
-      baseLogger.error(`${pidPrefix} ${message}`, fields);
+    error(messageOrObject: string | object): void {
+      baseLogger.error(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    succ(message: string, fields?: object): void {
-      baseLogger.succ(`${pidPrefix} ${message}`, fields);
+    succ(messageOrObject: string | object): void {
+      baseLogger.succ(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    debug(message: string, fields?: object): void {
-      baseLogger.debug(`${pidPrefix} ${message}`, fields);
+    debug(messageOrObject: string | object): void {
+      baseLogger.debug(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
-    verbose(message: string, fields?: object): void {
-      baseLogger.verbose(`${pidPrefix} ${message}`, fields);
+    verbose(messageOrObject: string | object): void {
+      baseLogger.verbose(`${pidPrefix} ${stringify(messageOrObject)}`);
     },
   };
 }

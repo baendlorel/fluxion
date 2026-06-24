@@ -77,7 +77,7 @@ export function initWorker(cx: FluxionContext) {
       return;
     }
     exiting = true;
-    cx.logger.warn('WorkerShuttingDown', { pid: process.pid, signal });
+    cx.logger.warn({ message: 'WorkerShuttingDown', pid: process.pid, signal });
     cx.watcher.stop();
 
     if (!server) {
@@ -88,7 +88,7 @@ export function initWorker(cx: FluxionContext) {
     timer.unref();
     server.close((error) => {
       if (error) {
-        cx.logger.error('WorkerShutdownFailed', { pid: process.pid, error: getErrorMessage(error) });
+        cx.logger.error({ message: 'WorkerShutdownFailed', pid: process.pid, error: getErrorMessage(error) });
         process.exit(1);
       }
       process.exit(0);
@@ -104,7 +104,8 @@ export function initWorker(cx: FluxionContext) {
       sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
     })
     .catch((e) => {
-      cx.logger.error('WorkerBootstrapFailed', {
+      cx.logger.error({
+        message: 'WorkerBootstrapFailed',
         pid: process.pid,
         error: getErrorMessage(e),
       });
