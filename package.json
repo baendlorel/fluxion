@@ -11,17 +11,13 @@
   "purpose": "npm",
   "description": "Fluxion is able to start a server that can dynamically load routers and js files. It is designed to be used to replace PHP",
   "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
+  "main": "./dist/cli.cjs",
+  "module": "./dist/cli.mjs",
   "bin": {
     "fluxion": "./dist/cli.mjs"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./cli": {
       "import": "./dist/cli.mjs",
       "require": "./dist/cli.cjs"
     },
@@ -70,7 +66,7 @@
     "minimatch": "^10.2.5",
     "tsx": "^4.22.4"
   },
-  "types": "./dist/index.d.cts",
+  "types": "./dist/cli.d.cts",
   "inlinedDependencies": {
     "type-narrow": "0.2.2"
   }
