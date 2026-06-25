@@ -26,6 +26,16 @@ Fluxion is a filesystem-routing dynamic server for Node.js.
 pnpm add fluxion
 ```
 
+## Command Line Interface
+
+**You need [tsx](https://www.npmjs.com/package/tsx) to run fluxion**
+
+```bash
+fluxion # loads fluxion.config.ts by default
+fluxion --config custom-fluxion.config.ts
+
+```
+
 ## Quick Start
 
 Create `server.mjs`:
@@ -100,12 +110,12 @@ Fluxion registers files under `dir` based on glob patterns:
 
 Examples:
 
-| File                                    | Route              | Type        |
-| --------------------------------------- | ------------------ | ----------- |
-| `dynamicDirectory/test.ts`              | `/test.ts`         | API handler |
-| `dynamicDirectory/user/profile.ts`      | `/user/profile.ts` | API handler |
-| `dynamicDirectory/index.html`           | `/index.html`      | Static file |
-| `dynamicDirectory/assets/app.js`        | `/assets/app.js`   | Static file |
+| File                               | Route              | Type        |
+| ---------------------------------- | ------------------ | ----------- |
+| `dynamicDirectory/test.ts`         | `/test.ts`         | API handler |
+| `dynamicDirectory/user/profile.ts` | `/user/profile.ts` | API handler |
+| `dynamicDirectory/index.html`      | `/index.html`      | Static file |
+| `dynamicDirectory/assets/app.js`   | `/assets/app.js`   | Static file |
 
 ## API Handlers
 
