@@ -18,15 +18,7 @@ function validate(command: string | null, options: Array<{ option: string; value
   });
 
   if (command === null) {
-    if (options.length !== 1) {
-      quit('Command [start] requires exactly one option [--config]');
-    }
-
-    const config = options[0];
-    if (config.option !== 'config') {
-      quit('Only accepts option [--config]');
-    }
-
+    const config = options.find((v) => v.option === 'config') ?? { option: 'config', value: 'fluxion.config.ts' };
     if (config.value === null || config.value.trim() === '') {
       quit('Option [--config] requires a non-empty value');
     }
