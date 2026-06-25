@@ -40,7 +40,7 @@ export default defineConfig([
     target: 'node24',
     exports: {
       bin: {
-        fluxion: 'src/cli/index.ts',
+        fluxion: './src/cli/index.ts',
       },
     },
     treeshake: !isDev,
