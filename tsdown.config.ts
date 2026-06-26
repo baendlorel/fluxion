@@ -17,32 +17,13 @@ const plugins = () => [
 
 export default defineConfig([
   {
-    entry: ['src/index.ts'],
+    entry: [{ index: 'src/index.ts' }, { cli: 'src/cli/index.ts' }],
     format: ['esm', 'cjs'],
     dts: true,
     clean: true,
     sourcemap: true,
     minify: !isDev,
     target: 'node24',
-    treeshake: !isDev,
-    plugins: plugins(),
-    deps: {
-      onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
-    },
-  },
-  {
-    entry: { cli: 'src/cli/index.ts' },
-    format: ['esm', 'cjs'],
-    dts: false,
-    clean: true,
-    sourcemap: false,
-    minify: !isDev,
-    target: 'node24',
-    exports: {
-      bin: {
-        fluxion: './src/cli/index.ts',
-      },
-    },
     treeshake: !isDev,
     plugins: plugins(),
     deps: {
