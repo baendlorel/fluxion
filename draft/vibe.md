@@ -71,3 +71,6 @@ worker优化：
 2、像pm2一样有守护进程，会自动重启，是否现在的primary已经可以做到？
 
 请你设计实现方案
+
+---
+我们换一个思路解决问题。pm2重启fluxion的问题主要在于进程残留，端口重复。因此我的想法是静态文件标记法：1、primary进程创建后，在homedir/.fluxion文件夹内部创建一个文件叫instance.json，里面记录一个数组，每个对象是：启动时间、pid、fluxion.config.ts文件的hash值。2、假如通过其他途径再次以相同配置启动的时候（通过hash值对比），那么将会根据pid kill它后再启动。 把这个代码写入src/cluster/launcher.ts
