@@ -2,10 +2,12 @@ import type { WorkerMessage, WorkerState, WorkerRuntimeStats } from './types.js'
 import type { FluxionContext, FluxionRouteMeta } from '../types.js';
 import os from 'node:os';
 import cluster from 'node:cluster';
+import path from 'node:path';
 
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 import { createPrimaryMetaApiServer } from './meta-api.js';
+import { launchFluxionInstance, cleanupFluxionInstance } from './launcher.js';
 
 const bytesToMb = (bytes: number) => Number((bytes / 1024 / 1024).toFixed(2));
 
@@ -23,6 +25,21 @@ export function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'rou
   if (!cluster.isPrimary) {
     $throw('createPrimary should only be called in primary process');
   }
+
+  // 注册当前 fluxion 实例
+  const configPath = path.join(cx.options.moduleDir || process.cwd(), 'fluxion.config.ts');
+  launchFluxionInstance(configPath, cx.options.host, cx.options.port, cx.options.metaPort);
+
+  // 注册清理函数（在进程退出时调用）
+  process.on('exit', cleanupFluxionInstance);
+  process.on('SIGINT', () => {
+    cleanupFluxionInstance();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    cleanupFluxionInstance();
+    process.exit(0);
+  });
 
   const { workerOptions } = cx.options;
   const restartWhen = workerOptions.restartWhen;
