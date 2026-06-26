@@ -1,705 +1,638 @@
-# Fluxion Daemon 设计方案
+# Fluxion CLI 进程守护设计方案（精简版）
 
-## 目标
+基于 PM2 原理为 fluxion CLI 提供基础的系统级进程管理。
 
-希望同时满足这 4 件事：
+## 核心原理
 
-1. `fluxion --config xxx.config.ts` 可以把服务放到后台运行。
-2. 后续命令行可以再次连接到这个后台进程，而不是只能靠 pid 文件盲操作。
-3. 后台进程可以守护真正的 fluxion app 进程。
-4. 如果后台进程发现 app 长时间失去回应，并且检查 pid 后确认它真的退出了，就主动重新拉起。
+### 架构设计
 
-这件事的核心不是 primary 本身，而是要在 primary 之外再加一层 **daemon/supervisor**。
-
----
-
-## 先说结论
-
-需要拆成两层：
-
-```text
-CLI 命令
-  -> daemon 进程（常驻）
-      -> app 进程（真正执行 fluxion(config)）
-          -> primary / workers
+```
+┌──────────────┐
+│ CLI 命令      │
+└──────┬───────┘
+       │ Unix Socket
+┌──────▼───────┐
+│ Daemon       │ ← 守护进程
+└──────┬───────┘
+       │ child_process
+┌──────▼───────┐
+│ App 进程     │ ← fluxion 服务
+└──────────────┘
 ```
 
-职责分层：
+**职责分离**：
+- **CLI**：一次性命令，连接 daemon 发送指令
+- **Daemon**：常驻后台，管理 app 进程
+- **App**：运行实际的 fluxion 服务
 
-- **CLI**：一次性命令入口，只负责“连接 daemon / 启动 daemon / 发指令 / 打印结果”。
-- **daemon**：常驻后台，保存状态，接受 CLI 连接，请求 app 心跳，判定是否重启。
-- **app**：真正执行 `fluxion(config)`。
-- **primary**：app 内部已有的 worker 守护者。
+## 核心功能
 
-也就是：
+### 1. 进程守护
 
-- **daemon 守护 app**
-- **primary 守护 worker**
+```typescript
+// 最基础的守护逻辑
+class Daemon {
+  private appProcess: ChildProcess | null = null;
+  private restartCount = 0;
+  private maxRestarts = 5; // 防止无限重启
+  
+  start() {
+    this.spawnApp();
+    this.watchApp();
+  }
+  
+  private spawnApp() {
+    this.appProcess = spawn('node', ['--import', 'tsx', 'dist/cli.mjs', '__app', 
+      '--config', this.configPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false
+    });
+    
+    // 重定向输出到日志文件
+    this.redirectOutput();
+    
+    // 监听退出事件
+    this.appProcess.on('exit', () => {
+      this.handleExit();
+    });
+  }
+  
+  private handleExit() {
+    if (this.restartCount < this.maxRestarts) {
+      this.restartCount++;
+      setTimeout(() => this.spawnApp(), 1000); // 延迟1秒重启
+    } else {
+      console.log('App crashed too many times, giving up');
+      this.cleanup();
+    }
+  }
+  
+  private redirectOutput() {
+    const outLog = fs.createWriteStream('.fluxion/app.out.log', { flags: 'a' });
+    const errLog = fs.createWriteStream('.fluxion/app.err.log', { flags: 'a' });
+    
+    this.appProcess!.stdout?.pipe(outLog);
+    this.appProcess!.stderr?.pipe(errLog);
+  }
+}
+```
 
-不要把这两层揉在一起。
+### 2. 心跳监控
 
----
+```typescript
+class Daemon {
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private lastPong = 0;
+  
+  start() {
+    // ... 启动 app
+    this.startHeartbeat();
+  }
+  
+  private startHeartbeat() {
+    this.heartbeatTimer = setInterval(() => {
+      this.checkHeartbeat();
+    }, 5000); // 每5秒检查一次
+  }
+  
+  private checkHeartbeat() {
+    if (!this.appProcess) return;
+    
+    // 发送 ping
+    this.appProcess.send?.({ type: 'ping' });
+    
+    // 检查是否超时（30秒无响应）
+    if (Date.now() - this.lastPong > 30000) {
+      this.handleTimeout();
+    }
+  }
+  
+  private handleTimeout() {
+    // app 卡死，杀掉重启
+    this.appProcess?.kill('SIGKILL');
+    // exit 事件会触发自动重启
+  }
+}
+```
 
-## 为什么不能只靠现在的 primary
+### 3. Socket 服务器
 
-当前 `src/cluster/primary.ts` 已经能：
+```typescript
+import { createServer } from 'node:net';
+import { unlinkSync } from 'node:fs';
 
-- worker 崩溃后重启 worker
-- worker 健康超时后重启 worker
-- worker 内存超限后重启 worker
+class DaemonServer {
+  private socketPath = '.fluxion/daemon.sock';
+  
+  start() {
+    // 清理旧的 socket 文件
+    try {
+      unlinkSync(this.socketPath);
+    } catch {}
+    
+    const server = createServer((socket) => {
+      let data = '';
+      
+      socket.on('data', (chunk) => {
+        data += chunk.toString();
+      });
+      
+      socket.on('end', () => {
+        const request = JSON.parse(data);
+        const response = this.handleRequest(request);
+        socket.write(JSON.stringify(response));
+        socket.end();
+      });
+    });
+    
+    server.listen(this.socketPath);
+  }
+  
+  private handleRequest(request: any) {
+    switch (request.type) {
+      case 'start':
+        return { ok: this.daemon.start() };
+      case 'stop':
+        return { ok: this.daemon.stop() };
+      case 'status':
+        return { ok: true, state: this.daemon.getState() };
+      case 'logs':
+        return { ok: true, logs: this.daemon.getLogs() };
+      default:
+        return { ok: false, error: 'Unknown command' };
+    }
+  }
+}
+```
 
-但它做不到：
+### 4. App 侧改造
 
-- primary/app 自己退出后再把自己拉起来
-- 接受外部 CLI 控制命令
-- 保存后台运行状态
-- 后台常驻并维持控制通道
+```typescript
+// src/cli/index.ts
+function main() {
+  const args = process.argv.slice(2);
+  
+  if (args.includes('__daemon')) {
+    // 守护模式
+    return startDaemon();
+  }
+  
+  if (args.includes('__app')) {
+    // App 模式：运行服务
+    const configPath = getConfigPath(args);
+    const config = require(configPath);
+    fluxion(config.default);
+    
+    // 设置心跳响应
+    setupHeartbeat();
+    return;
+  }
+  
+  // CLI 模式：执行命令
+  executor(parseCommand());
+}
 
-原因很简单：**一个已经退出的进程，无法自己重启自己。**
+function setupHeartbeat() {
+  process.on('message', (msg: any) => {
+    if (msg.type === 'ping') {
+      process.send?.({ type: 'pong', at: Date.now() });
+    }
+  });
+}
+```
 
-所以必须增加一个更外层的常驻 daemon。
+## CLI 命令接口
 
----
-
-## 推荐的运行模型
-
-### 1. start
-
+### 启动（后台）
 ```bash
-fluxion --config ./fluxion.config.ts
+fluxion --config fluxion.config.ts --daemon
 ```
 
-行为：
-
-- 如果该 config 对应的 daemon 不存在，则启动 daemon。
-- CLI 不直接运行 app，而是把“启动 app”的请求交给 daemon。
-- daemon 再拉起 app。
-- CLI 打印状态后退出。
-
-也就是对用户来说，这个命令默认就是“后台托管启动”。
-
-### 2. status
-
-```bash
-fluxion status
-```
-
-行为：
-
-- CLI 连接 daemon。
-- daemon 返回：
-  - daemon pid
-  - app pid
-  - 当前 state
-  - 最近心跳时间
-  - 最近重启次数
-  - 日志路径
-
-### 3. stop
-
+### 停止
 ```bash
 fluxion stop
 ```
 
-行为：
+### 查看状态
+```bash
+fluxion status
+```
 
-- CLI 连接 daemon。
-- daemon 先停止自动拉起逻辑。
-- daemon 向 app 发停止信号。
-- app 退出后 daemon 也退出，或至少进入 stopped 状态。
-
-### 4. logs
-
+### 查看日志
 ```bash
 fluxion logs
 ```
 
-行为：
+## 运行时文件
 
-- CLI 连接 daemon，拿到 out/err log 路径。
-- CLI 自己 `tail -f`，或直接由 daemon 读文件回传。
-
-第一阶段更简单的做法是：daemon 只返回日志路径，CLI 自己读。
-
----
-
-## 关键设计：CLI 不是直接操作 pid，而是先连接 daemon
-
-你提到“命令行能够连接上这个进程”，这点很关键。
-
-这意味着不能只依赖：
-
-- pid 文件
-- status json
-- `kill(pid, 0)`
-
-这些只能证明“某个 pid 还活着”，不能证明：
-
-- 它是不是 fluxion 的 daemon
-- 它是否还持有正确的 app 状态
-- 它是否还能响应命令
-
-所以需要一个 **控制通道**。
-
----
-
-## 控制通道推荐方案
-
-### 推荐：Unix Domain Socket
-
-每个 config 对应一个 socket 文件：
-
-```text
+```
 .fluxion/
-  <config-hash>.sock
+├── daemon.sock       # Socket 文件
+├── daemon.pid        # Daemon 进程 PID
+├── app.pid           # App 进程 PID
+├── app.out.log       # App 标准输出
+└── app.err.log       # App 错误输出
 ```
 
-CLI 和 daemon 通过本地 socket 通信。
+## 实现步骤
 
-优点：
+### 第一步：创建守护进程模块
 
-- 只在本机可见，天然不暴露公网。
-- 不需要额外端口管理。
-- 可以很容易知道“daemon 是否真的在监听”。
-- 适合单机进程控制。
+创建 `src/cli/daemon.ts`：
 
-不推荐第一阶段直接用 TCP localhost 端口，因为：
+```typescript
+import { spawn, ChildProcess } from 'child_process';
+import { createServer, Server } from 'net';
+import fs from 'fs';
+import path from 'path';
 
-- 还要处理端口冲突
-- 还要决定端口发现机制
-- 对你当前目标来说是无意义复杂度
-
-### 通信格式
-
-直接用 json line：
-
-```json
-{"type":"status"}
-{"type":"stop"}
-{"type":"start"}
-{"type":"logs"}
-{"type":"ping"}
-```
-
-daemon 回：
-
-```json
-{"ok":true,"state":"running","appPid":12345}
-```
-
-不要第一阶段引入复杂 RPC 协议。
-
----
-
-## 运行时文件布局
-
-每个 config 对应一个 hash：
-
-```text
-.fluxion/
-  <hash>.sock
-  <hash>.daemon.pid
-  <hash>.app.pid
-  <hash>.state.json
-  <hash>.out.log
-  <hash>.err.log
-```
-
-说明：
-
-- `daemon.pid`：daemon 的 pid
-- `app.pid`：当前 app 的 pid
-- `sock`：CLI 与 daemon 的连接入口
-- `state.json`：最后一次持久化状态，给排障和兜底用
-- `out.log` / `err.log`：app 输出重定向
-
-这里 `state.json` 只是辅助，不作为主控制手段。
-
----
-
-## daemon 内部状态模型
-
-daemon 内存里维护一个状态对象：
-
-```ts
-{
-  configPath: string,
-  daemonPid: number,
-  appPid: number | null,
-  state: 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'crashed' | 'restarting',
-  startedAt: number | null,
-  lastHeartbeatAt: number | null,
-  lastAppResponseAt: number | null,
-  restartCount: number,
-  restartLog: number[],
-  logs: {
-    out: string,
-    err: string,
+export class Daemon {
+  private appProcess: ChildProcess | null = null;
+  private server: Server;
+  private restartCount = 0;
+  private lastPong = Date.now();
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private configPath: string;
+  
+  // 运行时路径
+  private runtimeDir = '.fluxion';
+  private socketPath = path.join(this.runtimeDir, 'daemon.sock');
+  private daemonPidPath = path.join(this.runtimeDir, 'daemon.pid');
+  private appPidPath = path.join(this.runtimeDir, 'app.pid');
+  private outLogPath = path.join(this.runtimeDir, 'app.out.log');
+  private errLogPath = path.join(this.runtimeDir, 'app.err.log');
+  
+  constructor(configPath: string) {
+    this.configPath = path.resolve(configPath);
+    
+    // 确保运行时目录存在
+    if (!fs.existsSync(this.runtimeDir)) {
+      fs.mkdirSync(this.runtimeDir, { recursive: true });
+    }
+    
+    // 保存 daemon pid
+    fs.writeFileSync(this.daemonPidPath, process.pid.toString());
+    
+    // 启动 socket 服务器
+    this.server = this.createServer();
   }
-}
-```
-
-建议状态尽量少，不要做太细的状态机。
-
-第一阶段足够用的状态：
-
-- `starting`
-- `running`
-- `stopping`
-- `stopped`
-- `restarting`
-- `crashed`
-
----
-
-## app 与 daemon 如何互相确认“还活着”
-
-这里需要两套检查，不要只做一套。
-
-### 第一套：心跳检查
-
-daemon 定时向 app 发 ping，请 app 回 pong。
-
-#### 做法 A：单独建一个 app control socket
-
-app 启动后监听：
-
-```text
-.fluxion/<hash>.app.sock
-```
-
-daemon 周期性连接这个 socket 发：
-
-```json
-{"type":"ping"}
-```
-
-app 返回：
-
-```json
-{"type":"pong","pid":12345,"at":1710000000000}
-```
-
-优点：
-
-- 真的知道 app 的事件循环还活着。
-- 不是只看 pid 存在。
-- 可以扩展更多调试命令。
-
-缺点：
-
-- app 侧要再暴露一个本地控制 socket。
-
-#### 做法 B：daemon 直接监控 app IPC
-
-如果 app 就是 daemon `spawn` 出来的子进程，可以使用 `stdio` 之外再开一个 `ipc` 通道：
-
-```ts
-spawn(process.execPath, args, { stdio: ['ignore', out, err, 'ipc'] })
-```
-
-daemon 发：
-
-```ts
-child.send({ type: 'ping' })
-```
-
-app 回：
-
-```ts
-process.send?.({ type: 'pong', at: Date.now() })
-```
-
-**推荐第一阶段用这个。**
-
-原因：
-
-- 不需要再多开一个 app socket
-- 进程关系本来就是 daemon spawn app
-- 实现最短
-
----
-
-## 第二套：pid 校验
-
-你要求的是：
-
-> 如果它失去回应，并且检测 pid 后发现真的退出了，那么会主动拉起它。
-
-这意味着逻辑必须是：
-
-1. 先发现 app 没回应。
-2. 再检查 pid。
-3. 如果 pid 已经不存在，立即拉起。
-4. 如果 pid 还在，则不要马上拉起，而是先判定它“卡死”。
-
-所以要区分两种情况。
-
-### 情况 1：没回应，且 pid 不存在
-
-说明 app 已经真的退出。
-
-动作：
-
-- 直接进入 `restarting`
-- 清理旧 pid / 旧 ipc 状态
-- spawn 新 app
-
-### 情况 2：没回应，但 pid 还存在
-
-说明 app 可能：
-
-- 卡死
-- 死循环
-- 长时间阻塞事件循环
-- IPC 通道损坏
-
-动作不要立刻“再拉一个”，否则会产生双实例风险。
-
-正确做法：
-
-- 先标记 unhealthy
-- 向它发送 `SIGTERM`
-- 等一小段时间，例如 5 秒
-- 若仍然存活，再 `SIGKILL`
-- 确认 pid 消失后再 spawn 新 app
-
-所以完整策略是：
-
-```text
-heartbeat timeout
-  -> check pid
-    -> if pid missing: restart now
-    -> if pid exists: terminate old app, wait exit, then restart
-```
-
----
-
-## 为什么不能只靠 pid
-
-因为 pid 存活不代表服务活着。
-
-例如：
-
-- 死循环
-- event loop 卡死
-- 已经不接请求
-- 仍在，但内部逻辑完全失效
-
-所以：
-
-- **pid 检查** 只能确认“进程还在不在”
-- **心跳检查** 才能确认“进程还能不能响应”
-
-这两者必须同时存在。
-
----
-
-## 守护循环怎么写
-
-daemon 内部维护一个定时器，例如每 5 秒跑一次：
-
-```text
-tick
-  1. 如果没有 appPid，且 state 不是 stopped -> 尝试启动 app
-  2. 如果有 appPid -> 发 ping
-  3. 记录 pong 超时情况
-  4. 若超过 timeout -> 检查 pid
-  5. 若 pid 不存在 -> 立即重启
-  6. 若 pid 还存在 -> 杀掉旧进程，再重启
-  7. 记录 restartLog，做防风暴限制
-```
-
-### 推荐参数
-
-- 心跳发送间隔：5s
-- pong 超时：15s 或 30s
-- 优雅退出等待：5s
-- 强制杀死等待：10s
-- 防风暴窗口：60s
-- 窗口内最大重启次数：3
-
-这和你现在 primary 那套思路是一致的，只是对象从 worker 换成 app。
-
----
-
-## 自动拉起时如何避免 fork storm
-
-必须保留重启节流。
-
-例如：
-
-```ts
-restartLog = timestamps in last 60s
-if restartLog.length >= 3 {
-  state = 'crashed'
-  stop auto restart
-}
-```
-
-否则如果配置文件错误、端口冲突、启动即崩，会一直狂重启。
-
-这部分建议完全复用当前 primary 的思路，不要重新发明。
-
----
-
-## CLI 与 daemon 的连接流程
-
-### 启动流程
-
-```text
-fluxion --config a.ts
-  1. 计算 hash
-  2. 查 .sock 是否存在
-  3. 尝试连接 .sock
-     - 连上：发送 start
-     - 连不上：检查 daemon.pid
-       - pid 存在但 sock 不可用 -> 视为 stale daemon，清理残留文件
-       - pid 不存在 -> 启动新的 daemon
-  4. 新 daemon 启动后监听 .sock
-  5. CLI 再连接 .sock 发送 start
-```
-
-### status 流程
-
-```text
-fluxion status
-  1. 连接 .sock
-  2. 请求 status
-  3. daemon 返回完整状态
-  4. 若无法连接，再检查 daemon.pid
-     - pid 不存在：输出 stopped
-     - pid 存在但无 socket：输出 stale
-```
-
-### stop 流程
-
-```text
-fluxion stop
-  1. 连接 .sock
-  2. 发送 stop
-  3. daemon 切到 stopping
-  4. 停 app
-  5. 清 socket/pid/state
-  6. daemon 退出
-```
-
----
-
-## app 入口怎么组织
-
-不要让 CLI 直接 `import config` 后就在当前命令进程跑服务。
-
-推荐拆成两个内部模式：
-
-```text
-fluxion cli
-fluxion __daemon
-fluxion __app
-```
-
-### `__daemon`
-
-负责：
-
-- 常驻后台
-- 监听控制 socket
-- spawn / kill / restart app
-- 做心跳
-- 持久化状态
-
-### `__app`
-
-负责：
-
-- 在 tsx 环境里导入 `config`
-- 执行 `fluxion(config)`
-- 响应 daemon 的 ping
-
-这样边界最清楚。
-
----
-
-## app 如何响应 ping
-
-因为 daemon 需要判断“app 是否失去回应”，所以 app 必须最少支持：
-
-```ts
-process.on('message', (message) => {
-  if (message?.type === 'ping') {
-    process.send?.({
-      type: 'pong',
-      pid: process.pid,
-      at: Date.now(),
+  
+  start() {
+    this.spawnApp();
+    this.startHeartbeat();
+  }
+  
+  stop() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+    
+    if (this.appProcess) {
+      this.appProcess.kill('SIGTERM');
+    }
+    
+    this.server.close();
+    this.cleanup();
+  }
+  
+  private spawnApp() {
+    const args = [
+      '--import', 'tsx',
+      'dist/cli.mjs',
+      '__app',
+      '--config', this.configPath
+    ];
+    
+    this.appProcess = spawn('node', args, {
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      cwd: process.cwd()
+    });
+    
+    // 保存 app pid
+    fs.writeFileSync(this.appPidPath, this.appProcess.pid.toString());
+    
+    // 重定向输出
+    this.redirectOutput();
+    
+    // 监听退出
+    this.appProcess.on('exit', (code) => {
+      console.log(`App exited with code: ${code}`);
+      this.handleExit();
+    });
+    
+    // 监听 pong 响应
+    this.appProcess.on('message', (msg: any) => {
+      if (msg.type === 'pong') {
+        this.lastPong = msg.at || Date.now();
+      }
     });
   }
-});
+  
+  private redirectOutput() {
+    const outLog = fs.createWriteStream(this.outLogPath, { flags: 'a' });
+    const errLog = fs.createWriteStream(this.errLogPath, { flags: 'a' });
+    
+    this.appProcess!.stdout?.pipe(outLog);
+    this.appProcess!.stderr?.pipe(errLog);
+  }
+  
+  private startHeartbeat() {
+    this.heartbeatTimer = setInterval(() => {
+      this.checkHeartbeat();
+    }, 5000);
+  }
+  
+  private checkHeartbeat() {
+    if (!this.appProcess) return;
+    
+    // 发送 ping
+    this.appProcess.send?.({ type: 'ping' });
+    
+    // 检查超时
+    if (Date.now() - this.lastPong > 30000) {
+      console.log('App timeout, killing...');
+      this.appProcess.kill('SIGKILL');
+    }
+  }
+  
+  private handleExit() {
+    if (this.restartCount < 5) {
+      this.restartCount++;
+      console.log(`Restarting app (attempt ${this.restartCount})...`);
+      setTimeout(() => this.spawnApp(), 1000);
+    } else {
+      console.log('App crashed too many times, stopping');
+      this.stop();
+    }
+  }
+  
+  private createServer(): Server {
+    // 清理旧的 socket
+    try {
+      fs.unlinkSync(this.socketPath);
+    } catch {}
+    
+    const server = createServer((socket) => {
+      let data = '';
+      
+      socket.on('data', (chunk) => {
+        data += chunk.toString();
+      });
+      
+      socket.on('end', () => {
+        try {
+          const request = JSON.parse(data);
+          const response = this.handleRequest(request);
+          socket.write(JSON.stringify(response));
+        } catch (err) {
+          socket.write(JSON.stringify({ ok: false, error: String(err) }));
+        }
+        socket.end();
+      });
+    });
+    
+    server.listen(this.socketPath);
+    return server;
+  }
+  
+  private handleRequest(request: any) {
+    switch (request.type) {
+      case 'start':
+        return { ok: true };
+      case 'stop':
+        this.stop();
+        return { ok: true };
+      case 'status':
+        return {
+          ok: true,
+          state: {
+            running: this.appProcess !== null,
+            appPid: this.appProcess?.pid || null,
+            daemonPid: process.pid,
+            lastPong: this.lastPong,
+            restartCount: this.restartCount
+          }
+        };
+      case 'logs':
+        return {
+          ok: true,
+          logs: {
+            out: this.tailLog(this.outLogPath, 50),
+            err: this.tailLog(this.errLogPath, 50)
+          }
+        };
+      default:
+        return { ok: false, error: 'Unknown command' };
+    }
+  }
+  
+  private tailLog(filePath: string, lines: number): string {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const allLines = content.split('\n');
+      return allLines.slice(-lines).join('\n');
+    } catch {
+      return '';
+    }
+  }
+  
+  private cleanup() {
+    try {
+      fs.unlinkSync(this.socketPath);
+      fs.unlinkSync(this.daemonPidPath);
+      fs.unlinkSync(this.appPidPath);
+    } catch {}
+  }
+  
+  getState() {
+    return {
+      running: this.appProcess !== null,
+      appPid: this.appProcess?.pid || null,
+      daemonPid: process.pid,
+      lastPong: this.lastPong,
+      restartCount: this.restartCount
+    };
+  }
+  
+  getLogs() {
+    return {
+      out: this.tailLog(this.outLogPath, 50),
+      err: this.tailLog(this.errLogPath, 50)
+    };
+  }
+}
+
+export function startDaemon(configPath: string) {
+  const daemon = new Daemon(configPath);
+  daemon.start();
+  
+  // 保持进程运行
+  process.on('SIGINT', () => {
+    console.log('Received SIGINT, shutting down...');
+    daemon.stop();
+    process.exit(0);
+  });
+  
+  // 防止进程退出
+  process.stdin.resume();
+}
 ```
 
-然后 daemon 侧维护：
+### 第二步：修改 CLI 入口
 
-- `lastPingAt`
-- `lastPongAt`
+修改 `src/cli/index.ts`：
 
-如果 `Date.now() - lastPongAt > timeout`，就进入异常处理。
+```typescript
+import { startDaemon } from './daemon.js';
 
-这个机制比“只监听 child exit”更强，因为它能发现“进程还活着但已经卡死”。
+function main() {
+  const args = process.argv.slice(2);
+  
+  // 守护模式
+  if (args.includes('--daemon')) {
+    const configPath = getConfigPath(args);
+    return startDaemon(configPath);
+  }
+  
+  // App 模式
+  if (args.includes('__app')) {
+    const configPath = getConfigPath(args);
+    const config = require(configPath);
+    fluxion(config.default);
+    
+    // 设置心跳响应
+    process.on('message', (msg: any) => {
+      if (msg.type === 'ping') {
+        process.send?.({ type: 'pong', at: Date.now() });
+      }
+    });
+    
+    return;
+  }
+  
+  // CLI 模式
+  const command = parseCommand();
+  executor(command);
+}
 
----
-
-## 与 cluster/primary 的关系
-
-app 内部仍然是：
-
-```text
-__app -> fluxion(config) -> cluster primary -> workers
+function getConfigPath(args: string[]): string {
+  const configIndex = args.indexOf('--config');
+  return configIndex !== -1 ? args[configIndex + 1] : 'fluxion.config.ts';
+}
 ```
 
-这里 daemon 不需要直接管 worker。
+### 第三步：实现 CLI 命令
 
-原因：
+修改 `src/cli/executor.ts`：
 
-- worker 的健康与重启已经是 primary 的职责。
-- daemon 的职责只到 app 层。
-- 否则会导致控制面交叉、重复重启、状态混乱。
+```typescript
+import { connect } from 'node:net';
+import path from 'path';
 
-所以职责边界一定要保持：
+export function executor(command: FluxionCommand) {
+  if (command.name === 'stop') {
+    return sendToDaemon({ type: 'stop' });
+  }
+  
+  if (command.name === 'status') {
+    const response = sendToDaemon({ type: 'status' });
+    if (response.ok) {
+      printStatus(response.state);
+    }
+    return;
+  }
+  
+  if (command.name === 'logs') {
+    const response = sendToDaemon({ type: 'logs' });
+    if (response.ok) {
+      printLogs(response.logs);
+    }
+    return;
+  }
+  
+  // 默认：运行服务
+  if (command.name === null) {
+    const configPath = getConfigPath(command.options);
+    const response = sendToDaemon({ type: 'start', config: configPath });
+    
+    if (response.ok) {
+      console.log('Fluxion started in daemon mode');
+      console.log('Use "fluxion status" to check status');
+      console.log('Use "fluxion stop" to stop');
+    } else {
+      console.error('Failed to start:', response.error);
+    }
+  }
+}
 
-- daemon 不碰 worker 细节
-- primary 不碰 daemon 控制协议
+function sendToDaemon(request: any): any {
+  const socketPath = path.join(process.cwd(), '.fluxion', 'daemon.sock');
+  
+  return new Promise((resolve, reject) => {
+    const client = connect({ path: socketPath });
+    
+    let response = '';
+    client.on('data', (data) => {
+      response += data.toString();
+    });
+    
+    client.on('end', () => {
+      try {
+        resolve(JSON.parse(response));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    
+    client.on('error', (err: any) => {
+      if (err.code === 'ENOENT') {
+        reject(new Error('Daemon not running. Start with --daemon first'));
+      } else {
+        reject(err);
+      }
+    });
+    
+    client.write(JSON.stringify(request));
+    client.end();
+  });
+}
+```
 
----
-
-## 配置文件与 TSX
-
-app 必须通过 tsx 环境启动，否则 `.ts` 配置无法加载。
-
-推荐启动命令：
+## 使用示例
 
 ```bash
-node --import tsx dist/cli.mjs __app --config /abs/path/fluxion.config.ts
+# 启动守护模式
+fluxion --config fluxion.config.ts --daemon
+
+# 查看状态
+fluxion status
+
+# 查看日志
+fluxion logs
+
+# 停止服务
+fluxion stop
 ```
 
-这样：
+## 关键参数（硬编码）
 
-- `config` 可以是 `.ts`
-- cluster fork 会继承这套 `execArgv`
-- worker 也能运行在可加载 TS 的环境中
+- 心跳间隔：5 秒
+- 心跳超时：30 秒
+- 最大重启次数：5 次
+- 重启延迟：1 秒
+- 日志行数：50 行
 
----
+这些参数都是硬编码的，无需配置，保持简单。
 
-## 最小协议设计
+## 总结
 
-daemon 控制 socket 只需要这几个请求：
+这个精简版本只保留了最核心的功能：
 
-### request
+1. ✅ 守护进程 + app 进程的双层架构
+2. ✅ Unix Socket 通信
+3. ✅ 进程崩溃自动重启（带重试次数限制）
+4. ✅ 心跳监控防止进程卡死
+5. ✅ 基本的 start/stop/status/logs 命令
+6. ✅ 简单的日志重定向
 
-```ts
-{ type: 'start' }
-{ type: 'stop' }
-{ type: 'status' }
-{ type: 'logs' }
-{ type: 'ping' }
-```
-
-### response
-
-```ts
-{ ok: true, state: 'running', appPid: 123 }
-{ ok: true, outLog: '...', errLog: '...' }
-{ ok: false, error: '...' }
-```
-
-保持单行 JSON 即可。
-
----
-
-## 推荐的第一阶段实现范围
-
-第一阶段只做：
-
-1. 每个 config 一个 daemon。
-2. daemon 使用 Unix socket 与 CLI 通信。
-3. daemon spawn 一个 app。
-4. daemon 通过 IPC ping/pong 监控 app。
-5. 心跳超时后先查 pid。
-6. pid 不存在则直接重启。
-7. pid 仍存在则杀掉后再重启。
-8. 加防风暴限制。
-9. `status/stop/logs` 都走 daemon socket。
-
-第一阶段不做：
-
-- 多 app 列表
-- 远程机器管理
-- Web UI
-- 热升级 daemon 自己
-- 日志订阅流协议
-- daemon 重启后恢复旧 app 的复杂接管
-
----
-
-## 推荐实现步骤
-
-### 第一步：补 daemon 类型与状态模型
-
-在 `src/cli/types.ts` 增加：
-
-- daemon state 类型
-- socket request/response 类型
-- runtime state 类型
-
-### 第二步：实现 daemon 入口
-
-在 `src/cli/index.ts` 或单独模块中加入 `__daemon` 内部模式。
-
-### 第三步：实现 socket server
-
-daemon 启动后：
-
-- 监听 `.fluxion/<hash>.sock`
-- 接收 `start/status/stop/logs`
-- 回 JSON
-
-### 第四步：实现 app IPC 心跳
-
-app 侧响应 `ping`。
-daemon 侧定时发 `ping`，超时判定。
-
-### 第五步：实现 pid + timeout 双判定重启
-
-严格执行：
-
-```text
-先 heartbeat timeout
-再 pid check
-再决定 restart
-```
-
-### 第六步：接 CLI
-
-CLI 所有外部命令都优先走 socket。
-只有在 socket 不存在时，才走 pid 文件兜底。
-
----
-
-## 一句话总结
-
-如果要满足：
-
-- 后台运行
-- CLI 可重新连上
-- 能守护进程
-- 失去回应后先查 pid，再决定拉起
-
-那么最合适的方案是：
-
-**每个 config 启一个常驻 daemon，用 Unix socket 作为 CLI 控制通道，用 child IPC 做 app 心跳，用 pid 校验做重启确认。**
-
-也就是：
-
-- socket 解决“怎么连上它”
-- ping/pong 解决“它还有没有回应”
-- pid check 解决“它是不是真的死了”
-- daemon 解决“谁来拉起它”
-
+去掉了所有非必须的复杂功能，实现起来更加简单直接。
