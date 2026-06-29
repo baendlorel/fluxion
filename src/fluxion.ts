@@ -18,7 +18,7 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
 
   if (cluster.isPrimary) {
-    initPrimary(context);
+    await initPrimary(context);
   } else {
     // Replace logger with worker logger that prefixes PID
     context.logger = createWorkerLogger(context.logger, process.pid);

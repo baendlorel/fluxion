@@ -44,6 +44,15 @@ export class FluxionInstanceManager {
     process.on('SIGTERM', cleanupAndExit);
   }
 
+  private isAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Read the living processes
    */
@@ -65,15 +74,7 @@ export class FluxionInstanceManager {
       console.error(`[FluxionInstanceManager] Failed to read instance.json:`, e);
     }
 
-    return result.filter((instance) => {
-      try {
-        // & 0 means only check, not kill
-        process.kill(instance.pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    return result.filter((instance) => this.isAlive(instance.pid));
   }
 
   /**
@@ -89,17 +90,32 @@ export class FluxionInstanceManager {
     }
   }
 
-  private kill(pid: number): boolean {
+  private async kill(pid: number): Promise<boolean> {
     try {
       process.kill(pid, 'SIGTERM');
-      return true;
     } catch (error) {
       console.error(`[FluxionInstanceManager] Failed to kill process ${pid}:`, error);
       return false;
     }
+
+    for (let i = 0; i < 100; i++) {
+      if (this.isAlive(pid)) {
+        await new Promise((f) => setTimeout(f, 100));
+      } else {
+        break;
+      }
+    }
+
+    // & If cannot kill the old process, exit immediately
+    if (this.isAlive(pid)) {
+      console.error(`[FluxionInstanceManager] Failed to kill process ${pid} after multiple attempts`);
+      process.exit(0);
+    }
+
+    return true;
   }
 
-  register(configPath: string, host: string, port: number, metaPort: number): void {
+  async register(configPath: string, host: string, port: number, metaPort: number): Promise<void> {
     const currentPid = process.pid;
     const cwd = process.cwd();
 
@@ -109,7 +125,7 @@ export class FluxionInstanceManager {
         `[FluxionInstanceManager] Found existing instance with same config or port: PID=${duplicate.pid}, PORT=${duplicate.port}`,
       );
 
-      if (this.kill(duplicate.pid)) {
+      if (await this.kill(duplicate.pid)) {
         console.warn(`[FluxionInstanceManager] Killed old process ${duplicate.pid}`);
       }
 
@@ -136,8 +152,10 @@ export class FluxionInstanceManager {
     console.info(`[FluxionInstanceManager] Registered instance: PID=${currentPid}, PORT=${port}, PATH=${configPath}`);
   }
 
-  unregister(): void {
-    if (this.isUnregistering) return;
+  unregister() {
+    if (this.isUnregistering) {
+      return;
+    }
     this.isUnregistering = true;
 
     const currentPid = process.pid;
@@ -166,3 +184,11 @@ export class FluxionInstanceManager {
 }
 
 export const instanceManager: FluxionInstanceManager = new FluxionInstanceManager();
+
+export async function launchFluxionInstance(configPath: string, host: string, port: number, metaPort: number) {
+  await instanceManager.register(configPath, host, port, metaPort);
+}
+
+export async function cleanupFluxionInstance() {
+  await instanceManager.unregister();
+}
