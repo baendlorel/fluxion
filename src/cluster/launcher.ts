@@ -23,6 +23,7 @@ interface InstanceJson {
  */
 export class FluxionInstanceManager {
   private readonly instanceFilePath: string;
+  private isUnregistering = false;
 
   constructor() {
     const dir = path.join(os.homedir(), '.fluxion');
@@ -31,13 +32,22 @@ export class FluxionInstanceManager {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
+
+    const cleanupAndExit = () => {
+      this.unregister();
+      process.exit(0);
+    };
+
+    process.on('exit', () => this.unregister());
+    process.on('SIGINT', cleanupAndExit);
+    process.on('SIGHUP', cleanupAndExit);
+    process.on('SIGTERM', cleanupAndExit);
   }
 
   /**
-   * 读取实例记录
-   * @returns 实例记录数组
+   * Read the living processes
    */
-  read(liveOnly = false): FluxionInstanceRecord[] {
+  readAlive(): FluxionInstanceRecord[] {
     let result: FluxionInstanceRecord[] = [];
     try {
       if (fs.existsSync(this.instanceFilePath)) {
@@ -55,17 +65,15 @@ export class FluxionInstanceManager {
       console.error(`[FluxionInstanceManager] Failed to read instance.json:`, e);
     }
 
-    return liveOnly
-      ? result.filter((instance: FluxionInstanceRecord) => {
-          try {
-            // & 0 means only check, not kill
-            process.kill(instance.pid, 0);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-      : result;
+    return result.filter((instance) => {
+      try {
+        // & 0 means only check, not kill
+        process.kill(instance.pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
   }
 
   /**
@@ -95,7 +103,7 @@ export class FluxionInstanceManager {
     const currentPid = process.pid;
     const cwd = process.cwd();
 
-    const duplicate = this.read(true).find((instance) => instance.configPath === configPath);
+    const duplicate = this.readAlive().find((instance) => instance.configPath === configPath);
     if (duplicate) {
       console.warn(
         `[FluxionInstanceManager] Found existing instance with same config or port: PID=${duplicate.pid}, PORT=${duplicate.port}`,
@@ -105,12 +113,12 @@ export class FluxionInstanceManager {
         console.warn(`[FluxionInstanceManager] Killed old process ${duplicate.pid}`);
       }
 
-      const instances = this.read();
+      const instances = this.readAlive();
       const filtered = instances.filter((instance) => instance.pid !== duplicate.pid);
       this.update(filtered);
     }
 
-    const instances = this.read(true).filter((instance) => instance.pid !== currentPid);
+    const instances = this.readAlive().filter((instance) => instance.pid !== currentPid);
 
     const newRecord: FluxionInstanceRecord = {
       startTime: Date.now(),
@@ -129,18 +137,25 @@ export class FluxionInstanceManager {
   }
 
   unregister(): void {
-    const currentPid = process.pid;
-    const instances = this.read();
-    const filtered = instances.filter((instance) => instance.pid !== currentPid);
+    if (this.isUnregistering) return;
+    this.isUnregistering = true;
 
-    if (filtered.length !== instances.length) {
-      this.update(filtered);
-      console.info(`[FluxionInstanceManager] Unregistered instance: PID=${currentPid}`);
+    const currentPid = process.pid;
+    try {
+      const instances = this.readAlive();
+      const filtered = instances.filter((instance) => instance.pid !== currentPid);
+
+      if (filtered.length !== instances.length) {
+        this.update(filtered);
+        console.info(`[FluxionInstanceManager] Unregistered instance: PID=${currentPid}`);
+      }
+    } finally {
+      this.isUnregistering = false;
     }
   }
 
   print(): void {
-    const instances = this.read();
+    const instances = this.readAlive();
     console.info('[FluxionInstanceManager] Current instances:');
     for (const instance of instances) {
       console.info(

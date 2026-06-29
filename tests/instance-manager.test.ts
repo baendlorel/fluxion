@@ -20,7 +20,7 @@ try {
 // 测试获取运行实例
 console.log('2. Testing get running instances...');
 try {
-  const instances = manager.read(true);
+  const instances = manager.readAlive();
   console.log(`✓ Found ${instances.length} running instance(s)`);
   if (instances.length > 0) {
     const instance = instances[0];
@@ -54,7 +54,7 @@ try {
 // 验证注销后的状态
 console.log('5. Verifying instance state after unregistration...');
 try {
-  const instances = manager.read(true);
+  const instances = manager.readAlive();
   console.log(`✓ Current running instances: ${instances.length}`);
   if (instances.length === 0) {
     console.log('  No instances running (as expected)\n');
