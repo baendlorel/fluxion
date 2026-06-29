@@ -24,6 +24,9 @@ interface InstanceJson {
 export class FluxionInstanceManager {
   private readonly instanceFilePath: string;
   private isUnregistering = false;
+  private static readonly KILL_POLL_INTERVAL_MS = 300;
+  private static readonly SIGTERM_TIMEOUT_MS = 10_000;
+  private static readonly SIGKILL_TIMEOUT_MS = 1_000;
 
   constructor() {
     const dir = path.join(os.homedir(), '.fluxion');
@@ -33,15 +36,7 @@ export class FluxionInstanceManager {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    const cleanupAndExit = () => {
-      this.unregister();
-      process.exit(0);
-    };
-
     process.on('exit', () => this.unregister());
-    process.on('SIGINT', cleanupAndExit);
-    process.on('SIGHUP', cleanupAndExit);
-    process.on('SIGTERM', cleanupAndExit);
   }
 
   private isAlive(pid: number): boolean {
@@ -90,6 +85,22 @@ export class FluxionInstanceManager {
     }
   }
 
+  private async waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+    const maxAttempts = Math.ceil(timeoutMs / FluxionInstanceManager.KILL_POLL_INTERVAL_MS);
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (!this.isAlive(pid)) {
+        return true;
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, FluxionInstanceManager.KILL_POLL_INTERVAL_MS);
+      });
+    }
+
+    return !this.isAlive(pid);
+  }
+
   private async kill(pid: number): Promise<boolean> {
     try {
       process.kill(pid, 'SIGTERM');
@@ -98,24 +109,20 @@ export class FluxionInstanceManager {
       return false;
     }
 
-    const INTERVAL = 100;
-    const TOTAL_TIME = 10000;
-
-    for (let i = 0; i < TOTAL_TIME / INTERVAL; i++) {
-      if (this.isAlive(pid)) {
-        await new Promise((f) => setTimeout(f, INTERVAL));
-      } else {
-        break;
-      }
+    if (await this.waitForExit(pid, FluxionInstanceManager.SIGTERM_TIMEOUT_MS)) {
+      return true;
     }
 
-    // & If cannot kill the old process, exit immediately
-    if (this.isAlive(pid)) {
-      console.error(`[FluxionInstanceManager] Failed to kill process ${pid} after multiple attempts`);
-      process.exit(1);
+    console.warn(`[FluxionInstanceManager] Process ${pid} did not exit after SIGTERM, sending SIGKILL`);
+
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (error) {
+      console.error(`[FluxionInstanceManager] Failed to force kill process ${pid}:`, error);
+      return false;
     }
 
-    return true;
+    return this.waitForExit(pid, FluxionInstanceManager.SIGKILL_TIMEOUT_MS);
   }
 
   async register(configPath: string, host: string, port: number, metaPort: number): Promise<void> {
@@ -128,9 +135,11 @@ export class FluxionInstanceManager {
         `[FluxionInstanceManager] Found existing instance with same config or port: PID=${duplicate.pid}, PORT=${duplicate.port}`,
       );
 
-      if (await this.kill(duplicate.pid)) {
-        console.warn(`[FluxionInstanceManager] Killed old process ${duplicate.pid}`);
+      if (!(await this.kill(duplicate.pid))) {
+        throw new Error(`[FluxionInstanceManager] Failed to stop old process ${duplicate.pid}`);
       }
+
+      console.warn(`[FluxionInstanceManager] Killed old process ${duplicate.pid}`);
 
       const instances = this.readAlive();
       const filtered = instances.filter((instance) => instance.pid !== duplicate.pid);
@@ -155,7 +164,7 @@ export class FluxionInstanceManager {
     console.info(`[FluxionInstanceManager] Registered instance: PID=${currentPid}, PORT=${port}, PATH=${configPath}`);
   }
 
-  unregister() {
+  unregister(): void {
     if (this.isUnregistering) {
       return;
     }

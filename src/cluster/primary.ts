@@ -1,3 +1,4 @@
+import type { Server } from 'node:http';
 import type { WorkerMessage, WorkerState, WorkerRuntimeStats } from './types.js';
 import type { FluxionContext, FluxionRouteMeta } from '../types.js';
 import os from 'node:os';
@@ -7,76 +8,108 @@ import path from 'node:path';
 import { isWorkerMessage, WorkerAction, PrimaryAction } from './consts.js';
 import { sendToWorker } from './communicate.js';
 import { createPrimaryMetaApiServer } from './meta-api.js';
-import { launchFluxionInstance } from './launcher.js';
+import { cleanupFluxionInstance, launchFluxionInstance } from './launcher.js';
 
 const bytesToMb = (bytes: number) => Number((bytes / 1024 / 1024).toFixed(2));
 
-/**
- * Anti-storm guard shared by proactive recycle (restartWhen) and reactive
- * respawn (crash). A slot may be restarted at most MAX_RESTARTS_PER_WINDOW
- * times within RESTART_WINDOW_MS; further attempts are suppressed and alerted
- * rather than fork-bombing. The window is rolling, so a quiet minute restores
- * capacity — it throttles, never kills a slot permanently.
- */
 const RESTART_WINDOW_MS = 60_000;
 const MAX_RESTARTS_PER_WINDOW = 3;
+const PING_INTERVAL_MS = 5000;
+const ROUTES_TIMEOUT_MS = 1000;
+const PRIMARY_SHUTDOWN_TIMEOUT_MS = 10_000;
+const PRIMARY_SHUTDOWN_POLL_INTERVAL_MS = 200;
 
-export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
-  if (!cluster.isPrimary) {
-    $throw('createPrimary should only be called in primary process');
+class FluxionPrimaryController {
+  private readonly workers = new Map<number, WorkerState>();
+  private readonly routeRequests = new Map<
+    number,
+    { resolve: (routes: FluxionRouteMeta[]) => void; timer: NodeJS.Timeout }
+  >();
+  private readonly restartLog = new Map<number, number[]>();
+  private readonly configPath: string;
+  private readonly restartWhen;
+  private readonly workerCount: number;
+
+  private routeRequestId = 0;
+  private pingTimer?: NodeJS.Timeout;
+  private metaServer: Server;
+  private shuttingDown = false;
+  private shutdownPromise: Promise<void> | null = null;
+
+  constructor(private readonly cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
+    this.configPath = path.join(cx.options.moduleDir || process.cwd(), 'fluxion.config.ts');
+    this.restartWhen = cx.options.workerOptions.restartWhen;
+
+    this.metaServer = createPrimaryMetaApiServer(
+      this.cx,
+      () => this.getWorkersSnapshot(),
+      () => this.getRoutesSnapshot(),
+    );
+
+    const cpuCount = Math.max(1, os.cpus().length);
+    this.workerCount = Math.max(
+      1,
+      Math.min(cx.options.workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount),
+    );
   }
 
-  // 注册当前 fluxion 实例
-  const configPath = path.join(cx.options.moduleDir || process.cwd(), 'fluxion.config.ts');
-  await launchFluxionInstance(configPath, cx.options.host, cx.options.port, cx.options.metaPort);
+  async start(): Promise<void> {
+    await launchFluxionInstance(this.configPath, this.cx.options.host, this.cx.options.port, this.cx.options.metaPort);
 
-  const { workerOptions } = cx.options;
-  const restartWhen = workerOptions.restartWhen;
-  const cpuCount = Math.max(1, os.cpus().length);
-  const workerCount = Math.max(1, Math.min(workerOptions.maxWorkerCount ?? Math.min(2, cpuCount), cpuCount));
+    this.cx.logger.info({
+      message: 'PrimaryStarted',
+      pid: process.pid,
+      workers: this.workerCount,
+      host: this.cx.options.host,
+      port: this.cx.options.port,
+      metaPort: this.cx.options.metaPort,
+    });
 
-  cx.logger.info({
-    message: 'PrimaryStarted',
-    pid: process.pid,
-    workers: workerCount,
-    host: cx.options.host,
-    port: cx.options.port,
-    metaPort: cx.options.metaPort,
-  });
+    this.registerProcessHandlers();
 
-  const workers = new Map<number, WorkerState>();
-  const routeRequests = new Map<number, { resolve: (routes: FluxionRouteMeta[]) => void; timer: NodeJS.Timeout }>();
-  let routeRequestId = 0;
+    for (let i = 0; i < this.workerCount; i++) {
+      this.spawnSlot(i + 1);
+    }
 
-  // slot -> recent restart timestamps (pruned to RESTART_WINDOW_MS on access).
-  // Keyed by the stable 1-based slot, not cluster's worker.id (which changes
-  // on every fork), so history survives respawn cycles.
-  const restartLog = new Map<number, number[]>();
+    this.startPingLoop();
+  }
 
-  const restartCountInWindow = (slot: number) => {
+  private registerProcessHandlers(): void {
+    const handleShutdownSignal = (signal: NodeJS.Signals) => {
+      void this.beginShutdown(signal);
+    };
+
+    process.once('SIGINT', () => handleShutdownSignal('SIGINT'));
+    process.once('SIGTERM', () => handleShutdownSignal('SIGTERM'));
+  }
+
+  private restartCountInWindow(slot: number): number {
     const now = Date.now();
-    const log = (restartLog.get(slot) ?? []).filter((t) => now - t < RESTART_WINDOW_MS);
-    restartLog.set(slot, log);
+    const log = (this.restartLog.get(slot) ?? []).filter((t) => now - t < RESTART_WINDOW_MS);
+    this.restartLog.set(slot, log);
     return log.length;
-  };
+  }
 
-  const recordRestart = (slot: number) => {
+  private recordRestart(slot: number): void {
     const now = Date.now();
-    const log = (restartLog.get(slot) ?? []).filter((t) => now - t < RESTART_WINDOW_MS);
+    const log = (this.restartLog.get(slot) ?? []).filter((t) => now - t < RESTART_WINDOW_MS);
     log.push(now);
-    restartLog.set(slot, log);
-  };
+    this.restartLog.set(slot, log);
+  }
 
-  const isStorming = (slot: number) => restartCountInWindow(slot) >= MAX_RESTARTS_PER_WINDOW;
+  private isStorming(slot: number): boolean {
+    return this.restartCountInWindow(slot) >= MAX_RESTARTS_PER_WINDOW;
+  }
 
-  const getWorkersSnapshot = () => {
+  private getWorkersSnapshot() {
     return {
       primaryPid: process.pid,
-      host: cx.options.host,
-      port: cx.options.port,
-      metaPort: cx.options.metaPort,
+      host: this.cx.options.host,
+      port: this.cx.options.port,
+      metaPort: this.cx.options.metaPort,
       uptimeSeconds: Number(process.uptime().toFixed(3)),
-      workers: Array.from(workers.entries()).map(([workerId, info]) => {
+      shuttingDown: this.shuttingDown,
+      workers: Array.from(this.workers.entries()).map(([workerId, info]) => {
         const { instance } = info;
         const stats = info.lastStats;
         return {
@@ -111,42 +144,45 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
         };
       }),
     };
-  };
+  }
 
-  createPrimaryMetaApiServer(cx, getWorkersSnapshot, () => {
-    const worker = Array.from(workers.values()).find((info) => info.state === 'ready' && info.instance.isConnected());
+  private getRoutesSnapshot(): Promise<FluxionRouteMeta[]> {
+    const worker = Array.from(this.workers.values()).find(
+      (info) => info.state === 'ready' && info.instance.isConnected(),
+    );
     if (!worker) {
       return Promise.resolve([]);
     }
 
     return new Promise((resolve) => {
-      const requestId = ++routeRequestId;
+      const requestId = ++this.routeRequestId;
       const timer = setTimeout(() => {
-        routeRequests.delete(requestId);
+        this.routeRequests.delete(requestId);
         resolve([]);
-      }, 1000);
+      }, ROUTES_TIMEOUT_MS);
       timer.unref();
-      routeRequests.set(requestId, { resolve, timer });
+      this.routeRequests.set(requestId, { resolve, timer });
       try {
         sendToWorker(worker.instance, { type: PrimaryAction.Routes, requestId });
       } catch {
         clearTimeout(timer);
-        routeRequests.delete(requestId);
+        this.routeRequests.delete(requestId);
         resolve([]);
       }
     });
-  });
+  }
 
-  // Recycle a worker via hard kill (SIGTERM). Guards enforce one-at-a-time
-  // (so a workload-wide condition rolls restarts instead of nuking the pool)
-  // and the anti-storm window. Note: relies on the worker's default SIGTERM
-  // disposition to exit; fluxion workers never trap SIGTERM.
-  const initiateRecycle = (info: WorkerState, reason: string) => {
-    for (const w of workers.values()) {
-      if (w.state === 'restarting') return; // another recycle in flight; retried next tick
+  private initiateRecycle(info: WorkerState, reason: string): void {
+    if (this.shuttingDown) {
+      return;
     }
-    if (isStorming(info.slot)) {
-      cx.logger.warn({
+
+    for (const workerInfo of this.workers.values()) {
+      if (workerInfo.state === 'restarting') return;
+    }
+
+    if (this.isStorming(info.slot)) {
+      this.cx.logger.warn({
         message: 'WorkerRecycleSuppressed',
         slot: info.slot,
         pid: info.pid,
@@ -156,56 +192,68 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
       });
       return;
     }
-    recordRestart(info.slot);
+
+    this.recordRestart(info.slot);
     info.state = 'restarting';
     info.restartReason = reason;
-    cx.logger.warn({
+    this.cx.logger.warn({
       message: 'WorkerRecycling',
       slot: info.slot,
       pid: info.pid,
       reason,
     });
     info.instance.kill();
-  };
+  }
 
-  // Evaluate memory + uptime against a fresh stats report. Runs on every
-  // Stats message (~every 2s), so reaction latency is bounded by the stats
-  // interval, not the ping interval. Infinity thresholds short-circuit here.
-  const evaluateResourceConditions = (info: WorkerState, stats: WorkerRuntimeStats) => {
-    const rssMb = bytesToMb(stats.memory.rss);
-    if (rssMb > restartWhen.memoryUsageGreaterThan) {
-      initiateRecycle(info, `memoryUsageGreaterThan: rss ${rssMb}MB > ${restartWhen.memoryUsageGreaterThan}MB`);
+  private evaluateResourceConditions(info: WorkerState, stats: WorkerRuntimeStats): void {
+    if (this.shuttingDown) {
       return;
     }
-    const uptimeMs = stats.uptimeSeconds * 1000;
-    if (uptimeMs > restartWhen.uptimeGreaterThan) {
-      initiateRecycle(
+
+    const rssMb = bytesToMb(stats.memory.rss);
+    if (rssMb > this.restartWhen.memoryUsageGreaterThan) {
+      this.initiateRecycle(
         info,
-        `uptimeGreaterThan: ${Math.round(uptimeMs / 1000)}s > ${Math.round(restartWhen.uptimeGreaterThan / 1000)}s`,
+        `memoryUsageGreaterThan: rss ${rssMb}MB > ${this.restartWhen.memoryUsageGreaterThan}MB`,
+      );
+      return;
+    }
+
+    const uptimeMs = stats.uptimeSeconds * 1000;
+    if (uptimeMs > this.restartWhen.uptimeGreaterThan) {
+      this.initiateRecycle(
+        info,
+        `uptimeGreaterThan: ${Math.round(uptimeMs / 1000)}s > ${Math.round(this.restartWhen.uptimeGreaterThan / 1000)}s`,
       );
     }
-  };
+  }
 
-  // Evaluate liveness against the last pong. Runs on the ping tick (5s); a
-  // wedged worker stops replying, lastPongAt goes stale past the threshold.
-  const evaluateLiveness = (now: number) => {
-    for (const info of workers.values()) {
+  private evaluateLiveness(now: number): void {
+    if (this.shuttingDown) {
+      return;
+    }
+
+    for (const info of this.workers.values()) {
       if (info.state !== 'ready' || info.lastPongAt === undefined) continue;
       const staleMs = now - info.lastPongAt;
-      if (staleMs > restartWhen.healthzTimeout) {
-        initiateRecycle(
+      if (staleMs > this.restartWhen.healthzTimeout) {
+        this.initiateRecycle(
           info,
-          `healthzTimeout: no pong for ${Math.round(staleMs / 1000)}s > ${Math.round(restartWhen.healthzTimeout / 1000)}s`,
+          `healthzTimeout: no pong for ${Math.round(staleMs / 1000)}s > ${Math.round(this.restartWhen.healthzTimeout / 1000)}s`,
         );
       }
     }
-  };
+  }
 
-  const spawnSlot = (slot: number) => {
-    attachWorker(cluster.fork({ WORKER_ID: String(slot) }), slot);
-  };
+  private spawnSlot(slot: number): void {
+    if (this.shuttingDown) {
+      return;
+    }
 
-  const attachWorker = (worker: cluster.Worker, slot: number): void => {
+    this.attachWorker(cluster.fork({ WORKER_ID: String(slot) }), slot);
+  }
+
+  private attachWorker(worker: cluster.Worker, slot: number): void {
     const workerInfo: WorkerState = {
       state: 'creating',
       pid: worker.process.pid,
@@ -213,7 +261,7 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
       createdAt: Date.now(),
       instance: worker,
     };
-    workers.set(worker.id, workerInfo);
+    this.workers.set(worker.id, workerInfo);
 
     worker.on('message', (raw: WorkerMessage) => {
       if (!isWorkerMessage(raw)) {
@@ -232,7 +280,7 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
         workerInfo.state = 'ready';
         workerInfo.pid = raw.pid;
         workerInfo.readyAt = Date.now();
-        cx.logger.info({
+        this.cx.logger.info({
           message: 'WorkerReady',
           workerId: worker.id,
           slot,
@@ -244,7 +292,7 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
         workerInfo.pid = raw.pid;
-        cx.logger.info({
+        this.cx.logger.info({
           message: 'WorkerCreated',
           workerId: worker.id,
           slot,
@@ -257,29 +305,29 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
         workerInfo.pid = raw.pid;
         workerInfo.lastStats = raw.stats;
         if (workerInfo.state === 'ready') {
-          evaluateResourceConditions(workerInfo, raw.stats);
+          this.evaluateResourceConditions(workerInfo, raw.stats);
         }
         return;
       }
 
       if (raw.type === WorkerAction.Routes) {
-        const request = routeRequests.get(raw.requestId);
+        const request = this.routeRequests.get(raw.requestId);
         if (request) {
           clearTimeout(request.timer);
-          routeRequests.delete(raw.requestId);
+          this.routeRequests.delete(raw.requestId);
           request.resolve(raw.routes);
         }
       }
     });
 
     worker.on('exit', (code, signal) => {
-      const info = workers.get(worker.id);
-      workers.delete(worker.id);
+      const info = this.workers.get(worker.id);
+      this.workers.delete(worker.id);
       const exitedSlot = info?.slot;
-      const expected = info?.state === 'restarting';
-      const reason = info?.restartReason ?? null;
+      const expected = info?.state === 'restarting' || this.shuttingDown;
+      const reason = info?.restartReason ?? (this.shuttingDown ? 'shutdown' : null);
 
-      cx.logger.warn({
+      this.cx.logger.warn({
         message: 'WorkerExited',
         workerId: worker.id,
         slot: exitedSlot ?? null,
@@ -290,18 +338,16 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
         reason,
       });
 
-      if (exitedSlot === undefined) return;
+      if (exitedSlot === undefined || this.shuttingDown) return;
 
-      if (expected) {
-        // Proactive recycle: the restart was already counted when initiated.
-        spawnSlot(exitedSlot);
+      if (info?.state === 'restarting') {
+        this.spawnSlot(exitedSlot);
         return;
       }
 
-      // Unexpected crash: count it, then respawn unless anti-storm trips.
-      recordRestart(exitedSlot);
-      if (isStorming(exitedSlot)) {
-        cx.logger.error({
+      this.recordRestart(exitedSlot);
+      if (this.isStorming(exitedSlot)) {
+        this.cx.logger.error({
           message: 'WorkerRespawnSuppressed',
           slot: exitedSlot,
           windowMs: RESTART_WINDOW_MS,
@@ -309,27 +355,161 @@ export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' 
         });
         return;
       }
-      spawnSlot(exitedSlot);
+      this.spawnSlot(exitedSlot);
     });
-  };
-
-  for (let i = 0; i < workerCount; i++) {
-    spawnSlot(i + 1);
   }
 
-  const pingTimer = setInterval(() => {
-    const sentAt = Date.now();
-    for (const info of workers.values()) {
-      if (!info.instance.isConnected()) {
-        continue;
+  private startPingLoop(): void {
+    this.pingTimer = setInterval(() => {
+      const sentAt = Date.now();
+      for (const info of this.workers.values()) {
+        if (!info.instance.isConnected()) {
+          continue;
+        }
+        try {
+          sendToWorker(info.instance, { type: PrimaryAction.Ping, sentAt });
+        } catch {
+          // Ignore transient IPC errors; worker lifecycle events will reconcile state.
+        }
       }
+      this.evaluateLiveness(Date.now());
+    }, PING_INTERVAL_MS);
+    this.pingTimer.unref();
+  }
+
+  private stopTimers(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
+
+    for (const [requestId, request] of this.routeRequests.entries()) {
+      clearTimeout(request.timer);
+      request.resolve([]);
+      this.routeRequests.delete(requestId);
+    }
+  }
+
+  private getAliveWorkers(): WorkerState[] {
+    return Array.from(this.workers.values()).filter((info) => !info.instance.isDead());
+  }
+
+  private async waitForWorkersToExit(timeoutMs: number): Promise<WorkerState[]> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const alive = this.getAliveWorkers();
+      if (alive.length === 0) {
+        return [];
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, PRIMARY_SHUTDOWN_POLL_INTERVAL_MS);
+      });
+    }
+
+    return this.getAliveWorkers();
+  }
+
+  private async forceKillWorkers(workers: WorkerState[]): Promise<void> {
+    for (const info of workers) {
+      const pid = info.pid ?? info.instance.process.pid;
+      this.cx.logger.error({
+        message: 'WorkerForceKilled',
+        slot: info.slot,
+        pid: pid ?? null,
+      });
+
       try {
-        sendToWorker(info.instance, { type: PrimaryAction.Ping, sentAt });
+        info.instance.process.kill('SIGKILL');
       } catch {
-        // Ignore transient IPC errors; worker lifecycle events will reconcile state.
+        // Ignore races where the worker exits between timeout and force kill.
       }
     }
-    evaluateLiveness(Date.now());
-  }, 5000);
-  pingTimer.unref();
+
+    await this.waitForWorkersToExit(1000);
+  }
+
+  private async shutdownWorkers(signal: NodeJS.Signals): Promise<void> {
+    const workers = this.getAliveWorkers();
+    for (const info of workers) {
+      const pid = info.pid ?? info.instance.process.pid;
+      this.cx.logger.warn({
+        message: 'WorkerShutdownRequested',
+        slot: info.slot,
+        pid: pid ?? null,
+        signal,
+      });
+
+      try {
+        info.instance.kill(signal);
+      } catch {
+        // Ignore races; exit listener will reconcile state.
+      }
+    }
+
+    const remaining = await this.waitForWorkersToExit(PRIMARY_SHUTDOWN_TIMEOUT_MS);
+    if (remaining.length === 0) {
+      return;
+    }
+
+    this.cx.logger.error({
+      message: 'PrimaryShutdownTimeout',
+      pid: process.pid,
+      remainingWorkers: remaining.map((info) => ({
+        slot: info.slot,
+        pid: info.pid ?? info.instance.process.pid ?? null,
+      })),
+      timeoutMs: PRIMARY_SHUTDOWN_TIMEOUT_MS,
+    });
+
+    await this.forceKillWorkers(remaining);
+  }
+
+  private async beginShutdown(signal: NodeJS.Signals): Promise<void> {
+    if (this.shutdownPromise) {
+      return this.shutdownPromise;
+    }
+
+    this.shutdownPromise = (async () => {
+      this.shuttingDown = true;
+      this.cx.logger.warn({
+        message: 'PrimaryShuttingDown',
+        pid: process.pid,
+        signal,
+        workerCount: this.workers.size,
+      });
+
+      this.stopTimers();
+
+      try {
+        await this.shutdownWorkers(signal);
+      } finally {
+        this.metaServer.close();
+        await cleanupFluxionInstance();
+      }
+    })();
+
+    try {
+      await this.shutdownPromise;
+      process.exit(0);
+    } catch (error) {
+      this.cx.logger.error({
+        message: 'PrimaryShutdownFailed',
+        pid: process.pid,
+        signal,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      process.exit(1);
+    }
+  }
+}
+
+export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
+  if (!cluster.isPrimary) {
+    $throw('createPrimary should only be called in primary process');
+  }
+
+  const controller = new FluxionPrimaryController(cx);
+  await controller.start();
 }
