@@ -98,9 +98,12 @@ export class FluxionInstanceManager {
       return false;
     }
 
-    for (let i = 0; i < 100; i++) {
+    const INTERVAL = 100;
+    const TOTAL_TIME = 10000;
+
+    for (let i = 0; i < TOTAL_TIME / INTERVAL; i++) {
       if (this.isAlive(pid)) {
-        await new Promise((f) => setTimeout(f, 100));
+        await new Promise((f) => setTimeout(f, INTERVAL));
       } else {
         break;
       }
@@ -109,7 +112,7 @@ export class FluxionInstanceManager {
     // & If cannot kill the old process, exit immediately
     if (this.isAlive(pid)) {
       console.error(`[FluxionInstanceManager] Failed to kill process ${pid} after multiple attempts`);
-      process.exit(0);
+      process.exit(1);
     }
 
     return true;
