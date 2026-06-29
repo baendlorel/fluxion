@@ -134,7 +134,6 @@ class FluxionWorkerRuntime {
 
     if (!this.server) {
       process.exit(0);
-      return;
     }
 
     const timer = setTimeout(() => {
@@ -147,7 +146,6 @@ class FluxionWorkerRuntime {
       if (error) {
         this.cx.logger.error({ message: 'WorkerShutdownFailed', pid: process.pid, error: getErrorMessage(error) });
         process.exit(1);
-        return;
       }
 
       process.exit(0);
