@@ -3,21 +3,14 @@
  * 测试 fluxion 实例管理器功能
  */
 
-import { getInstanceManager } from '../src/cluster/launcher.js';
-
-const manager = getInstanceManager();
+import { instanceManager as manager } from '../src/cluster/launcher.js';
 
 console.log('=== Testing Fluxion Instance Manager ===\n');
 
 // 测试注册实例
 console.log('1. Testing instance registration...');
 try {
-  manager.registerInstance(
-    '/home/aldia/projects/framework/fluxion-ts/fluxion.config.ts',
-    'localhost',
-    9000,
-    9001,
-  );
+  manager.register('/home/aldia/projects/framework/fluxion-ts/fluxion.config.ts', 'localhost', 9000, 9001);
   console.log('✓ Instance registered successfully\n');
 } catch (error) {
   console.error('✗ Failed to register instance:', error);
@@ -27,13 +20,13 @@ try {
 // 测试获取运行实例
 console.log('2. Testing get running instances...');
 try {
-  const instances = manager.getRunningInstances();
+  const instances = manager.read(true);
   console.log(`✓ Found ${instances.length} running instance(s)`);
   if (instances.length > 0) {
     const instance = instances[0];
     console.log(`  - PID: ${instance.pid}`);
     console.log(`  - Port: ${instance.port}`);
-    console.log(`  - Config Hash: ${instance.configHash.slice(0, 16)}...`);
+    console.log(`  - Config Path: ${instance.configPath}`);
   }
   console.log('');
 } catch (error) {
@@ -43,7 +36,7 @@ try {
 // 测试打印实例
 console.log('3. Testing print instances...');
 try {
-  manager.printInstances();
+  manager.print();
   console.log('✓ Instances printed successfully\n');
 } catch (error) {
   console.error('✗ Failed to print instances:', error);
@@ -52,7 +45,7 @@ try {
 // 测试注销实例
 console.log('4. Testing instance unregistration...');
 try {
-  manager.unregisterInstance();
+  manager.unregister();
   console.log('✓ Instance unregistered successfully\n');
 } catch (error) {
   console.error('✗ Failed to unregister instance:', error);
@@ -61,7 +54,7 @@ try {
 // 验证注销后的状态
 console.log('5. Verifying instance state after unregistration...');
 try {
-  const instances = manager.getRunningInstances();
+  const instances = manager.read(true);
   console.log(`✓ Current running instances: ${instances.length}`);
   if (instances.length === 0) {
     console.log('  No instances running (as expected)\n');
