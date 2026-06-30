@@ -23,27 +23,20 @@ Fluxion is a filesystem-routing dynamic server for Node.js.
 ## Install
 
 ```bash
-pnpm add fluxion
+pnpm add fluxion-ts 
+pnom add -D tsx # Recommanded, this enables fluxion to hot reload ts files
 ```
 
-## Command Line Interface
-
-**You need [tsx](https://www.npmjs.com/package/tsx) to run fluxion**
-
-```bash
-fluxion # loads fluxion.config.ts by default
-fluxion --config custom-fluxion.config.ts
-
-```
+Fluxion is started programmatically from your own Node.js entry file. There is no built-in CLI entry anymore.
 
 ## Quick Start
 
-Create `server.mjs`:
+Create `server.ts`:
 
-```js
-import { fluxion } from 'fluxion';
+```ts
+import { fluxion } from 'fluxion-ts';
 
-fluxion({
+await fluxion({
   dir: './dynamicDirectory',
   host: '127.0.0.1',
   port: 3000,
@@ -53,7 +46,7 @@ fluxion({
 Create `dynamicDirectory/hello.ts`:
 
 ```ts
-import { defineFluxionModule } from 'fluxion';
+import { defineFluxionModule } from 'fluxion-ts';
 
 export default defineFluxionModule(async (req, cx) => {
   return {
@@ -66,7 +59,7 @@ export default defineFluxionModule(async (req, cx) => {
 Run:
 
 ```bash
-node server.mjs
+tsx  server.ts
 ```
 
 Request:
@@ -81,18 +74,18 @@ Response:
 {"message":"hello fluxion","path":"/hello.ts"}
 ```
 
-## Development Entry
+## Bootstrap Entry
 
-In this repository, `pnpm dev` runs `src/index.ts` directly and starts Fluxion unless `NODE_ENV=production`.
+Your application is responsible for creating the bootstrap file and passing options to `fluxion()`.
 
-Default development options:
+Example:
 
 ```ts
-fluxion({
-  dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
-  host: process.env.HOST ?? 'localhost',
-  port: Number.parseInt(process.env.PORT ?? '9000', 10),
-  metaPort: Number.parseInt(process.env.META_PORT ?? '9001', 10),
+await fluxion({
+  dir: process.env.DYNAMIC_DIRECTORY ?? './dynamicDirectory',
+  host: process.env.HOST ?? '127.0.0.1',
+  port: Number.parseInt(process.env.PORT ?? '3000', 10),
+  metaPort: Number.parseInt(process.env.META_PORT ?? '3001', 10),
   workerOptions: {
     maxWorkerCount: 4,
   },
@@ -167,7 +160,7 @@ handler(req, cx, rawReq, rawRes)
 ### Advanced Module Configuration
 
 ```ts
-import { defineFluxionModule, defineFluxionMiddleware } from 'fluxion';
+import { defineFluxionModule, defineFluxionMiddleware } from 'fluxion-ts';
 
 const logMiddleware = defineFluxionMiddleware(async (req, cx) => {
   cx.logger.info('Request received', { path: req.url.pathname });
@@ -200,7 +193,7 @@ interface FluxionModule {
 Middleware functions execute sequentially before the handler. They can modify request parameters through side effects.
 
 ```ts
-import { defineFluxionMiddleware, defineFluxionModule } from 'fluxion';
+import { defineFluxionMiddleware, defineFluxionModule } from 'fluxion-ts';
 
 const authMiddleware = defineFluxionMiddleware(async (req, cx, rawReq, rawRes) => {
   const token = req.headers.authorization;
@@ -233,7 +226,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   NotFoundException,
-} from 'fluxion';
+} from 'fluxion-ts';
 
 export default defineFluxionModule(async (req) => {
   if (!req.query.id) {
@@ -373,16 +366,16 @@ interface FluxionOptions {
   // Optional timeout configurations
   handlerTimeoutMs?: number;       // Default: 5000ms
   middlewareTimeoutMs?: number;   // Default: 3000ms
-  staticResourceTimeoutMs?: number; // Default: 10min
+  staticResourceTimeoutMs?: number; // Default: 6000000ms (100min)
 
   // File watching
   reloadDelay?: number;            // Default: 500ms
   nativeWatcher?: boolean;        // Use fs.watch instead of chokidar
 
   // File registration patterns
-  include?: string[];             // Files to register (default: all)
-  apiInclude?: string[];          // Files as API handlers (default: ['*.ts'])
-  exclude?: string[];              // Files to exclude
+  include?: string[];             // Default: ['**/*']
+  apiInclude?: string[];          // Default: ['**/*.ts']
+  exclude?: string[];             // Overrides the built-in ignore list
 
   // Meta API
   metaPort?: number;               // Default: port + 1
@@ -402,16 +395,16 @@ interface FluxionOptions {
   maxRequestBytes?: number;        // Default: 8_000_000
 
   // Logging
-  logger?: 'one-line' | 'json-line' | FluxionLoggerFn;
+  logger?: 'one-line' | 'json-line' | FluxionLoggerFn; // Default: 'one-line'
 
   // Module system
   moduleDir?: string;              // Default: process.cwd()
 
   // HTTPS
   https?: {
-    key: string | Buffer;
-    cert: string | Buffer;
-    ca?: string | Buffer | Array<string | Buffer>;
+    key: string;
+    cert: string;
+    ca?: string | Array<string | Buffer> | Buffer;
   };
 }
 ```
@@ -468,6 +461,8 @@ fluxion({
 ```
 
 Relative paths are resolved relative to `moduleDir`. PEM content can be passed directly as strings.
+
+Default exclusions in the current implementation include `node_modules`, `.git`, `dist`, `build`, `.vscode`, `.idea`, `coverage`, `.nyc_output`, `*.log`, `*.tmp`, and `*.temp`.
 
 ## Recent Updates
 
