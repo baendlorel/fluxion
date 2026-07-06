@@ -86,10 +86,13 @@ worker优化：
 - 新增一个interface叫FluxionCronJob：
 ```ts
 拥有字段：
-jobFn:要运行的函数，会以FluxionContext为入参
+active：可选boolean型，可以做到仅仅是关闭后续运行，不注销，方便开关。默认是开的
 cronExpression: parse后的cron表达式，定义了任务的执行时间,类型是`CronExpression`
-onStart: 可选，任务首次启动时执行的函数
-onEnd：可选，任务被注销的时候执行的函数；
+jobFn:要运行的函数，会以FluxionContext为入参
+strategy：执行策略有两种，不管上次结束没有，到了时间就立刻执行的；还有一种是等待上次结束后再执行的。默认是等待模式，这样更安全。
+onRegister: 可选，任务被注册的时候执行的函数
+onUnregister：可选，任务被注销的时候执行的函数
 ```
+- 遵从类似于接口热重载的注册、消除方式。
 
 最后完善src/cronjob/expressions.ts的常用表达式
