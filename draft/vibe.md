@@ -96,3 +96,7 @@ onUnregister：可选，任务被注销的时候执行的函数
 - 遵从类似于接口热重载的注册、消除方式。
 
 最后完善src/cronjob/expressions.ts的常用表达式
+
+---
+plan的修正意见
+1、cronjob应该运行在独立于primary的一个worker里，而不是primary里。
