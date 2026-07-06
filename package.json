@@ -64,6 +64,7 @@
   },
   "dependencies": {
     "chokidar": "4.0.3",
+    "cron-parser": "^5.6.1",
     "fast-json-stable-stringify": "^2.1.0",
     "minimatch": "^10.2.5",
     "tsx": "^4.22.4"

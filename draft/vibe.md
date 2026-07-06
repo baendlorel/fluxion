@@ -74,3 +74,22 @@ worker优化：
 
 ---
 我们换一个思路解决问题。pm2重启fluxion的问题主要在于进程残留，端口重复。因此我的想法是静态文件标记法：1、primary进程创建后，在homedir/.fluxion文件夹内部创建一个文件叫instance.json，里面记录一个数组，每个对象是：启动时间、pid、fluxion.config.ts文件的hash值。2、假如通过其他途径再次以相同配置启动的时候（通过hash值对比），那么将会根据pid kill它后再启动。 把这个代码写入src/cluster/launcher.ts
+
+
+---
+我安装了cron-parser包，`CronExpression`等积极使用
+增加cronjob功能：
+- 在src/cronjob文件夹写核心逻辑；
+- 在src/defines中增加函数defineFluxionCronJob
+- FluxionOptions里增加一个叫做cronjobDir的字段，被指定的文件夹将会被watch，热重载job
+- 以文件名为键来存储FluxionCronJob元数据
+- 新增一个interface叫FluxionCronJob：
+```ts
+拥有字段：
+jobFn:要运行的函数，会以FluxionContext为入参
+cronExpression: parse后的cron表达式，定义了任务的执行时间,类型是`CronExpression`
+onStart: 可选，任务首次启动时执行的函数
+onEnd：可选，任务被注销的时候执行的函数；
+```
+
+最后完善src/cronjob/expressions.ts的常用表达式
