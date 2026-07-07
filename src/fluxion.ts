@@ -6,8 +6,8 @@ import { OPTIONS_NORMALIZED_FLAG } from './common/consts.js';
 import { defineFluxionOptions } from './defines/options.js';
 import { initPrimary } from './cluster/primary.js';
 import { initWorker } from './cluster/worker.js';
-import { FluxionChokidarWatcher } from './watcher/chokidar.js';
-import { FluxionNativeWatcher } from './watcher/native.js';
+import { ApiWatcher } from './watcher/api-watcher.js';
+import { FluxionChokidarCore, FluxionNativeCore } from './watcher/core.js';
 import { FluxionRouter } from './router/index.js';
 
 export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions) {
@@ -23,8 +23,19 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
     // Replace logger with worker logger that prefixes PID
     context.logger = createWorkerLogger(context.logger, process.pid);
     // Only worker creates the watcher
-    const Watcher = context.options.nativeWatcher ? FluxionNativeWatcher : FluxionChokidarWatcher;
-    context.watcher = await new Watcher(context as Pick<FluxionContext, 'options' | 'logger' | 'router'>).start();
+    const CoreType = context.options.nativeWatcher ? FluxionNativeCore : FluxionChokidarCore;
+    context.watcher = await new ApiWatcher(
+      context as Pick<FluxionContext, 'options' | 'logger' | 'router'>,
+      CoreType,
+    ).start();
     initWorker(context);
   }
+}
+
+if (process.env.NODE_ENV !== 'production') {
+  fluxion({
+    dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
+    host: process.env.HOST ?? 'localhost',
+    port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000,
+  });
 }

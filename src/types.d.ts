@@ -1,8 +1,7 @@
 import type http from 'node:http';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
-import type { FluxionChokidarWatcher } from './watcher/chokidar.ts';
-import type { FluxionNativeWatcher } from './watcher/native.ts';
+import type { ApiWatcher } from './watcher/api-watcher.ts';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
 
@@ -270,7 +269,7 @@ export interface FluxionRouteMeta {
 export interface FluxionContext {
   options: NormalizedFluxionOptions;
   logger: FluxionLogger;
-  watcher: FluxionChokidarWatcher | FluxionNativeWatcher;
+  watcher: ApiWatcher;
   router: FluxionRouter;
 }
 
