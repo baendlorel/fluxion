@@ -1,4 +1,5 @@
-import { FluxionWatcherBase, type WatcherBaseContext, type WatcherCoreConstructor } from './base.js';
+import type { WatcherBaseContext, WatcherCoreConstructor } from './base.js';
+import { FluxionWatcherBase } from './base.js';
 
 export interface CronJobManager {
   register(absolutePath: string, relativePath: string): Promise<void>;

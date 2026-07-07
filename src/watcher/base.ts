@@ -1,12 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FluxionLogger } from '../common/logger.js';
+import type { FluxionContext } from '@/types.js';
 import { type WatcherCoreOptions, WatcherCore } from './core.js';
 
-export interface WatcherBaseContext {
-  options: { dir: string; reloadDelay: number };
-  logger: FluxionLogger;
-}
+export type WatcherBaseContext = Pick<FluxionContext, 'logger' | 'options'>;
 
 /**
  * Core constructor type — subclasses pass a WatcherCore subclass constructor.
@@ -14,31 +11,27 @@ export interface WatcherBaseContext {
 export type WatcherCoreConstructor = new (options: WatcherCoreOptions) => WatcherCore;
 
 export abstract class FluxionWatcherBase {
-  protected readonly dir: string;
-  protected readonly reloadDelay: number;
-  protected readonly logger: FluxionLogger;
+  protected readonly cx: WatcherBaseContext;
   private readonly core: WatcherCore;
 
   private timer: NodeJS.Timeout | null = null;
   private readonly filesChanged = new Map<string, string>();
 
   constructor(cx: WatcherBaseContext, CoreType: WatcherCoreConstructor) {
-    this.dir = cx.options.dir;
-    this.reloadDelay = cx.options.reloadDelay;
-    this.logger = cx.logger;
+    this.cx = cx;
 
     // Core constructor only stores options; callbacks are invoked later,
     // after super() returns and all base class fields are initialized.
     this.core = new CoreType({
-      dir: this.dir,
+      dir: this.cx.options.dir,
       onFileChanged: (absolutePath: string, relativePath: string) => this.queueUp(absolutePath, relativePath),
       onError: (error: Error) => {
-        this.logger.error(`Watcher error: ${error.message}`);
-        this.logger.error(`Restarting watcher...`);
+        this.cx.logger.error(`Watcher error: ${error.message}`);
+        this.cx.logger.error(`Restarting watcher...`);
         this.start();
       },
       onReady: () => {
-        this.logger.info(`Watcher ready and watching directory: ${this.dir}`);
+        this.cx.logger.info(`Watcher ready and watching directory: ${this.cx.options.dir}`);
       },
     });
   }
@@ -47,9 +40,9 @@ export abstract class FluxionWatcherBase {
    * Recursively scan the directory and call onChange for each file.
    */
   protected async init(): Promise<this> {
-    const dir = this.dir;
+    const dir = this.cx.options.dir;
     if (!fs.existsSync(dir)) {
-      this.logger.warn(`Directory does not exist: ${dir}`);
+      this.cx.logger.warn(`Directory does not exist: ${dir}`);
       return this;
     }
 
@@ -67,7 +60,7 @@ export abstract class FluxionWatcherBase {
           registerRecursive(absolutePath, relativePath);
         } else if (entry.isFile()) {
           const p = this.onChange(absolutePath, relativePath).catch((e) => {
-            this.logger.error(`Error registering file ${relativePath}: ${(e as Error).message}`);
+            this.cx.logger.error(`Error registering file ${relativePath}: ${(e as Error).message}`);
           });
           registerList.push(p);
         }
@@ -77,7 +70,7 @@ export abstract class FluxionWatcherBase {
     registerRecursive(dir, '');
     await Promise.all(registerList);
 
-    this.logger.info(`Initial registration complete for directory: ${dir}`);
+    this.cx.logger.info(`Initial registration complete for directory: ${dir}`);
     return this;
   }
 
@@ -93,12 +86,12 @@ export abstract class FluxionWatcherBase {
     this.timer = setTimeout(async () => {
       const promises = [...this.filesChanged].map(([abs, rel]) =>
         this.onChange(abs, rel)
-          .catch((err) => this.logger.error(`Error refreshing handlers: ${(err as Error).message}`))
+          .catch((err) => this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`))
           .finally(() => this.filesChanged.delete(abs)),
       );
       await Promise.all(promises);
       this.timer = null;
-    }, this.reloadDelay);
+    }, this.cx.options.reloadDelay);
   }
 
   /**
