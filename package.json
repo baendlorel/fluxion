@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "start": "code-server --bind-addr 0.0.0.0:3000 /app/dynamic && node /app/index.js",
-    "dev": "tsx ./src/index.ts --watch",
+    "dev": "tsx ./examples/main.ts --watch",
     "build": "tsx ./scripts/index.ts --build",
     "pub": "tsx ./scripts/index.ts --publish",
     "check": "tsc --noEmit -p tsconfig.build.json",

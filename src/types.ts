@@ -1,7 +1,7 @@
 import type http from 'node:http';
 import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
-import type { ApiWatcher } from './watcher/api-watcher.ts';
+import type { ApiWatcher } from './watcher/api-watcher.js';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
 

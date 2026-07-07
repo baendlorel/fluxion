@@ -15,7 +15,7 @@
     }
   },
   "include": [
-    "./dynamicDirectory/**/*.ts",
+    "./examples/**/*.ts",
     "./scripts/**/*.ts",
     "./src/**/*.ts",
     "./draft/**/*.ts",

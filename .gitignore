@@ -6,7 +6,7 @@
 .image.json
 local-test
 cronjobs
-dynamicDirectory
+hotapis
 
 
 # Logs
