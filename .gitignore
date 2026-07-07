@@ -2,10 +2,11 @@
 
 .draft/.**
 .rollup.cache
-dynamicDirectory
 .fluxion-private/
 .image.json
 local-test
+cronjobs
+dynamicDirectory
 
 
 # Logs

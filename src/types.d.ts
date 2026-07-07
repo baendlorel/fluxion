@@ -227,6 +227,26 @@ export interface FluxionOptions {
    * Defaults to `undefined`, which disables this API.
    */
   metaSecret?: string;
+
+  /**
+   * Directory containing cronjob files. When set, the primary forks a
+   * dedicated cronjob worker that watches this directory for hot-reloadable
+   * scheduled tasks. Set to undefined to disable cronjob support.
+   * @default undefined
+   */
+  cronjobDir: string;
+
+  /**
+   * Glob patterns for cronjob files that should be registered.
+   * @default ['**\/*.ts']
+   */
+  cronjobInclude?: string[];
+
+  /**
+   * Glob patterns for cronjob files that should be excluded.
+   * @default []
+   */
+  cronjobExclude?: string[];
 }
 
 export interface NormalizedFluxionOptions {
@@ -255,6 +275,11 @@ export interface NormalizedFluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  /** Absolute path to cronjob directory, or undefined if cronjob is disabled. */
+  cronjobDir: string;
+  cronjobInclude: string[];
+  cronjobExclude: string[];
 
   // !security check
   normalizedFlag: symbol;

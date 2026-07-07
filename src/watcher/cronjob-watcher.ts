@@ -1,29 +1,48 @@
-import type { WatcherBaseContext, WatcherCoreConstructor } from './base.js';
-import { FluxionWatcherBase } from './base.js';
-
-export interface CronJobManager {
-  register(absolutePath: string, relativePath: string): Promise<void>;
-  unregister(absolutePath: string): Promise<void>;
-}
+import fs from 'node:fs';
+import { minimatch } from 'minimatch';
+import { FluxionWatcherBase, type WatcherBaseContext, type WatcherCoreConstructor } from './base.js';
+import type { FluxionCronJobManager } from '@/cronjob/manager.js';
 
 export interface CronJobWatcherContext extends WatcherBaseContext {
-  cronJobManager: CronJobManager;
+  cronJobManager: FluxionCronJobManager;
 }
 
 /**
- * Watches the cronjob directory and hot-reloads cron jobs on file changes.
+ * Watches the cronjob directory and hot-reloads jobs on file changes.
  */
 export class CronJobWatcher extends FluxionWatcherBase {
-  private readonly manager: CronJobManager;
+  private readonly manager: FluxionCronJobManager;
+  private readonly include: string[];
+  private readonly exclude: string[];
 
   constructor(cx: CronJobWatcherContext, CoreType: WatcherCoreConstructor) {
-    super(cx, CoreType);
+    super(cx, CoreType, cx.options.cronjobDir);
     this.manager = cx.cronJobManager;
+    this.include = cx.options.cronjobInclude;
+    this.exclude = cx.options.cronjobExclude;
   }
 
   async onChange(absolutePath: string, relativePath: string): Promise<void> {
-    // TODO: implement include/exclude matching and loadFluxionCronJob
-    // For now, delegate directly to the manager
-    await this.manager.register(absolutePath, relativePath);
+    // File deleted → unregister
+    if (!fs.existsSync(absolutePath)) {
+      this.manager.unregister(relativePath);
+      return;
+    }
+
+    // Include/exclude filter
+    if (!this.matchesPatterns(relativePath)) {
+      return;
+    }
+
+    // Reload (import + validate + register)
+    await this.manager.reloadModule(relativePath, absolutePath);
+  }
+
+  private matchesPatterns(relativePath: string): boolean {
+    const included = this.include.some((pattern) => minimatch(relativePath, pattern));
+    if (!included) return false;
+
+    const excluded = this.exclude.some((pattern) => minimatch(relativePath, pattern));
+    return !excluded;
   }
 }

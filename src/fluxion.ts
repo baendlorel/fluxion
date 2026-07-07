@@ -15,14 +15,18 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   const context = { options: alreadyNormalized ? options : defineFluxionOptions(options) } as FluxionContext;
 
   context.logger = createLogger(context as Pick<FluxionContext, 'options'>);
-  context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
 
   if (cluster.isPrimary) {
+    context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
     await initPrimary(context);
-  } else {
-    // Replace logger with worker logger that prefixes PID
+  } else if (process.env.FLUXION_WORKER_TYPE === 'cronjob') {
+    // Cronjob worker: no router, no ApiWatcher
     context.logger = createWorkerLogger(context.logger, process.pid);
-    // Only worker creates the watcher
+    initWorker(context);
+  } else {
+    // Regular HTTP worker
+    context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
+    context.logger = createWorkerLogger(context.logger, process.pid);
     const CoreType = context.options.nativeWatcher ? FluxionNativeCore : FluxionChokidarCore;
     context.watcher = await new ApiWatcher(
       context as Pick<FluxionContext, 'options' | 'logger' | 'router'>,
@@ -37,5 +41,6 @@ if (process.env.NODE_ENV !== 'production') {
     dir: process.env.DYNAMIC_DIRECTORY ?? 'dynamicDirectory',
     host: process.env.HOST ?? 'localhost',
     port: process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000,
+    cronjobDir: 'cronjobs',
   });
 }

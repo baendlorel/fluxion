@@ -12,18 +12,20 @@ export type WatcherCoreConstructor = new (options: WatcherCoreOptions) => Watche
 
 export abstract class FluxionWatcherBase {
   protected readonly cx: WatcherBaseContext;
+  protected readonly watchDir: string;
   private readonly core: WatcherCore;
 
   private timer: NodeJS.Timeout | null = null;
   private readonly filesChanged = new Map<string, string>();
 
-  constructor(cx: WatcherBaseContext, CoreType: WatcherCoreConstructor) {
+  constructor(cx: WatcherBaseContext, CoreType: WatcherCoreConstructor, watchDir: string) {
     this.cx = cx;
+    this.watchDir = watchDir;
 
     // Core constructor only stores options; callbacks are invoked later,
     // after super() returns and all base class fields are initialized.
     this.core = new CoreType({
-      dir: this.cx.options.dir,
+      dir: this.watchDir,
       onFileChanged: (absolutePath: string, relativePath: string) => this.queueUp(absolutePath, relativePath),
       onError: (error: Error) => {
         this.cx.logger.error(`Watcher error: ${error.message}`);
@@ -31,7 +33,7 @@ export abstract class FluxionWatcherBase {
         this.start();
       },
       onReady: () => {
-        this.cx.logger.info(`Watcher ready and watching directory: ${this.cx.options.dir}`);
+        this.cx.logger.info(`Watcher ready and watching directory: ${this.watchDir}`);
       },
     });
   }
@@ -40,7 +42,7 @@ export abstract class FluxionWatcherBase {
    * Recursively scan the directory and call onChange for each file.
    */
   protected async init(): Promise<this> {
-    const dir = this.cx.options.dir;
+    const dir = this.watchDir;
     if (!fs.existsSync(dir)) {
       this.cx.logger.warn(`Directory does not exist: ${dir}`);
       return this;

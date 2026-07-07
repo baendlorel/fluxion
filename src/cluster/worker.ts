@@ -9,8 +9,13 @@ import { WorkerAction, PrimaryAction, isPrimaryMessage } from './consts.js';
 import { sendToPrimary } from './communicate.js';
 import { createWorkerServer } from './server.js';
 
+import { FluxionCronJobManager } from '@/cronjob/manager.js';
+import { CronJobWatcher } from '@/watcher/cronjob-watcher.js';
+import { FluxionChokidarCore, FluxionNativeCore } from '@/watcher/core.js';
+
 const WORKER_SHUTDOWN_TIMEOUT_MS = 10_000;
 const STATS_INTERVAL_MS = 2000;
+const CRONJOB_SHUTDOWN_TIMEOUT_MS = 30_000;
 
 class FluxionWorkerRuntime {
   private server?: http.Server | https.Server;
@@ -158,5 +163,59 @@ export function initWorker(cx: FluxionContext) {
     $throw('createWorker should only be called in worker process');
   }
 
-  new FluxionWorkerRuntime(cx).start();
+  if (process.env.FLUXION_WORKER_TYPE === 'cronjob') {
+    initCronJobWorker(cx);
+  } else {
+    new FluxionWorkerRuntime(cx).start();
+  }
+}
+
+function initCronJobWorker(cx: FluxionContext) {
+  const manager = new FluxionCronJobManager(cx);
+  const CoreType = cx.options.nativeWatcher ? FluxionNativeCore : FluxionChokidarCore;
+  const watcher = new CronJobWatcher(
+    { options: cx.options, logger: cx.logger, cronJobManager: manager },
+    CoreType,
+  );
+
+  sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
+
+  watcher
+    .start()
+    .then(() => {
+      manager.start();
+      sendToPrimary({ type: WorkerAction.Ready, pid: process.pid });
+    })
+    .catch((error) => {
+      cx.logger.error({
+        message: 'CronJobWorkerBootstrapFailed',
+        error: getErrorMessage(error),
+      });
+      process.exit(1);
+    });
+
+  let exiting = false;
+  const shutdown = async (signal: NodeJS.Signals) => {
+    if (exiting) return;
+    exiting = true;
+
+    cx.logger.warn({ message: 'CronJobWorkerShuttingDown', signal });
+    watcher.stop();
+    manager.stop();
+
+    // Wait for running jobs to complete
+    const deadline = Date.now() + CRONJOB_SHUTDOWN_TIMEOUT_MS;
+    while (manager.hasRunningJobs() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (manager.hasRunningJobs()) {
+      cx.logger.warn({ message: 'CronJobWorkerForceExit' });
+    }
+
+    process.exit(0);
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 }

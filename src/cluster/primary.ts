@@ -35,6 +35,7 @@ class FluxionPrimaryController {
   private metaServer: Server;
   private shuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
+  private cronjobWorker: cluster.Worker | null = null;
 
   constructor(private readonly cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
     this.configPath = path.join(cx.options.moduleDir || process.cwd(), 'fluxion.config.ts');
@@ -72,6 +73,10 @@ class FluxionPrimaryController {
     }
 
     this.startPingLoop();
+
+    if (this.cx.options.cronjobDir) {
+      this.spawnCronjobWorker();
+    }
   }
 
   private registerProcessHandlers(): void {
@@ -251,6 +256,57 @@ class FluxionPrimaryController {
     }
 
     this.attachWorker(cluster.fork({ WORKER_ID: String(slot) }), slot);
+  }
+
+  private spawnCronjobWorker(): void {
+    if (this.shuttingDown) {
+      return;
+    }
+
+    this.attachCronjobWorker(cluster.fork({ FLUXION_WORKER_TYPE: 'cronjob' }));
+  }
+
+  private attachCronjobWorker(worker: cluster.Worker): void {
+    this.cronjobWorker = worker;
+
+    worker.on('message', (raw: WorkerMessage) => {
+      if (!isWorkerMessage(raw)) {
+        return;
+      }
+
+      if (raw.type === WorkerAction.Created) {
+        this.cx.logger.info({
+          message: 'CronjobWorkerCreated',
+          pid: raw.pid,
+        });
+        return;
+      }
+
+      if (raw.type === WorkerAction.Ready) {
+        this.cx.logger.info({
+          message: 'CronjobWorkerReady',
+          pid: raw.pid,
+        });
+      }
+    });
+
+    worker.on('exit', (code, signal) => {
+      const pid = worker.process.pid;
+      this.cx.logger.warn({
+        message: 'CronjobWorkerExited',
+        pid: pid ?? 'unknown',
+        code,
+        signal: signal ?? 'none',
+        expected: this.shuttingDown,
+      });
+
+      if (this.shuttingDown) {
+        return;
+      }
+
+      this.cx.logger.info({ message: 'CronjobWorkerRespawning' });
+      this.spawnCronjobWorker();
+    });
   }
 
   private attachWorker(worker: cluster.Worker, slot: number): void {
@@ -443,6 +499,20 @@ class FluxionPrimaryController {
 
       try {
         info.instance.kill(signal);
+      } catch {
+        // Ignore races; exit listener will reconcile state.
+      }
+    }
+
+    // Kill cronjob worker
+    if (this.cronjobWorker && !this.cronjobWorker.isDead()) {
+      this.cx.logger.warn({
+        message: 'CronjobWorkerShutdownRequested',
+        pid: this.cronjobWorker.process.pid ?? null,
+        signal,
+      });
+      try {
+        this.cronjobWorker.kill(signal);
       } catch {
         // Ignore races; exit listener will reconcile state.
       }

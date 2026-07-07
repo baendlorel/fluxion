@@ -9,6 +9,7 @@ import type { FluxionLoggerFn } from '@/common/logger.js';
 import { FluxionModuleType } from '@/common/consts.js';
 
 export { defineFluxionOptions } from './options.js';
+export { defineFluxionCronJob } from './cronjob.js';
 
 /**
  * Use handler function and optional disposer function to define a Fluxion module.

@@ -123,6 +123,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     https,
     nativeWatcher = false,
     metaSecret,
+    cronjobDir: rawCronjobDir,
+    cronjobInclude = ['**/*.ts'],
+    cronjobExclude = [],
   } = o as FluxionOptions;
 
   const logger = o.logger ?? 'one-line';
@@ -139,6 +142,12 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     $throw('FluxionOptions.moduleDir must be a string');
   }
   const moduleDir = path.resolve(rawModuleDir);
+
+  let cronjobDir: string | undefined;
+  if (typeof rawCronjobDir !== 'string') {
+    $throw('FluxionOptions.cronjobDir must be a string');
+  }
+  cronjobDir = path.resolve(rawCronjobDir);
 
   if (typeof host !== 'string') {
     $throw('FluxionOptions.host must be a string');
@@ -224,6 +233,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     nativeWatcher,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
+    cronjobDir,
+    cronjobInclude,
+    cronjobExclude,
     // !
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
