@@ -234,7 +234,7 @@ export interface FluxionOptions {
    * scheduled tasks. Set to undefined to disable cronjob support.
    * @default undefined
    */
-  cronjobDir: string;
+  cronjobDir?: string;
 
   /**
    * Glob patterns for cronjob files that should be registered.
@@ -277,7 +277,7 @@ export interface NormalizedFluxionOptions {
   };
 
   /** Absolute path to cronjob directory, or undefined if cronjob is disabled. */
-  cronjobDir: string;
+  cronjobDir?: string;
   cronjobInclude: string[];
   cronjobExclude: string[];
 

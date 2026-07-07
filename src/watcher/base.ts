@@ -86,6 +86,7 @@ export abstract class FluxionWatcherBase {
     }
 
     this.timer = setTimeout(async () => {
+      // & This is the fastest way. Faster than forEach+push or other way
       const promises = [...this.filesChanged].map(([abs, rel]) =>
         this.onChange(abs, rel)
           .catch((err) => this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`))

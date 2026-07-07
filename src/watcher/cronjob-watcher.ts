@@ -16,6 +16,10 @@ export class CronJobWatcher extends FluxionWatcherBase {
   private readonly exclude: string[];
 
   constructor(cx: CronJobWatcherContext, CoreType: WatcherCoreConstructor) {
+    if (!cx.options.cronjobDir) {
+      $throw('cronjobDir must be given to register a CronJobWatcher');
+    }
+
     super(cx, CoreType, cx.options.cronjobDir);
     this.manager = cx.cronJobManager;
     this.include = cx.options.cronjobInclude;

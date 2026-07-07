@@ -144,10 +144,12 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   const moduleDir = path.resolve(rawModuleDir);
 
   let cronjobDir: string | undefined;
-  if (typeof rawCronjobDir !== 'string') {
-    $throw('FluxionOptions.cronjobDir must be a string');
+  if (rawCronjobDir !== undefined) {
+    if (typeof rawCronjobDir !== 'string') {
+      $throw('FluxionOptions.cronjobDir must be a string or undefined');
+    }
+    cronjobDir = path.resolve(rawCronjobDir);
   }
-  cronjobDir = path.resolve(rawCronjobDir);
 
   if (typeof host !== 'string') {
     $throw('FluxionOptions.host must be a string');

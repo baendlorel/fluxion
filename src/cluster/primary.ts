@@ -74,6 +74,7 @@ class FluxionPrimaryController {
 
     this.startPingLoop();
 
+    // ! CronJobWatcher will check cronjobDir to be non-null
     if (this.cx.options.cronjobDir) {
       this.spawnCronjobWorker();
     }
