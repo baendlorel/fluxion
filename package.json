@@ -26,7 +26,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "instruction.md"
   ],
   "homepage": "https://github.com/baendlorel/fluxion#readme",
   "repository": {
