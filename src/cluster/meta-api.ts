@@ -61,7 +61,7 @@ export function createPrimaryMetaApiServer(
   });
 
   server.on('listening', () => {
-    cx.logger.info({
+    cx.logger.core({
       message: 'MetaApiStarted',
       pid: process.pid,
       host: cx.options.host,

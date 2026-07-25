@@ -53,7 +53,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       truncated: false,
     };
 
-    cx.logger.info({ message: 'request', method, ip, path: url.pathname });
+    cx.logger.core({ message: 'request', method, ip, path: url.pathname });
 
     const start = performance.now();
     res.once('finish', () => {
@@ -77,7 +77,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
         o.bodyTruncated = bodyPreview.truncated;
       }
 
-      cx.logger.info(o);
+      cx.logger.core(o);
     });
 
     // * Start request handling
@@ -192,7 +192,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
     let listening = false;
 
     server.on('close', () => {
-      cx.logger.info({
+      cx.logger.core({
         message: 'ServerClosed',
         host: cx.options.host,
         port: cx.options.port,
@@ -201,14 +201,14 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
 
     server.once('listening', () => {
       listening = true;
-      cx.logger.info({
+      cx.logger.core({
         message: 'ServerStarted',
         pid: process.pid,
         protocol: cx.options.https ? 'https' : 'http',
         host: cx.options.host,
         port: cx.options.port,
       });
-      cx.logger.info({
+      cx.logger.core({
         message: 'DynamicDirectory',
         directory: cx.options.dir,
       });

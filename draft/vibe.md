@@ -100,3 +100,9 @@ onUnregister：可选，任务被注销的时候执行的函数
 ---
 plan的修正意见
 1、cronjob应该运行在独立于primary的一个worker里，而不是primary里。
+
+
+---
+options添加“接口加载方式”：
+1. 现在的策略是“文件侦听”，也就是“watch”
+2. 我们新增一个方式叫“ lazy”，这个模式的工作方式是，每次都拆分url，再用require去加载绝对路径，且忽略cache。这个做法不需要watch，不需要map，但每次都搜索其实开销还挺大的。

@@ -1,5 +1,5 @@
 import type http from 'node:http';
-import type { FluxionLogger, LoggerOption } from '@/common/logger.js';
+import type { FluxionLogger, InternalFluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
 import type { ApiWatcher } from './watcher/api-watcher.js';
 import type { otherstring } from './global.js';
@@ -293,12 +293,14 @@ export interface FluxionRouteMeta {
 
 export interface FluxionContext {
   options: NormalizedFluxionOptions;
-  logger: FluxionLogger;
+  logger: InternalFluxionLogger;
   watcher: ApiWatcher;
   router: FluxionRouter;
 }
 
-export type FluxionModuleContext = Pick<FluxionContext, 'logger'>;
+export interface FluxionModuleContext {
+  logger: FluxionLogger;
+}
 
 export type FluxionHandler<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,

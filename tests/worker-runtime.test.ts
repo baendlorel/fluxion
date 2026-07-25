@@ -28,6 +28,7 @@ const buildContext = (): FluxionContext => {
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
+      core: vi.fn(),
     },
     watcher: {
       stop: vi.fn(),

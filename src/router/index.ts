@@ -105,7 +105,7 @@ export class FluxionRouter {
     // # Delete
     if (!fs.existsSync(absolutePath)) {
       this.handlers.delete(relativePath);
-      this.cx.logger.info({ action: 'Delete', url: relativePath });
+      this.cx.logger.core({ action: 'Delete', url: relativePath });
       return;
     }
 
@@ -114,7 +114,7 @@ export class FluxionRouter {
     const matchesInclude = this.cx.options.include.some((pattern) => minimatch(relativePath, pattern));
     if (!matchesInclude) {
       this.handlers.delete(relativePath);
-      this.cx.logger.info({ action: 'Skip', url: relativePath });
+      this.cx.logger.core({ action: 'Skip', url: relativePath });
       return;
     }
 
@@ -123,7 +123,7 @@ export class FluxionRouter {
     const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesExclude) {
       this.handlers.delete(relativePath);
-      this.cx.logger.info({ action: 'Exclude', url: relativePath });
+      this.cx.logger.core({ action: 'Exclude', url: relativePath });
       return;
     }
 
@@ -133,13 +133,13 @@ export class FluxionRouter {
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
       this.handlers.set(relativePath, m);
-      this.cx.logger.info({ action: 'RegisterApi', url: relativePath });
+      this.cx.logger.core({ action: 'RegisterApi', url: relativePath });
       return;
     }
 
     // register as static resource
     this.handlers.set(relativePath, this.makeStaticResource(absolutePath));
-    this.cx.logger.info({ action: 'RegisterStatic', url: relativePath });
+    this.cx.logger.core({ action: 'RegisterStatic', url: relativePath });
   }
 
   getModule(url: URL): FluxionModuleWithType | undefined {

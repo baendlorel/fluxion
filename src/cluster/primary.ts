@@ -57,7 +57,7 @@ class FluxionPrimaryController {
   async start(): Promise<void> {
     await launchFluxionInstance(this.configPath, this.cx.options.host, this.cx.options.port, this.cx.options.metaPort);
 
-    this.cx.logger.info({
+    this.cx.logger.core({
       message: 'PrimaryStarted',
       pid: process.pid,
       workers: this.workerCount,
@@ -276,7 +276,7 @@ class FluxionPrimaryController {
       }
 
       if (raw.type === WorkerAction.Created) {
-        this.cx.logger.info({
+        this.cx.logger.core({
           message: 'CronjobWorkerCreated',
           pid: raw.pid,
         });
@@ -284,7 +284,7 @@ class FluxionPrimaryController {
       }
 
       if (raw.type === WorkerAction.Ready) {
-        this.cx.logger.info({
+        this.cx.logger.core({
           message: 'CronjobWorkerReady',
           pid: raw.pid,
         });
@@ -305,7 +305,7 @@ class FluxionPrimaryController {
         return;
       }
 
-      this.cx.logger.info({ message: 'CronjobWorkerRespawning' });
+      this.cx.logger.core({ message: 'CronjobWorkerRespawning' });
       this.spawnCronjobWorker();
     });
   }
@@ -337,7 +337,7 @@ class FluxionPrimaryController {
         workerInfo.state = 'ready';
         workerInfo.pid = raw.pid;
         workerInfo.readyAt = Date.now();
-        this.cx.logger.info({
+        this.cx.logger.core({
           message: 'WorkerReady',
           workerId: worker.id,
           slot,
@@ -349,7 +349,7 @@ class FluxionPrimaryController {
       if (raw.type === WorkerAction.Created) {
         workerInfo.state = 'created';
         workerInfo.pid = raw.pid;
-        this.cx.logger.info({
+        this.cx.logger.core({
           message: 'WorkerCreated',
           workerId: worker.id,
           slot,

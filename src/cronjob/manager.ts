@@ -1,17 +1,21 @@
-import type { FluxionCronJobContext } from './types.js';
-import type { FluxionCronJob, CronJobState } from './types.js';
+import type { FluxionCronJobContext, FluxionCronJob, CronJobState } from './types.js';
 import { FluxionCronJobExecutionStrategy } from './types.js';
 import { isFluxionCronJob } from './validator.js';
+import type { NormalizedFluxionOptions } from '@/types.js';
+import type { InternalFluxionLogger } from '@/common/logger.js';
 
 const TICK_INTERVAL_MS = 1000;
+
+interface CronJobManagerContext {
+  options: NormalizedFluxionOptions;
+  logger: InternalFluxionLogger;
+}
 
 export class FluxionCronJobManager {
   private readonly jobs = new Map<string, CronJobState>();
   private tickTimer?: NodeJS.Timeout;
 
-  constructor(
-    private readonly cx: FluxionCronJobContext,
-  ) {}
+  constructor(private readonly cx: CronJobManagerContext) {}
 
   /**
    * Register or replace a job for the given filename.
@@ -32,7 +36,7 @@ export class FluxionCronJobManager {
       modulePath,
     });
 
-    this.cx.logger.info({
+    this.cx.logger.core({
       message: 'RegisterCronJob',
       filename,
       nextRunAt: new Date(nextRunAt).toISOString(),
@@ -50,14 +54,14 @@ export class FluxionCronJobManager {
     this.callHook(state.job.onUnregister, filename, 'UnregisterHookFailed');
     this.jobs.delete(filename);
 
-    this.cx.logger.info({ message: 'UnregisterCronJob', filename });
+    this.cx.logger.core({ message: 'UnregisterCronJob', filename });
   }
 
   start(): void {
     if (this.tickTimer) return;
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.tickTimer.unref();
-    this.cx.logger.info({ message: 'CronJobManagerStarted', jobCount: this.jobs.size });
+    this.cx.logger.core({ message: 'CronJobManagerStarted', jobCount: this.jobs.size });
   }
 
   stop(): void {
@@ -65,7 +69,7 @@ export class FluxionCronJobManager {
       clearInterval(this.tickTimer);
       this.tickTimer = undefined;
     }
-    this.cx.logger.info({ message: 'CronJobManagerStopped' });
+    this.cx.logger.core({ message: 'CronJobManagerStopped' });
   }
 
   hasRunningJobs(): boolean {
@@ -138,12 +142,13 @@ export class FluxionCronJobManager {
   private executeJob(filename: string, state: CronJobState): void {
     state.running = true;
 
-    this.cx.logger.info({ message: 'CronJobStarted', filename });
+    this.cx.logger.core({ message: 'CronJobStarted', filename });
 
     const run = async () => {
       try {
-        await state.job.jobFn(this.cx);
-        this.cx.logger.info({ message: 'CronJobCompleted', filename });
+        const userCx: FluxionCronJobContext = { options: this.cx.options, logger: this.cx.logger };
+        await state.job.jobFn(userCx);
+        this.cx.logger.core({ message: 'CronJobCompleted', filename });
       } catch (error) {
         this.cx.logger.error({
           message: 'CronJobFailed',

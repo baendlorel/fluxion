@@ -5,7 +5,7 @@ import stringify from 'fast-json-stable-stringify';
 import { dtm } from './dtm.js';
 import { cctl } from './color.js';
 
-type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
+type LogLevel = 'CORE' | 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;
 
 interface LogEntry {
   timestamp: string;
@@ -35,6 +35,21 @@ export interface FluxionLogger {
   verbose(messageOrObject: string | MessageObject): void;
 }
 
+/**
+ * Internal-only logger used by fluxion's own subsystems (router, watcher,
+ * cluster, cronjob manager, ...). It extends the public {@link FluxionLogger}
+ * with a `core` level that records framework-originated logs — e.g. path
+ * watching, route changes, worker lifecycle — so they are visually distinct
+ * from logs emitted by user handlers.
+ *
+ * ! This type is NOT exported to application code: {@link FluxionModuleContext}
+ * and {@link FluxionCronJobContext} expose only {@link FluxionLogger}, keeping
+ * `core` off-limits to user handlers.
+ */
+export interface InternalFluxionLogger extends FluxionLogger {
+  core(messageOrObject: string | MessageObject): void;
+}
+
 const safeStringify = (value: unknown): string => {
   try {
     return stringify(value);
@@ -44,6 +59,7 @@ const safeStringify = (value: unknown): string => {
 };
 
 const ColoredLevels: Record<LogLevel, string> = {
+  CORE: `${cctl.brightBlack}CORE${cctl.reset}`,
   INFO: `${cctl.cyan}INFO${cctl.reset}`,
   WARN: `${cctl.orange}WARN${cctl.reset}`,
   ERROR: `${cctl.red}ERROR${cctl.reset}`,
@@ -81,10 +97,10 @@ function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): FluxionLoggerFn
   return loggerOption;
 }
 
-export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger {
+export function createLogger(cx: Pick<FluxionContext, 'options'>): InternalFluxionLogger {
   const sink = resolveLoggerSink(cx);
 
-  const logger: FluxionLogger = {
+  const logger: InternalFluxionLogger = {
     write(level: LogLevel, o: string | object): void {
       const entry: LogEntry =
         typeof o === 'string'
@@ -123,6 +139,9 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
     verbose(messageOrObject: string | MessageObject): void {
       this.write('VERBOSE', messageOrObject);
     },
+    core(messageOrObject: string | MessageObject): void {
+      this.write('CORE', messageOrObject);
+    },
   };
 
   return logger;
@@ -131,7 +150,7 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): FluxionLogger
 /**
  * Create a worker logger that prefixes all log messages with the worker PID.
  */
-export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): FluxionLogger {
+export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): InternalFluxionLogger {
   return {
     write(level: LogLevel, messageOrObject: string | MessageObject): void {
       baseLogger.write(
@@ -156,6 +175,9 @@ export function createWorkerLogger(baseLogger: FluxionLogger, pid: number): Flux
     },
     verbose(messageOrObject: string | MessageObject): void {
       this.write('VERBOSE', messageOrObject);
+    },
+    core(messageOrObject: string | MessageObject): void {
+      this.write('CORE', messageOrObject);
     },
   };
 }

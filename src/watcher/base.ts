@@ -33,7 +33,7 @@ export abstract class FluxionWatcherBase {
         this.start();
       },
       onReady: () => {
-        this.cx.logger.info(`Watcher ready and watching directory: ${this.watchDir}`);
+        this.cx.logger.core(`Watcher ready and watching directory: ${this.watchDir}`);
       },
     });
   }
@@ -72,7 +72,7 @@ export abstract class FluxionWatcherBase {
     registerRecursive(dir, '');
     await Promise.all(registerList);
 
-    this.cx.logger.info(`Initial registration complete for directory: ${dir}`);
+    this.cx.logger.core(`Initial registration complete for directory: ${dir}`);
     return this;
   }
 

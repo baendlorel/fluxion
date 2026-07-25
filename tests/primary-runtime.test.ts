@@ -48,6 +48,7 @@ const makeContext = (): Pick<FluxionContext, 'logger' | 'options' | 'router'> =>
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
+      core: vi.fn(),
     },
     options: {
       host: '127.0.0.1',
