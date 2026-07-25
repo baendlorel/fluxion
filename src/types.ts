@@ -5,7 +5,7 @@ import type { ApiWatcher } from './watcher/api-watcher.js';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
 
-export interface NormalizedRequest {
+export interface FluxionRequest {
   /**
    * HTTP request method (GET, POST, PUT, DELETE, etc.)
    */
@@ -323,7 +323,7 @@ export type FluxionHandler<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
 > = (
-  request: NormalizedRequest,
+  request: FluxionRequest,
   cx: FluxionModuleContext,
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response> & { req: InstanceType<Request> },
@@ -333,7 +333,7 @@ export type FluxionMiddleware<
   Request extends typeof http.IncomingMessage = typeof http.IncomingMessage,
   Response extends typeof http.ServerResponse = typeof http.ServerResponse,
 > = (
-  request: NormalizedRequest,
+  request: FluxionRequest,
   cx: FluxionModuleContext,
   rawRequest: InstanceType<Request>,
   rawResponse: InstanceType<Response>,

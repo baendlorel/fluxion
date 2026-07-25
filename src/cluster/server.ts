@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 
-import type { FluxionContext, FluxionModuleContext, NormalizedRequest } from '../types.js';
+import type { FluxionContext, FluxionModuleContext, FluxionRequest } from '../types.js';
 import {
   HttpCode,
   HANDLER_TIMEOUT_FLAG,
@@ -36,7 +36,7 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
       return;
     }
 
-    const normalized: NormalizedRequest = {
+    const normalized: FluxionRequest = {
       method,
       ip,
       url,
