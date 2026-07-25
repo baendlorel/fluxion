@@ -96,8 +96,9 @@ await fluxion({
 
 Fluxion registers files under `dir` based on glob patterns:
 
-- Files matching `apiInclude` (default: `*.ts`) are API handlers.
-- Other files are static resources.
+- Files matching `apiInclude` (default: `**/*.ts`) are API handlers.
+- Files matching `staticInclude` (default: `**/*`) are static resources.
+- Files matching `exclude` are skipped (default: node_modules, .git, dist, etc.).
 - Request paths match file paths relative to `dir`.
 - File extensions are part of the route path.
 
@@ -373,8 +374,8 @@ interface FluxionOptions {
   nativeWatcher?: boolean;        // Use fs.watch instead of chokidar
 
   // File registration patterns
-  include?: string[];             // Default: ['**/*']
   apiInclude?: string[];          // Default: ['**/*.ts']
+  staticInclude?: string[];       // Default: ['**/*']
   exclude?: string[];             // Overrides the built-in ignore list
 
   // Meta API
@@ -424,9 +425,9 @@ fluxion({
 
 ```ts
 fluxion({
-  apiInclude: ['*.ts', '*.api.js'],  // Register as API handlers
-  include: ['*.ts', '*.js', '*.html'], // Register any matching file
-  exclude: ['*.test.ts', '*.spec.ts'], // Exclude from registration
+  apiInclude: ['*.ts', '*.api.js'],     // Register as API handlers
+  staticInclude: ['*.html', '*.css'],   // Register as static resources
+  exclude: ['*.test.ts', '*.spec.ts'],  // Exclude from registration
 });
 ```
 

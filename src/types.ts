@@ -170,20 +170,20 @@ export interface FluxionOptions {
   logger?: LoggerOption;
 
   /**
-   * Glob patterns for files that should be registered.
-   * Only files matching these patterns will be registered (as API or static resource).
-   * Defaults to all files (via wildcard patterns).
-   * @example ['*.ts', '*.js'] - only register TypeScript and JavaScript files
-   */
-  include?: string[];
-
-  /**
    * Glob patterns for files that should be registered as API handlers.
    * Files matching these patterns will be loaded as handlers and registered as APIs.
    * Defaults to TypeScript files (*.ts).
    * @example ['*.api.ts', 'handlers/*.js'] - register specific patterns as APIs
    */
   apiInclude?: string[];
+
+  /**
+   * Glob patterns for files that should be registered as static resources.
+   * Files(after matching `apiInclude`) matching these patterns will be served as static files.
+   * Defaults to all files if not provided.
+   * @example ['*.html', '*.css', '*.js'] - serve specific patterns as static files
+   */
+  staticInclude?: string[];
 
   /**
    * Glob patterns for files that should be excluded from registration.
@@ -265,8 +265,8 @@ export interface NormalizedFluxionOptions {
   workerOptions: NormalizedWorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption;
-  include: string[];
   apiInclude: string[];
+  staticInclude: string[];
   exclude: string[];
   nativeWatcher: boolean;
   metaSecret?: string;

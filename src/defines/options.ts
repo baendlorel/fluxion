@@ -92,6 +92,18 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     $throw('FluxionOptions must be an object');
   }
 
+  // Check for deprecated 'include' option
+  if ('include' in o) {
+    $throw(
+      'The "include" option has been removed. Please use:\n' +
+      '  - "apiInclude" for API handler patterns (default: ["**/*.ts"])\n' +
+      '  - "staticInclude" for static resource patterns (default: ["**/*"])\n' +
+      'Example migration:\n' +
+      '  OLD: { include: ["**/*.ts", "**/*.js"], apiInclude: ["**/*.ts"] }\n' +
+      '  NEW: { apiInclude: ["**/*.ts"], staticInclude: ["**/*.js"] }'
+    );
+  }
+
   const {
     dir: rawDir,
     host,
@@ -104,8 +116,8 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     workerOptions = {},
     maxRequestBytes = 8_000_000,
     reloadDelay = 500,
-    include = ['**/*'],
     apiInclude = ['**/*.ts'],
+    staticInclude = ['**/*'],
     exclude = [
       '**/node_modules/**',
       '**/.git/**',
@@ -229,8 +241,8 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
     logger,
-    include,
     apiInclude,
+    staticInclude,
     exclude,
     nativeWatcher,
     metaSecret,

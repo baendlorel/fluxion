@@ -83,6 +83,23 @@ afterAll(async () => {
 });
 
 describe('flexible router registration', () => {
+  test('throws error when deprecated include option is used', async () => {
+    const dir = makeTempDir();
+    expect(() => {
+      defineFluxionOptions({
+        dir,
+        host: '127.0.0.1',
+        port: nextPort(),
+        metaPort: nextPort(),
+        include: ['**/*.ts'], // This should throw an error
+        apiInclude: ['**/*.ts'],
+        logger: () => {},
+      });
+    }).toThrow(
+      /The "include" option has been removed.*apiInclude.*staticInclude/s
+    );
+  });
+
   test('registers api and static files, updates api handlers, and removes deleted files with sync fs operations', async () => {
     const dir = makeTempDir();
     const cx = makeContext(dir);
@@ -124,7 +141,7 @@ describe('flexible router registration', () => {
     expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).status).toBe(404);
   });
 
-  test('honors include, exclude, apiInclude, and method declarations', async () => {
+  test('honors staticInclude, exclude, apiInclude, and method declarations', async () => {
     const dir = makeTempDir();
     fs.mkdirSync(path.join(dir, 'private'));
     fs.writeFileSync(path.join(dir, 'page.html'), '<h1>ok</h1>');
@@ -141,7 +158,7 @@ describe('flexible router registration', () => {
       host: '127.0.0.1',
       port: nextPort(),
       metaPort: nextPort(),
-      include: ['**/*.api.ts', '**/*.html'],
+      staticInclude: ['**/*.api.ts', '**/*.html'],
       exclude: ['private/**'],
       apiInclude: ['**/*.api.ts'],
       logger: () => {},

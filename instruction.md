@@ -27,7 +27,8 @@ Fluxion is a Node.js server framework with these core concepts:
 - **Hot reload**: files are watched via `chokidar` (or native `fs.watch`); changes are picked up automatically without restart.
 - **Cluster mode**: a primary process manages worker processes. Workers serve traffic; primary manages lifecycle and meta APIs.
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
-- **Static files**: non-API files are served as static resources (GET/HEAD only).
+- **Static files**: files matching `staticInclude` patterns (default: `**/*`) are served as static resources (GET/HEAD only).
+- **File exclusion**: files matching `exclude` patterns (default: node_modules, .git, dist, etc.) are skipped.
 - **Cronjobs**: optional hot-reloadable scheduled tasks via `cronjobDir`.
 
 ### Package Exports
@@ -470,8 +471,8 @@ interface FluxionOptions {
   nativeWatcher?: boolean;         // Use fs.watch instead of chokidar
 
   // File patterns
-  include?: string[];              // Register files matching these. Default: ['**/*']
   apiInclude?: string[];           // API handler patterns. Default: ['**/*.ts']
+  staticInclude?: string[];        // Static resource patterns. Default: ['**/*']
   exclude?: string[];              // Exclude patterns (overrides defaults)
 
   // Meta API (primary process)
@@ -599,8 +600,8 @@ await fluxion({
   dir: './public',
   host: 'localhost',
   port: 3000,
-  include: ['**/*'],             // All files registered
   apiInclude: ['**/*.ts'],       // .ts files are API handlers
+  staticInclude: ['**/*'],      // All files are static resources
   exclude: ['**/*.test.ts'],     // Exclude test files
 });
 ```
