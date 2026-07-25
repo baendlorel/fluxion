@@ -13,7 +13,7 @@ export class ApiWatcher extends FluxionWatcherBase {
   private readonly router: FluxionRouter;
 
   constructor(cx: ApiWatcherContext, CoreType: WatcherCoreConstructor) {
-    super(cx, CoreType);
+    super(cx, CoreType, cx.options.dir);
     this.router = cx.router;
   }
 

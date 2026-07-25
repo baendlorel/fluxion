@@ -85,16 +85,26 @@ export abstract class FluxionWatcherBase {
       return;
     }
 
-    this.timer = setTimeout(async () => {
-      // & This is the fastest way. Faster than forEach+push or other way
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.flushPending();
+    }, this.cx.options.reloadDelay);
+  }
+
+  /**
+   * Drain the pending-change queue. Loops until the queue is empty so that
+   * changes arriving during async onChange are re-collected in the next
+   * iteration.
+   */
+  private async flushPending(): Promise<void> {
+    while (this.filesChanged.size > 0) {
       const promises = [...this.filesChanged].map(([abs, rel]) =>
         this.onChange(abs, rel)
           .catch((err) => this.cx.logger.error(`Error refreshing handlers: ${(err as Error).message}`))
           .finally(() => this.filesChanged.delete(abs)),
       );
       await Promise.all(promises);
-      this.timer = null;
-    }, this.cx.options.reloadDelay);
+    }
   }
 
   /**
