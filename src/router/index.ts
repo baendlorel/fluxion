@@ -87,32 +87,11 @@ export class FluxionRouter {
     };
   }
 
-  private removeApiFileExtension(filepath: string): string {
-    if (!this.cx.options.removeApiFileExt) {
-      return filepath;
-    }
-
-    // Remove the file extension (e.g., 'user/profile.ts' -> 'user/profile')
-    const ext = path.extname(filepath);
-    if (ext) {
-      return filepath.slice(0, -ext.length);
-    }
-    return filepath;
-  }
-
-  /**
-   * File registration logic with minimatch pattern matching:
-   * 1. Check if the path exists, if not, delete the handler;
-   * 2. If file matches exclude patterns, skip registration;
-   * 3. If file matches apiInclude patterns, register as API handler;
-   * 4. If file matches staticInclude patterns, register as static resource;
-   * 5. Otherwise, skip registration (file doesn't match any pattern).
-   */
   async register(absolutePath: string, relativePath: string) {
     // Determine the path to use for handler lookup/deletion
-    // For API files, this might be the path without extension
+    // For API files, this might be transformed by apiMapper
     const isApiFile = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
-    const handlerPath = isApiFile ? this.removeApiFileExtension(relativePath) : relativePath;
+    const handlerPath = isApiFile ? this.cx.options.apiMapper(relativePath) : relativePath;
 
     // Get the disposer and delete
     const disposer = this.handlers.get(handlerPath)?.disposer;
@@ -141,7 +120,7 @@ export class FluxionRouter {
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
-      const apiPath = this.removeApiFileExtension(relativePath);
+      const apiPath = this.cx.options.apiMapper(relativePath);
       this.handlers.set(apiPath, m);
       this.cx.logger.core({ action: 'RegisterApi', url: apiPath });
       return;

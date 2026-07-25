@@ -193,14 +193,20 @@ export interface FluxionOptions {
   exclude?: string[];
 
   /**
-   * Whether to remove file extensions from API routes.
+   * Function or preset to map API file paths to URL routes.
    *
-   * When enabled, API files are registered without their extension in the route path.
-   * For example: `user/profile.ts` → `/user/profile` instead of `/user/profile.ts`
-   * Static resources are not affected by this option.
-   * @default true
+   * Controls how API file paths are transformed into URL routes. Static resources are not affected.
+   *
+   * - `"remove-ext"` (default): Remove file extensions from API routes.
+   *   Example: `user/profile.ts` → `/user/profile`
+   * - `"identical"`: Keep file paths unchanged.
+   *   Example: `user/profile.ts` → `/user/profile.ts`
+   * - Custom function: Provide your own mapping function.
+   *   Example: `(path) => path.replace(/\.ts$/, '').replace(/^api\//, '/api/v1/')`
+   *
+   * @default "remove-ext"
    */
-  removeApiFileExt?: boolean;
+  apiMapper?: 'remove-ext' | 'identical' | ((relativePath: string) => string);
 
   /**
    * HTTPS server configuration. If provided, the server will use HTTPS instead of HTTP.
@@ -278,7 +284,7 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   staticInclude: string[];
   exclude: string[];
-  removeApiFileExt: boolean;
+  apiMapper: (relativePath: string) => string;
   nativeWatcher: boolean;
   metaSecret?: string;
   https?: {

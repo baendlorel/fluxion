@@ -379,7 +379,7 @@ interface FluxionOptions {
   apiInclude?: string[];          // Default: ['**/*.ts']
   staticInclude?: string[];       // Default: ['**/*']
   exclude?: string[];             // Overrides the built-in ignore list
-  removeApiFileExt?: boolean;     // Remove API file extensions from routes (default: true)
+  apiMapper?: string | function;  // Transform API file paths to routes (default: 'remove-ext')
 
   // Meta API
   metaPort?: number;               // Default: port + 1
@@ -431,8 +431,30 @@ fluxion({
   apiInclude: ['*.ts', '*.api.js'],     // Register as API handlers
   staticInclude: ['*.html', '*.css'],   // Register as static resources
   exclude: ['*.test.ts', '*.spec.ts'],  // Exclude from registration
-  removeApiFileExt: true,               // Remove .ts/.js extensions from API routes (default)
+  apiMapper: 'remove-ext',              // Remove .ts/.js extensions from API routes (default)
 });
+```
+
+### API Path Mapping
+
+Control how API file paths are transformed into URL routes using the `apiMapper` option:
+
+```ts
+// Preset: Remove file extensions (default)
+fluxion({ apiMapper: 'remove-ext' });
+// user/profile.ts → /user/profile
+
+// Preset: Keep paths unchanged
+fluxion({ apiMapper: 'identical' });
+// user/profile.ts → /user/profile.ts
+
+// Custom mapper function
+fluxion({
+  apiMapper: (path) => path
+    .replace(/\.ts$/, '')
+    .replace(/^api\//, '/api/v1/')
+});
+// api/users.ts → /api/v1/users
 ```
 
 ### Worker Restart Conditions

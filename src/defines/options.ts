@@ -96,11 +96,11 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   if ('include' in o) {
     $throw(
       'The "include" option has been removed. Please use:\n' +
-      '  - "apiInclude" for API handler patterns (default: ["**/*.ts"])\n' +
-      '  - "staticInclude" for static resource patterns (default: ["**/*"])\n' +
-      'Example migration:\n' +
-      '  OLD: { include: ["**/*.ts", "**/*.js"], apiInclude: ["**/*.ts"] }\n' +
-      '  NEW: { apiInclude: ["**/*.ts"], staticInclude: ["**/*.js"] }'
+        '  - "apiInclude" for API handler patterns (default: ["**/*.ts"])\n' +
+        '  - "staticInclude" for static resource patterns (default: ["**/*"])\n' +
+        'Example migration:\n' +
+        '  OLD: { include: ["**/*.ts", "**/*.js"], apiInclude: ["**/*.ts"] }\n' +
+        '  NEW: { apiInclude: ["**/*.ts"], staticInclude: ["**/*.js"] }',
     );
   }
 
@@ -132,7 +132,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       '**/*.tmp',
       '**/*.temp',
     ],
-    removeApiFileExt = true,
+    apiMapper = 'remove-ext',
     https,
     nativeWatcher = false,
     metaSecret,
@@ -245,7 +245,21 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiInclude,
     staticInclude,
     exclude,
-    removeApiFileExt,
+    apiMapper: (() => {
+      if (typeof apiMapper === 'function') {
+        return apiMapper;
+      }
+      if (apiMapper === 'identical') {
+        return (v) => v;
+      }
+      if (apiMapper === 'remove-ext') {
+        return (filepath: string) => {
+          const ext = path.extname(filepath);
+          return ext ? filepath.slice(0, -ext.length) : filepath;
+        };
+      }
+      $throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
+    })(),
     nativeWatcher,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),

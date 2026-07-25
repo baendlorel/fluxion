@@ -141,10 +141,10 @@ describe('flexible router registration', () => {
     expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).status).toBe(404);
   });
 
-  test('removeApiFileExt option controls API file extension removal', async () => {
+  test('apiMapper controls API file path transformation', async () => {
     const dir = makeTempDir();
 
-    // Test with removeApiFileExt = true (default)
+    // Test with apiMapper = 'remove-ext' (default)
     let cxWithRemove = defineFluxionOptions({
       dir,
       host: '127.0.0.1',
@@ -152,7 +152,7 @@ describe('flexible router registration', () => {
       metaPort: nextPort(),
       apiInclude: ['**/*.ts'],
       staticInclude: ['**/*.html'],
-      removeApiFileExt: true,
+      apiMapper: 'remove-ext',
       logger: () => {},
     });
     let contextWithRemove = { options: cxWithRemove } as FluxionContext;
@@ -162,30 +162,51 @@ describe('flexible router registration', () => {
     writeApi(dir, 'user.ts', "exports.default = { type: 0, handler: () => ({ name: 'user' }) };\n");
     await register(contextWithRemove, 'user.ts');
 
-    // With removeApiFileExt = true, API should be accessible without extension
+    // With apiMapper = 'remove-ext', API should be accessible without extension
     expect(contextWithRemove.router.getModule(new URL('http://local/user'))?.type).toBe(FluxionModuleType.Api);
     expect(contextWithRemove.router.getRoutes()).toEqual([{ path: '/user', type: 'api', methods: null }]);
 
-    // Test with removeApiFileExt = false
-    let cxWithoutRemove = defineFluxionOptions({
+    // Test with apiMapper = 'identical'
+    let cxIdentical = defineFluxionOptions({
       dir,
       host: '127.0.0.1',
       port: nextPort(),
       metaPort: nextPort(),
       apiInclude: ['**/*.ts'],
       staticInclude: ['**/*.html'],
-      removeApiFileExt: false,
+      apiMapper: 'identical',
       logger: () => {},
     });
-    let contextWithoutRemove = { options: cxWithoutRemove } as FluxionContext;
-    contextWithoutRemove.logger = createLogger(contextWithoutRemove);
-    contextWithoutRemove.router = new FluxionRouter(contextWithoutRemove);
+    let contextIdentical = { options: cxIdentical } as FluxionContext;
+    contextIdentical.logger = createLogger(contextIdentical);
+    contextIdentical.router = new FluxionRouter(contextIdentical);
 
-    await register(contextWithoutRemove, 'user.ts');
+    await register(contextIdentical, 'user.ts');
 
-    // With removeApiFileExt = false, API should be accessible with extension
-    expect(contextWithoutRemove.router.getModule(new URL('http://local/user.ts'))?.type).toBe(FluxionModuleType.Api);
-    expect(contextWithoutRemove.router.getRoutes()).toEqual([{ path: '/user.ts', type: 'api', methods: null }]);
+    // With apiMapper = 'identical', API should be accessible with extension
+    expect(contextIdentical.router.getModule(new URL('http://local/user.ts'))?.type).toBe(FluxionModuleType.Api);
+    expect(contextIdentical.router.getRoutes()).toEqual([{ path: '/user.ts', type: 'api', methods: null }]);
+
+    // Test with custom apiMapper function
+    let cxCustom = defineFluxionOptions({
+      dir,
+      host: '127.0.0.1',
+      port: nextPort(),
+      metaPort: nextPort(),
+      apiInclude: ['**/*.ts'],
+      staticInclude: ['**/*.html'],
+      apiMapper: (path) => `api/v1/${path.replace(/\.ts$/, '')}`,
+      logger: () => {},
+    });
+    let contextCustom = { options: cxCustom } as FluxionContext;
+    contextCustom.logger = createLogger(contextCustom);
+    contextCustom.router = new FluxionRouter(contextCustom);
+
+    await register(contextCustom, 'user.ts');
+
+    // With custom apiMapper, API should be accessible with custom path
+    expect(contextCustom.router.getModule(new URL('http://local/api/v1/user'))?.type).toBe(FluxionModuleType.Api);
+    expect(contextCustom.router.getRoutes()).toEqual([{ path: '/api/v1/user', type: 'api', methods: null }]);
   });
 
   test('honors staticInclude, exclude, apiInclude, and method declarations', async () => {

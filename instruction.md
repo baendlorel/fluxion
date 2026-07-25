@@ -474,7 +474,7 @@ interface FluxionOptions {
   apiInclude?: string[];           // API handler patterns. Default: ['**/*.ts']
   staticInclude?: string[];        // Static resource patterns. Default: ['**/*']
   exclude?: string[];              // Exclude patterns (overrides defaults)
-  removeApiFileExt?: boolean;     // Remove API file extensions from routes. Default: true
+  apiMapper?: string | function;  // Transform API file paths to routes. Default: 'remove-ext'
 
   // Meta API (primary process)
   metaPort?: number;               // Default: port + 1
@@ -604,12 +604,70 @@ await fluxion({
   apiInclude: ['**/*.ts'],       // .ts files are API handlers
   staticInclude: ['**/*'],      // All files are static resources
   exclude: ['**/*.test.ts'],     // Exclude test files
-  removeApiFileExt: true,        // Remove extensions from API routes (default)
+  apiMapper: 'remove-ext',      // Remove extensions from API routes (default)
 });
 ```
 
 Files like `public/index.html` become static routes at `/index.html`.
 Files like `public/api/users.ts` become API routes at `/api/users` (extension removed by default).
+
+### API Path Mapping
+
+The `apiMapper` option controls how API file paths are transformed into URL routes:
+
+#### Preset Options
+
+```ts
+// Remove file extensions (default)
+apiMapper: 'remove-ext'
+// user/profile.ts → /user/profile
+
+// Keep paths unchanged
+apiMapper: 'identical'
+// user/profile.ts → /user/profile.ts
+```
+
+#### Custom Mapping Function
+
+Provide your own transformation function for complete control:
+
+```ts
+apiMapper: (path) => {
+  // Custom transformation logic
+  return path
+    .replace(/\.ts$/, '')              // Remove extension
+    .replace(/^api\//, '/api/v1/')     // Add version prefix
+    .replace(/\/index$/, '/');          // Clean up /index/ paths
+}
+// api/users/index.ts → /api/v1/users
+// api/posts.ts → /api/v1/posts
+```
+
+#### Examples
+
+```ts
+// RESTful API with version prefix
+await fluxion({
+  apiMapper: (path) => `/api/v1/${path.replace(/\.ts$/, '')}`,
+  // routes/users.ts → /api/v1/routes/users
+});
+
+// Clean URLs without nested paths
+await fluxion({
+  apiMapper: (path) => path.replace(/\//g, '-').replace(/\.ts$/, ''),
+  // user/profile.ts → user-profile
+});
+
+// Domain-based routing
+await fluxion({
+  apiMapper: (path) => {
+    const [domain, ...rest] = path.split('/');
+    return `/${domain}/api/${rest.join('/').replace(/\.ts$/, '')}`;
+  },
+  // admin/users.ts → /admin/api/users
+  // public/products.ts → /public/api/products
+});
+```
 
 ---
 
