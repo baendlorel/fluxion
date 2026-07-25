@@ -87,6 +87,19 @@ export class FluxionRouter {
     };
   }
 
+  private removeApiFileExtension(filepath: string): string {
+    if (!this.cx.options.removeApiFileExt) {
+      return filepath;
+    }
+
+    // Remove the file extension (e.g., 'user/profile.ts' -> 'user/profile')
+    const ext = path.extname(filepath);
+    if (ext) {
+      return filepath.slice(0, -ext.length);
+    }
+    return filepath;
+  }
+
   /**
    * File registration logic with minimatch pattern matching:
    * 1. Check if the path exists, if not, delete the handler;
@@ -96,16 +109,21 @@ export class FluxionRouter {
    * 5. Otherwise, skip registration (file doesn't match any pattern).
    */
   async register(absolutePath: string, relativePath: string) {
+    // Determine the path to use for handler lookup/deletion
+    // For API files, this might be the path without extension
+    const isApiFile = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
+    const handlerPath = isApiFile ? this.removeApiFileExtension(relativePath) : relativePath;
+
     // Get the disposer and delete
-    const disposer = this.handlers.get(relativePath)?.disposer;
+    const disposer = this.handlers.get(handlerPath)?.disposer;
     if (disposer) {
       await PromiseTry(disposer);
     }
 
     // # Delete
     if (!fs.existsSync(absolutePath)) {
-      this.handlers.delete(relativePath);
-      this.cx.logger.core({ action: 'Delete', url: relativePath });
+      this.handlers.delete(handlerPath);
+      this.cx.logger.core({ action: 'Delete', url: handlerPath });
       return;
     }
 
@@ -123,8 +141,9 @@ export class FluxionRouter {
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
-      this.handlers.set(relativePath, m);
-      this.cx.logger.core({ action: 'RegisterApi', url: relativePath });
+      const apiPath = this.removeApiFileExtension(relativePath);
+      this.handlers.set(apiPath, m);
+      this.cx.logger.core({ action: 'RegisterApi', url: apiPath });
       return;
     }
 
@@ -138,8 +157,8 @@ export class FluxionRouter {
     }
 
     // Step 5: File doesn't match any pattern, skip registration
-    this.handlers.delete(relativePath);
-    this.cx.logger.core({ action: 'Skip', url: relativePath });
+    this.handlers.delete(handlerPath);
+    this.cx.logger.core({ action: 'Skip', url: handlerPath });
   }
 
   getModule(url: URL): FluxionModuleWithType | undefined {

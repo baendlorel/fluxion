@@ -474,6 +474,7 @@ interface FluxionOptions {
   apiInclude?: string[];           // API handler patterns. Default: ['**/*.ts']
   staticInclude?: string[];        // Static resource patterns. Default: ['**/*']
   exclude?: string[];              // Exclude patterns (overrides defaults)
+  removeApiFileExt?: boolean;     // Remove API file extensions from routes. Default: true
 
   // Meta API (primary process)
   metaPort?: number;               // Default: port + 1
@@ -603,11 +604,12 @@ await fluxion({
   apiInclude: ['**/*.ts'],       // .ts files are API handlers
   staticInclude: ['**/*'],      // All files are static resources
   exclude: ['**/*.test.ts'],     // Exclude test files
+  removeApiFileExt: true,        // Remove extensions from API routes (default)
 });
 ```
 
 Files like `public/index.html` become static routes at `/index.html`.
-Files like `public/api/users.ts` become API routes at `/api/users.ts`.
+Files like `public/api/users.ts` become API routes at `/api/users` (extension removed by default).
 
 ---
 

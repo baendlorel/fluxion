@@ -91,13 +91,12 @@ describe('flexible router registration', () => {
         host: '127.0.0.1',
         port: nextPort(),
         metaPort: nextPort(),
+        // @ts-expect-error
         include: ['**/*.ts'], // This should throw an error
         apiInclude: ['**/*.ts'],
         logger: () => {},
       });
-    }).toThrow(
-      /The "include" option has been removed.*apiInclude.*staticInclude/s
-    );
+    }).toThrow(/The "include" option has been removed.*apiInclude.*staticInclude/s);
   });
 
   test('registers api and static files, updates api handlers, and removes deleted files with sync fs operations', async () => {
@@ -110,15 +109,16 @@ describe('flexible router registration', () => {
     await register(cx, 'hello.ts');
     await register(cx, 'asset.txt');
 
-    expect(cx.router.getModule(new URL('http://local/hello.ts'))?.type).toBe(FluxionModuleType.Api);
+    // API files should be registered without extension when removeApiFileExt is true (default)
+    expect(cx.router.getModule(new URL('http://local/hello'))?.type).toBe(FluxionModuleType.Api);
     expect(cx.router.getModule(new URL('http://local/asset.txt'))?.type).toBe(FluxionModuleType.StaticResource);
     expect(cx.router.getRoutes()).toEqual([
       { path: '/asset.txt', type: 'static', methods: null },
-      { path: '/hello.ts', type: 'api', methods: null },
+      { path: '/hello', type: 'api', methods: null },
     ]);
 
     let server = await startWorkerServer(cx);
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).toEqual({
       status: 200,
       body: { message: 'hello-v1' },
     });
@@ -130,15 +130,62 @@ describe('flexible router registration', () => {
     await register(cx, 'hello.ts');
     server = await startWorkerServer(cx);
 
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).toEqual({
       status: 200,
       body: { message: 'hello-v2' },
     });
 
     fs.rmSync(path.join(dir, 'hello.ts'));
     await register(cx, 'hello.ts');
-    expect(cx.router.getModule(new URL('http://local/hello.ts'))).toBeUndefined();
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).status).toBe(404);
+    expect(cx.router.getModule(new URL('http://local/hello'))).toBeUndefined();
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).status).toBe(404);
+  });
+
+  test('removeApiFileExt option controls API file extension removal', async () => {
+    const dir = makeTempDir();
+
+    // Test with removeApiFileExt = true (default)
+    let cxWithRemove = defineFluxionOptions({
+      dir,
+      host: '127.0.0.1',
+      port: nextPort(),
+      metaPort: nextPort(),
+      apiInclude: ['**/*.ts'],
+      staticInclude: ['**/*.html'],
+      removeApiFileExt: true,
+      logger: () => {},
+    });
+    let contextWithRemove = { options: cxWithRemove } as FluxionContext;
+    contextWithRemove.logger = createLogger(contextWithRemove);
+    contextWithRemove.router = new FluxionRouter(contextWithRemove);
+
+    writeApi(dir, 'user.ts', "exports.default = { type: 0, handler: () => ({ name: 'user' }) };\n");
+    await register(contextWithRemove, 'user.ts');
+
+    // With removeApiFileExt = true, API should be accessible without extension
+    expect(contextWithRemove.router.getModule(new URL('http://local/user'))?.type).toBe(FluxionModuleType.Api);
+    expect(contextWithRemove.router.getRoutes()).toEqual([{ path: '/user', type: 'api', methods: null }]);
+
+    // Test with removeApiFileExt = false
+    let cxWithoutRemove = defineFluxionOptions({
+      dir,
+      host: '127.0.0.1',
+      port: nextPort(),
+      metaPort: nextPort(),
+      apiInclude: ['**/*.ts'],
+      staticInclude: ['**/*.html'],
+      removeApiFileExt: false,
+      logger: () => {},
+    });
+    let contextWithoutRemove = { options: cxWithoutRemove } as FluxionContext;
+    contextWithoutRemove.logger = createLogger(contextWithoutRemove);
+    contextWithoutRemove.router = new FluxionRouter(contextWithoutRemove);
+
+    await register(contextWithoutRemove, 'user.ts');
+
+    // With removeApiFileExt = false, API should be accessible with extension
+    expect(contextWithoutRemove.router.getModule(new URL('http://local/user.ts'))?.type).toBe(FluxionModuleType.Api);
+    expect(contextWithoutRemove.router.getRoutes()).toEqual([{ path: '/user.ts', type: 'api', methods: null }]);
   });
 
   test('honors staticInclude, exclude, apiInclude, and method declarations', async () => {
@@ -174,13 +221,13 @@ describe('flexible router registration', () => {
 
     expect(cx.router.getRoutes()).toEqual([
       { path: '/page.html', type: 'static', methods: null },
-      { path: '/post.api.ts', type: 'api', methods: ['POST'] },
+      { path: '/post.api', type: 'api', methods: ['POST'] },
     ]);
 
     await startWorkerServer(cx);
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/post.api.ts`)).status).toBe(405);
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/post.api`)).status).toBe(405);
     expect(
-      await requestJson(`http://127.0.0.1:${cx.options.port}/post.api.ts`, {
+      await requestJson(`http://127.0.0.1:${cx.options.port}/post.api`, {
         method: 'POST',
         body: '{}',
         headers: { 'content-type': 'application/json' },
@@ -208,7 +255,7 @@ describe('middleware', () => {
     await startWorkerServer(cx);
 
     expect(
-      await requestJson(`http://127.0.0.1:${cx.options.port}/middleware.ts`, {
+      await requestJson(`http://127.0.0.1:${cx.options.port}/middleware`, {
         method: 'POST',
         body: JSON.stringify({ input: 1 }),
         headers: { 'content-type': 'application/json' },
@@ -233,7 +280,7 @@ describe('middleware', () => {
     await register(cx, 'guard.ts');
     await startWorkerServer(cx);
 
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/guard.ts`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/guard`)).toEqual({
       status: 401,
       body: { blocked: true },
     });

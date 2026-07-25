@@ -193,6 +193,16 @@ export interface FluxionOptions {
   exclude?: string[];
 
   /**
+   * Whether to remove file extensions from API routes.
+   *
+   * When enabled, API files are registered without their extension in the route path.
+   * For example: `user/profile.ts` → `/user/profile` instead of `/user/profile.ts`
+   * Static resources are not affected by this option.
+   * @default true
+   */
+  removeApiFileExt?: boolean;
+
+  /**
    * HTTPS server configuration. If provided, the server will use HTTPS instead of HTTP.
    * Both `key` and `cert` are required for HTTPS. `ca` is optional for certificate chains.
    */
@@ -268,6 +278,7 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   staticInclude: string[];
   exclude: string[];
+  removeApiFileExt: boolean;
   nativeWatcher: boolean;
   metaSecret?: string;
   https?: {

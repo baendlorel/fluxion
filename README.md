@@ -106,10 +106,12 @@ Examples:
 
 | File                               | Route              | Type        |
 | ---------------------------------- | ------------------ | ----------- |
-| `dynamicDirectory/test.ts`         | `/test.ts`         | API handler |
-| `dynamicDirectory/user/profile.ts` | `/user/profile.ts` | API handler |
+| `dynamicDirectory/test.ts`         | `/test`            | API handler |
+| `dynamicDirectory/user/profile.ts` | `/user/profile`    | API handler |
 | `dynamicDirectory/index.html`      | `/index.html`      | Static file |
 | `dynamicDirectory/assets/app.js`   | `/assets/app.js`   | Static file |
+
+**Note:** API routes have file extensions removed by default (controlled by `removeApiFileExt` option).
 
 ## API Handlers
 
@@ -377,6 +379,7 @@ interface FluxionOptions {
   apiInclude?: string[];          // Default: ['**/*.ts']
   staticInclude?: string[];       // Default: ['**/*']
   exclude?: string[];             // Overrides the built-in ignore list
+  removeApiFileExt?: boolean;     // Remove API file extensions from routes (default: true)
 
   // Meta API
   metaPort?: number;               // Default: port + 1
@@ -428,6 +431,7 @@ fluxion({
   apiInclude: ['*.ts', '*.api.js'],     // Register as API handlers
   staticInclude: ['*.html', '*.css'],   // Register as static resources
   exclude: ['*.test.ts', '*.spec.ts'],  // Exclude from registration
+  removeApiFileExt: true,               // Remove .ts/.js extensions from API routes (default)
 });
 ```
 
