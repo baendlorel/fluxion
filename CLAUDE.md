@@ -1,2 +1,3 @@
 这是一个类似php的热重载服务器库，名为fluxion
 启动的实例成为fluxion实例
+功能变更需同步更新instruction.md
