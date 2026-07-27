@@ -76,8 +76,11 @@ export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
   const pidText = pid === undefined ? '' : ` [${pid}]`;
   const fieldsText = Object.keys(fields).length > 0 ? ` ${cctl.dim}${safeStringify(fields)}${cctl.reset}` : '';
 
+  // 智能处理消息内容：如果有 message 字段就显示，否则只显示 fields
+  const content = rawMessage ? rawMessage + fieldsText : fieldsText.trim();
+
   // eslint-disable-next-line @typescript-eslint/no-console
-  console.log(`${timestamp} ${level}${pidText} ${rawMessage}${fieldsText}`);
+  console.log(`${timestamp} ${level}${pidText} ${content}`);
 };
 
 /**
@@ -106,12 +109,12 @@ export function createLogger(cx: Pick<FluxionContext, 'options'>): InternalFluxi
         typeof o === 'string'
           ? {
               message: o,
-              timestamp: dtm(),
+              timestamp: new Date().toISOString(),
               level,
             }
           : {
               ...o,
-              timestamp: dtm(),
+              timestamp: new Date().toISOString(),
               level,
             };
 

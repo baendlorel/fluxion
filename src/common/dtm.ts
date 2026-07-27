@@ -6,5 +6,5 @@ export function dtm(dt = new Date()) {
   const mm = String(dt.getMinutes()).padStart(2, '0');
   const ss = String(dt.getSeconds()).padStart(2, '0');
   const ms = String(dt.getMilliseconds()).padStart(3, '0');
-  return `${y}.${m}.${d} ${hh}:${mm}:${ss}.${ms}`;
+  return `${y}-${m}-${d} ${hh}:${mm}:${ss}.${ms}`;
 }
