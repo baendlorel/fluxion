@@ -32,6 +32,14 @@ export function createPrimaryMetaApiServer(
       return;
     }
 
+    if (method === 'GET' && url.pathname === META_PREFIX + '/version') {
+      sendJson(res, {
+        ok: true,
+        version: '__VERSION__',
+      });
+      return;
+    }
+
     if (method === 'GET' && url.pathname === META_PREFIX + '/workers') {
       sendJson(res, {
         ok: true,

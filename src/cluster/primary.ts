@@ -36,6 +36,7 @@ class FluxionPrimaryController {
   private shuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
   private cronjobWorker: cluster.Worker | null = null;
+  private startupLogged = false;
 
   constructor(private readonly cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
     this.configPath = path.join(cx.options.moduleDir || process.cwd(), 'fluxion.config.ts');
@@ -343,6 +344,22 @@ class FluxionPrimaryController {
           slot,
           pid: raw.pid,
         });
+
+        // 检查是否所有 worker 都已 ready
+        if (!this.startupLogged) {
+          const allReady = Array.from(this.workers.values()).every((info) => info.state === 'ready');
+          if (allReady) {
+            this.startupLogged = true;
+            this.cx.logger.core({
+              message: 'FluxionStarted',
+              version: '__VERSION__',
+              pid: process.pid,
+              workers: this.workerCount,
+              host: this.cx.options.host,
+              port: this.cx.options.port,
+            });
+          }
+        }
         return;
       }
 
