@@ -17,7 +17,7 @@ export class CronJobWatcher extends FluxionWatcherBase {
 
   constructor(cx: CronJobWatcherContext, CoreType: WatcherCoreConstructor) {
     if (!cx.options.cronjobDir) {
-      $throw('cronjobDir must be given to register a CronJobWatcher');
+      _throw('cronjobDir must be given to register a CronJobWatcher');
     }
 
     super(cx, CoreType, cx.options.cronjobDir);

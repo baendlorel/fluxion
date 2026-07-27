@@ -46,7 +46,7 @@ describe('FluxionWorkerRuntime', () => {
     vi.resetModules();
     sendToPrimaryMock.mockReset();
     createWorkerServerMock.mockReset();
-    globalThis.$throw = (message: string): never => {
+    globalThis._throw = (message: string): never => {
       throw new Error('[fluxion error]' + message);
     };
   });

@@ -78,7 +78,7 @@ describe('FluxionPrimaryController', () => {
     cleanupFluxionInstanceMock.mockReset().mockResolvedValue(undefined);
     sendToWorkerMock.mockReset();
     createPrimaryMetaApiServerMock.mockReset().mockReturnValue({ close: vi.fn() });
-    globalThis.$throw = (message: string): never => {
+    globalThis._throw = (message: string): never => {
       throw new Error('[fluxion error]' + message);
     };
   });

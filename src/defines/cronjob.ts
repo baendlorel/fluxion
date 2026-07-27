@@ -23,20 +23,20 @@ export function defineFluxionCronJob(options: {
   onUnregister?: () => void;
 }): FluxionCronJob {
   if (typeof options !== 'object' || options === null) {
-    $throw('defineFluxionCronJob: options must be an object');
+    _throw('defineFluxionCronJob: options must be an object');
   }
   if (typeof options.cronExpression !== 'string' || options.cronExpression.length === 0) {
-    $throw('defineFluxionCronJob: cronExpression must be a non-empty string');
+    _throw('defineFluxionCronJob: cronExpression must be a non-empty string');
   }
   if (typeof options.jobFn !== 'function') {
-    $throw('defineFluxionCronJob: jobFn must be a function');
+    _throw('defineFluxionCronJob: jobFn must be a function');
   }
 
   let parsed;
   try {
     parsed = CronExpressionParser.parse(options.cronExpression);
   } catch (e) {
-    $throw(`defineFluxionCronJob: invalid cron expression "${options.cronExpression}": ${(e as Error).message}`);
+    _throw(`defineFluxionCronJob: invalid cron expression "${options.cronExpression}": ${(e as Error).message}`);
   }
 
   return {

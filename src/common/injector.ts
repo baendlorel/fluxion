@@ -43,7 +43,7 @@ export function loadFluxionModule(
     m = m.default;
   } else if (isFluxionModule(cx, m)) {
   } else {
-    $throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
+    _throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
 
   return m;

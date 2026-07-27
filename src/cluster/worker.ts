@@ -160,7 +160,7 @@ class FluxionWorkerRuntime {
 
 export function initWorker(cx: FluxionContext) {
   if (cluster.isPrimary) {
-    $throw('createWorker should only be called in worker process');
+    _throw('createWorker should only be called in worker process');
   }
 
   if (process.env.FLUXION_WORKER_TYPE === 'cronjob') {
@@ -173,10 +173,7 @@ export function initWorker(cx: FluxionContext) {
 function initCronJobWorker(cx: FluxionContext) {
   const manager = new FluxionCronJobManager(cx);
   const CoreType = cx.options.nativeWatcher ? FluxionNativeCore : FluxionChokidarCore;
-  const watcher = new CronJobWatcher(
-    { options: cx.options, logger: cx.logger, cronJobManager: manager },
-    CoreType,
-  );
+  const watcher = new CronJobWatcher({ options: cx.options, logger: cx.logger, cronJobManager: manager }, CoreType);
 
   sendToPrimary({ type: WorkerAction.Created, pid: process.pid });
 

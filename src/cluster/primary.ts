@@ -595,7 +595,7 @@ class FluxionPrimaryController {
 
 export async function initPrimary(cx: Pick<FluxionContext, 'logger' | 'options' | 'router'>) {
   if (!cluster.isPrimary) {
-    $throw('createPrimary should only be called in primary process');
+    _throw('createPrimary should only be called in primary process');
   }
 
   const controller = new FluxionPrimaryController(cx);

@@ -14,7 +14,7 @@ function resolveWorkerOptions(options: WorkerOptions = {}): NormalizedWorkerOpti
   // Ping runs every 5s; a threshold below 2x that would recycle healthy workers
   // (a ready worker's lastPongAt is normally ~5s old). Infinity disables.
   if (healthzTimeout !== Infinity && (!Number.isFinite(healthzTimeout) || healthzTimeout < 10_000)) {
-    $throw('workerOptions.restartWhen.healthzTimeout must be a finite number >= 10000 (ms) or Infinity');
+    _throw('workerOptions.restartWhen.healthzTimeout must be a finite number >= 10000 (ms) or Infinity');
   }
   return {
     maxWorkerCount: options.maxWorkerCount ?? 4,
@@ -44,7 +44,7 @@ function readCertificateContent(content: string | Buffer, moduleDir: string): Bu
     }
     return Buffer.from(content);
   }
-  $throw('Certificate content must be a string or Buffer');
+  _throw('Certificate content must be a string or Buffer');
 }
 
 /**
@@ -59,13 +59,13 @@ function normalizeHttpsOptions(
   }
 
   if (typeof https !== 'object' || https === null || Array.isArray(https)) {
-    $throw('FluxionOptions.https must be an object');
+    _throw('FluxionOptions.https must be an object');
   }
   if (typeof https.key !== 'string') {
-    $throw('FluxionOptions.https.key must be a string');
+    _throw('FluxionOptions.https.key must be a string');
   }
   if (typeof https.cert !== 'string') {
-    $throw('FluxionOptions.https.cert must be a string');
+    _throw('FluxionOptions.https.cert must be a string');
   }
 
   const result: NormalizedFluxionOptions['https'] = {
@@ -89,12 +89,12 @@ function normalizeHttpsOptions(
  */
 export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOptions {
   if (typeof o !== 'object' || o === null || Array.isArray(o)) {
-    $throw('FluxionOptions must be an object');
+    _throw('FluxionOptions must be an object');
   }
 
   // Check for deprecated 'include' option
   if ('include' in o) {
-    $throw(
+    _throw(
       'The "include" option has been removed. Please use:\n' +
         '  - "apiInclude" for API handler patterns (default: ["**/*.ts"])\n' +
         '  - "staticInclude" for static resource patterns (default: ["**/*"])\n' +
@@ -143,73 +143,73 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
 
   const logger = o.logger ?? 'one-line';
   if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
-    $throw(`Invalid logger option, Must be 'one-line', 'json-line' or a custom logger function`);
+    _throw(`Invalid logger option, Must be 'one-line', 'json-line' or a custom logger function`);
   }
 
   if (typeof rawDir !== 'string') {
-    $throw('FluxionOptions.dir must be a string');
+    _throw('FluxionOptions.dir must be a string');
   }
   const dir = path.resolve(rawDir);
 
   if (typeof rawModuleDir !== 'string') {
-    $throw('FluxionOptions.moduleDir must be a string');
+    _throw('FluxionOptions.moduleDir must be a string');
   }
   const moduleDir = path.resolve(rawModuleDir);
 
   let cronjobDir: string | undefined;
   if (rawCronjobDir !== undefined) {
     if (typeof rawCronjobDir !== 'string') {
-      $throw('FluxionOptions.cronjobDir must be a string or undefined');
+      _throw('FluxionOptions.cronjobDir must be a string or undefined');
     }
     cronjobDir = path.resolve(rawCronjobDir);
   }
 
   if (typeof host !== 'string') {
-    $throw('FluxionOptions.host must be a string');
+    _throw('FluxionOptions.host must be a string');
   }
 
   if (!Number.isSafeInteger(handlerTimeoutMs) || handlerTimeoutMs <= 100) {
-    $throw('FluxionOptions.handlerTimeoutMs must be an integer greater than 100');
+    _throw('FluxionOptions.handlerTimeoutMs must be an integer greater than 100');
   }
 
   if (!Number.isSafeInteger(middlewareTimeoutMs) || middlewareTimeoutMs <= 100) {
-    $throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
+    _throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
   }
 
   if (typeof reloadDelay !== 'number' || reloadDelay <= 0 || !Number.isSafeInteger(reloadDelay)) {
-    $throw('FluxionOptions.reloadDelay must be a positive integer');
+    _throw('FluxionOptions.reloadDelay must be a positive integer');
   }
 
   if (reloadDelay < 50) {
-    $throw('FluxionOptions.reloadDelay must be greater than or equal to 50');
+    _throw('FluxionOptions.reloadDelay must be greater than or equal to 50');
   }
 
   if (typeof port !== 'number' || !Number.isSafeInteger(port)) {
-    $throw('FluxionOptions.port must be a positive integer');
+    _throw('FluxionOptions.port must be a positive integer');
   }
 
   if (port <= 1 || port > 65535) {
-    $throw('FluxionOptions.port must be 1 ~ 65535');
+    _throw('FluxionOptions.port must be 1 ~ 65535');
   }
 
   if (typeof metaPort !== 'number' || !Number.isSafeInteger(metaPort)) {
-    $throw('FluxionOptions.metaPort must be a positive integer');
+    _throw('FluxionOptions.metaPort must be a positive integer');
   }
 
   if (metaPort <= 1 || metaPort > 65535) {
-    $throw('FluxionOptions.metaPort must be 1 ~ 65535');
+    _throw('FluxionOptions.metaPort must be 1 ~ 65535');
   }
 
   if (metaPort === port) {
-    $throw('FluxionOptions.metaPort must be different from FluxionOptions.port');
+    _throw('FluxionOptions.metaPort must be different from FluxionOptions.port');
   }
 
   if (typeof workerOptions !== 'object' || workerOptions === null || Array.isArray(workerOptions)) {
-    $throw('FluxionOptions.workerOptions must be an object');
+    _throw('FluxionOptions.workerOptions must be an object');
   }
 
   if (typeof maxRequestBytes !== 'number' || maxRequestBytes <= 0 || !Number.isSafeInteger(maxRequestBytes)) {
-    $throw('FluxionOptions.maxRequestBytes must be a positive integer');
+    _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
   if (
@@ -220,7 +220,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       !/[A-Za-z]/.test(metaSecret) ||
       !/\d/.test(metaSecret))
   ) {
-    $throw(
+    _throw(
       'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace',
     );
   }
@@ -258,7 +258,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
           return ext ? filepath.slice(0, -ext.length) : filepath;
         };
       }
-      $throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
+      _throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
     })(),
     nativeWatcher,
     metaSecret,

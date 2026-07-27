@@ -11,10 +11,10 @@ const plugins = () => [
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
     __VERSION__: pkg.version,
 
-    // global $throw
-    "$throw('": `throw new Error('[fluxion error] `,
-    '$throw(`': 'throw new Error(`[fluxion error] ',
-    '$throw("': `throw new Error("[fluxion error] `,
+    // global _throw
+    "_throw('": `throw new Error('[fluxion error] `,
+    '_throw(`': 'throw new Error(`[fluxion error] ',
+    '_throw("': `throw new Error("[fluxion error] `,
   }),
 ];
 

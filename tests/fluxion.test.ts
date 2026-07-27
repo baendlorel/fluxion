@@ -12,7 +12,7 @@ import type { FluxionContext, FluxionRouteMeta } from '../src/types.js';
 import type http from 'node:http';
 import type https from 'node:https';
 
-globalThis.$throw = (message: string): never => {
+globalThis._throw = (message: string): never => {
   throw new Error('[fluxion error]' + message);
 };
 
