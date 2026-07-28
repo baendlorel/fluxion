@@ -1,30 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { WorkerOptions, NormalizedWorkerOptions, FluxionOptions, NormalizedFluxionOptions } from '../types.js';
+import type { FluxionOptions, NormalizedFluxionOptions } from '../types.js';
 import { OPTIONS_NORMALIZED_FLAG } from '@/common/consts.js';
-
-/**
- * Resolves worker options with framework defaults. All thresholds become
- * concrete numbers (`Infinity` disables a check) so the primary can evaluate
- * them without null-handling.
- */
-function resolveWorkerOptions(options: WorkerOptions = {}): NormalizedWorkerOptions {
-  const rw = options.restartWhen ?? {};
-  const healthzTimeout = rw.healthzTimeout ?? 30_000;
-  // Ping runs every 5s; a threshold below 2x that would recycle healthy workers
-  // (a ready worker's lastPongAt is normally ~5s old). Infinity disables.
-  if (healthzTimeout !== Infinity && (!Number.isFinite(healthzTimeout) || healthzTimeout < 10_000)) {
-    _throw('workerOptions.restartWhen.healthzTimeout must be a finite number >= 10000 (ms) or Infinity');
-  }
-  return {
-    maxWorkerCount: options.maxWorkerCount ?? 4,
-    restartWhen: {
-      memoryUsageGreaterThan: rw.memoryUsageGreaterThan ?? Infinity,
-      healthzTimeout,
-      uptimeGreaterThan: rw.uptimeGreaterThan ?? Infinity,
-    },
-  };
-}
 
 /**
  * Read certificate content from a file path or return the content directly.
@@ -111,9 +88,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
     staticResourceTimeoutMs = 10 * 600000,
-    metaPort = port + 1,
     moduleDir: rawModuleDir = process.cwd(),
-    workerOptions = {},
     maxRequestBytes = 8_000_000,
     reloadDelay = 500,
     apiInclude = ['**/*.ts'],
@@ -135,6 +110,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiMapper = 'remove-ext',
     https,
     nativeWatcher = false,
+    metaApis = ['healthz', 'version', 'routes'],
     metaSecret,
     cronjobDir: rawCronjobDir,
     cronjobInclude = ['**/*.ts'],
@@ -192,22 +168,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.port must be 1 ~ 65535');
   }
 
-  if (typeof metaPort !== 'number' || !Number.isSafeInteger(metaPort)) {
-    _throw('FluxionOptions.metaPort must be a positive integer');
-  }
-
-  if (metaPort <= 1 || metaPort > 65535) {
-    _throw('FluxionOptions.metaPort must be 1 ~ 65535');
-  }
-
-  if (metaPort === port) {
-    _throw('FluxionOptions.metaPort must be different from FluxionOptions.port');
-  }
-
-  if (typeof workerOptions !== 'object' || workerOptions === null || Array.isArray(workerOptions)) {
-    _throw('FluxionOptions.workerOptions must be an object');
-  }
-
   if (typeof maxRequestBytes !== 'number' || maxRequestBytes <= 0 || !Number.isSafeInteger(maxRequestBytes)) {
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
@@ -237,9 +197,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     middlewareTimeoutMs,
     staticResourceTimeoutMs,
     reloadDelay,
-    metaPort,
     moduleDir,
-    workerOptions: resolveWorkerOptions(workerOptions),
     maxRequestBytes,
     logger,
     apiInclude,
@@ -261,6 +219,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       _throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
     })(),
     nativeWatcher,
+    metaApis,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
     cronjobDir,

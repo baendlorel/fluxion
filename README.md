@@ -15,8 +15,8 @@ Fluxion is a filesystem-routing dynamic server for Node.js.
 - Route files from a dynamic directory by chokidar or native `fs.watch`
 - Load API handlers by extension patterns (default: `*.ts`)
 - Serve other files as static resources
-- Run the business server in worker processes
-- Expose runtime status from the primary process through meta APIs
+- Simple single-process architecture (use pm2/docker/k8s for clustering)
+- Meta APIs integrated into main server at `/_fluxion/*` endpoints
 - Automatically serialize handler return values as JSON
 - Built-in middleware system and HTTP exception handling
 - Hot-reloadable cronjobs for scheduled tasks
@@ -87,10 +87,8 @@ await fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? './dynamicDirectory',
   host: process.env.HOST ?? '127.0.0.1',
   port: Number.parseInt(process.env.PORT ?? '3000', 10),
-  metaPort: Number.parseInt(process.env.META_PORT ?? '3001', 10),
-  workerOptions: {
-    maxWorkerCount: 4,
-  },
+  metaApis: ['healthz', 'version', 'routes'],
+  metaSecret: process.env.META_SECRET, // Optional, for routes endpoint
 });
 ```
 
@@ -330,7 +328,7 @@ Known content types: `.html`, `.css`, `.js`, `.json`, `.png`, `.jpg`, `.jpeg`, `
 
 ## File Watching
 
-Workers watch the dynamic directory recursively.
+The server watches the dynamic directory recursively.
 
 On file changes:
 
@@ -338,32 +336,44 @@ On file changes:
 - Deleted files are removed from the router
 - Updates are debounced by `reloadDelay` (default: `500ms`)
 
-## Cluster Runtime
+## Process Management
 
-Fluxion uses Node.js `cluster`:
+Fluxion runs as a single process for simplicity. For production deployments:
 
-- **Primary process**: Starts meta APIs and manages worker state
-- **Worker processes**: Watch the dynamic directory and serve business traffic
-- **Worker count**: Controlled by `workerOptions.maxWorkerCount` (default: `4`, capped by CPU count)
+- **pm2**: `pm2 start server.ts --name fluxion-app -i max`
+- **docker**: Use your orchestration platform for scaling
+- **kubernetes**: Use deployments and services for load balancing
+
+This simplifies the framework while giving you flexibility in process management.
 
 ## Meta APIs
 
-Meta APIs are served by the primary process on `metaPort` (default: `port + 1`).
+Meta APIs are integrated into the main server at `/_fluxion/*` endpoints.
 
-Available endpoints:
+Available endpoints (configurable via `metaApis` option):
 
 ```http
-GET /_fluxion/healthz                 # Health check
-GET /_fluxion/workers                 # Worker status
-GET /_fluxion/routes?secret=<secret>  # Router snapshot, enabled when metaSecret is >= 20 chars with letters and digits, no whitespace
+GET /_fluxion/healthz                 # Health check (default: enabled)
+GET /_fluxion/version                 # Version info (default: enabled)
+GET /_fluxion/routes?secret=<secret>  # Router snapshot (default: enabled, requires metaSecret)
 ```
 
 Example:
 
 ```bash
-curl http://127.0.0.1:3001/_fluxion/healthz
-curl http://127.0.0.1:3001/_fluxion/workers
-curl 'http://127.0.0.1:3001/_fluxion/routes?secret=your-20-char-secret1'
+curl http://127.0.0.1:3000/_fluxion/healthz
+curl http://127.0.0.1:3000/_fluxion/version
+curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
+```
+
+### Meta API Configuration
+
+```ts
+await fluxion({
+  // ... other options
+  metaApis: ['healthz', 'version'],  // Only enable healthz and version
+  metaSecret: 'your-20-char-secret1', // Required for routes endpoint
+});
 ```
 
 ## Options
@@ -372,7 +382,7 @@ curl 'http://127.0.0.1:3001/_fluxion/routes?secret=your-20-char-secret1'
 interface FluxionOptions {
   dir: string;                    // Required: dynamic directory
   host: string;                   // Required: server host
-  port: number;                   // Required: business server port
+  port: number;                   // Required: server port
 
   // Optional timeout configurations
   handlerTimeoutMs?: number;       // Default: 5000ms
@@ -390,18 +400,8 @@ interface FluxionOptions {
   apiMapper?: string | function;  // Transform API file paths to routes (default: 'remove-ext')
 
   // Meta API
-  metaPort?: number;               // Default: port + 1
-  metaSecret?: string;             // Enables routes meta API when >= 20 chars, letters+digits, no whitespace
-
-  // Worker management
-  workerOptions?: {
-    maxWorkerCount?: number;      // Default: 4
-    restartWhen?: {
-      memoryUsageGreaterThan?: number;  // MB
-      healthzTimeout?: number;         // Default: 30000ms
-      uptimeGreaterThan?: number;      // ms
-    };
-  };
+  metaApis?: ('healthz' | 'version' | 'routes')[];  // Default: ['healthz', 'version', 'routes']
+  metaSecret?: string;             // Required for routes endpoint: >= 20 chars, letters+digits, no whitespace
 
   // Request handling
   maxRequestBytes?: number;        // Default: 8_000_000
@@ -418,6 +418,11 @@ interface FluxionOptions {
     cert: string;
     ca?: string | Array<string | Buffer> | Buffer;
   };
+
+  // Cronjobs
+  cronjobDir?: string;             // Cronjob directory (undefined = disabled)
+  cronjobInclude?: string[];       // Default: ['**/*.ts']
+  cronjobExclude?: string[];       // Default: []
 }
 ```
 
@@ -465,19 +470,35 @@ fluxion({
 // api/users.ts → /api/v1/users
 ```
 
-### Worker Restart Conditions
+### Process Management with pm2
 
-```ts
-fluxion({
-  workerOptions: {
-    maxWorkerCount: 4,
-    restartWhen: {
-      memoryUsageGreaterThan: 256,  // MB - recycle at 256MB RSS
-      healthzTimeout: 30000,        // ms - recycle after 30s no response
-      uptimeGreaterThan: 6 * 3600_000, // ms - rotate every 6 hours
-    },
-  },
-});
+```bash
+# Install pm2
+npm install -g pm2
+
+# Start with clustering
+pm2 start server.ts --name fluxion-app -i max
+
+# View status
+pm2 status
+
+# View logs
+pm2 logs fluxion-app
+
+# Restart
+pm2 restart fluxion-app
+```
+
+### Docker Deployment
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
 ```
 
 ### HTTPS Configuration
@@ -561,7 +582,64 @@ await fluxion({
 
 ## Recent Updates
 
-### v0.16.5 (Current)
+### v1.0.0 (Current Major Release)
+
+**Architecture Simplification**
+
+- 🔄 **Removed cluster mode** - Fluxion now runs as a single process for simplicity
+- ✨ **Meta APIs integrated** - All meta endpoints now served from main server at `/_fluxion/*`
+- ✨ **Configurable endpoints** - Use `metaApis` option to control which endpoints are enabled
+- ✨ **Standard deployment** - Use pm2, docker, or kubernetes for clustering and scaling
+- 🔄 **Removed options** - `workerOptions`, `metaPort` no longer needed
+
+**Benefits**
+
+- Simpler architecture and easier maintenance
+- Better integration with modern deployment tools
+- Flexible process management
+- Reduced framework complexity
+
+**Migration Guide**
+
+```ts
+// OLD (v0.16.x)
+await fluxion({
+  dir: './dynamic',
+  host: 'localhost',
+  port: 3000,
+  metaPort: 3001,              // ❌ Removed
+  workerOptions: {             // ❌ Removed
+    maxWorkerCount: 4,
+  },
+});
+
+// NEW (v1.0.0)
+await fluxion({
+  dir: './dynamic',
+  host: 'localhost',
+  port: 3000,
+  metaApis: ['healthz', 'version', 'routes'],  // ✅ Added
+  metaSecret: 'your-secret-12345',             // ✅ Required for routes endpoint
+});
+
+// For clustering, use pm2:
+// pm2 start server.ts --name fluxion-app -i max
+```
+
+**Meta API Changes**
+
+```bash
+# OLD: Separate meta server
+curl http://localhost:3001/_fluxion/healthz
+curl http://localhost:3001/_fluxion/workers
+
+# NEW: Integrated into main server
+curl http://localhost:3000/_fluxion/healthz
+curl http://localhost:3000/_fluxion/version
+curl 'http://localhost:3000/_fluxion/routes?secret=your-secret-12345'
+```
+
+### v0.16.5
 
 **API Path Mapping**
 
@@ -572,7 +650,7 @@ await fluxion({
 
 **Logging Enhancements**
 
-- ✨ Core-level logging for framework internals (router, watcher, cluster, etc.)
+- ✨ Core-level logging for framework internals
 - ✨ Timestamp format changed to ISO 8601 standard
 - ✨ Version information now displayed on startup
 

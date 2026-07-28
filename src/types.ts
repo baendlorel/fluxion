@@ -44,64 +44,6 @@ export interface FluxionRequest {
   meta: Record<any, any>;
 }
 
-/**
- * Conditions under which the primary proactively recycles a running worker.
- *
- * The primary observes every worker and restarts it when ANY configured
- * condition is met. Thresholds are resolved at option-normalization time:
- * `Infinity` disables a check, so that worker only restarts if it crashes on
- * its own (respawn-on-exit then brings it back).
- */
-export interface WorkerRestartWhen {
-  /**
-   * Recycle the worker when its RSS exceeds this many MB.
-   * Catches heap/native growth before the OS OOM-killer does.
-   * @default Infinity (disabled)
-   */
-  memoryUsageGreaterThan: number;
-
-  /**
-   * Recycle the worker when it has not answered a Ping within this many ms.
-   * Detects a wedged event loop (infinite loop, deadlock, GC storm).
-   * @default 30000
-   */
-  healthzTimeout: number;
-
-  /**
-   * Recycle the worker after it has run for this many ms (scheduled rotation).
-   * Reclaims slow growth / fragmentation even with no known leak.
-   * @default Infinity (disabled)
-   */
-  uptimeGreaterThan: number;
-}
-
-/**
- * Worker options as supplied by the user. Everything is optional; omitted
- * values fall back to the defaults resolved by `resolveWorkerOptions`.
- */
-export interface WorkerOptions {
-  /**
-   * Maximum number of worker processes to spawn.
-   * @default 4
-   */
-  maxWorkerCount?: number;
-
-  /**
-   * When to proactively recycle a worker. Partial is allowed; omitted
-   * thresholds fall back to their {@link WorkerRestartWhen} defaults.
-   */
-  restartWhen?: Partial<WorkerRestartWhen>;
-}
-
-/**
- * Worker options after normalization. All thresholds are concrete numbers
- * (`Infinity` for a disabled check), so evaluation needs no null-handling.
- */
-export interface NormalizedWorkerOptions {
-  maxWorkerCount: number;
-  restartWhen: WorkerRestartWhen;
-}
-
 export interface FluxionOptions {
   /**
    * The directory where dynamic files (e.g. uploaded files) will be stored. It will be created if it doesn't exist.
@@ -137,21 +79,10 @@ export interface FluxionOptions {
   reloadDelay?: number;
 
   /**
-   * Port listened by primary process for meta APIs.
-   * Defaults to `port + 1`.
-   */
-  metaPort?: number;
-
-  /**
    * Inject Path that will be used like `path.join(moduleDir,modulepath)`
    * - default is `process.cwd()`
    */
   moduleDir?: string;
-
-  /**
-   * Worker pool tuning: max worker count and proactive recycle conditions.
-   */
-  workerOptions?: WorkerOptions;
 
   /**
    * Maximum request body bytes accepted by dynamic handlers.
@@ -236,18 +167,24 @@ export interface FluxionOptions {
   nativeWatcher?: boolean;
 
   /**
-   * Secret for enabling the route meta API.
+   * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
+   * Available endpoints: 'healthz', 'version', 'routes'
+   * Defaults to ['healthz', 'version', 'routes'] (all enabled)
+   */
+  metaApis?: ('healthz' | 'version' | 'routes')[];
+
+  /**
+   * Secret for enabling the routes meta API.
    *
    * **Enable Condition:** Only strings with at least 20 characters, both letters and digits, and no whitespace enable `GET /_fluxion/routes?secret=...`.
    *
-   * Defaults to `undefined`, which disables this API.
+   * Defaults to `undefined`, which disables this API even if 'routes' is in metaApis.
    */
   metaSecret?: string;
 
   /**
-   * Directory containing cronjob files. When set, the primary forks a
-   * dedicated cronjob worker that watches this directory for hot-reloadable
-   * scheduled tasks. Set to undefined to disable cronjob support.
+   * Directory containing cronjob files. When set, cronjobs will be loaded from this directory.
+   * Set to undefined to disable cronjob support.
    * @default undefined
    */
   cronjobDir?: string;
@@ -276,9 +213,7 @@ export interface NormalizedFluxionOptions {
   middlewareTimeoutMs: number;
   staticResourceTimeoutMs: number;
   reloadDelay: number;
-  metaPort: number;
   moduleDir: string;
-  workerOptions: NormalizedWorkerOptions;
   maxRequestBytes: number;
   logger: LoggerOption;
   apiInclude: string[];
@@ -286,6 +221,7 @@ export interface NormalizedFluxionOptions {
   exclude: string[];
   apiMapper: (relativePath: string) => string;
   nativeWatcher: boolean;
+  metaApis: ('healthz' | 'version' | 'routes')[];
   metaSecret?: string;
   https?: {
     key: string | Buffer;
@@ -313,6 +249,7 @@ export interface FluxionContext {
   logger: InternalFluxionLogger;
   watcher: ApiWatcher;
   router: FluxionRouter;
+  cronjobManager?: import('./cronjob/manager.js').FluxionCronJobManager;
 }
 
 export interface FluxionModuleContext {

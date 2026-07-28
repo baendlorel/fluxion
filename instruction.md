@@ -25,11 +25,12 @@ Fluxion is a Node.js server framework with these core concepts:
 
 - **Filesystem routing**: files under a `dir` directory become HTTP routes. The file path IS the URL path.
 - **Hot reload**: files are watched via `chokidar` (or native `fs.watch`); changes are picked up automatically without restart.
-- **Cluster mode**: a primary process manages worker processes. Workers serve traffic; primary manages lifecycle and meta APIs.
+- **Single-process architecture**: Fluxion runs as a single process. Use pm2, docker, or kubernetes for clustering and scaling.
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
 - **Static files**: files matching `staticInclude` patterns (default: `**/*`) are served as static resources (GET/HEAD only).
 - **File exclusion**: files matching `exclude` patterns (default: node_modules, .git, dist, etc.) are skipped.
 - **Cronjobs**: optional hot-reloadable scheduled tasks via `cronjobDir`.
+- **Integrated meta APIs**: monitoring endpoints at `/_fluxion/*` for health, version, and route inspection.
 
 ### Package Exports
 
@@ -98,6 +99,8 @@ await fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? './dynamic',
   host: process.env.HOST ?? 'localhost',
   port: int(process.env.PORT, 3000),
+  metaApis: ['healthz', 'version', 'routes'],
+  metaSecret: process.env.META_SECRET,
 });
 ```
 
@@ -127,7 +130,26 @@ await fluxion({
 });
 ```
 
-### Recommended: install `tsx` for TypeScript hot-reload
+### Production deployment with pm2
+
+```bash
+# Install pm2
+npm install -g pm2
+
+# Start with multiple processes
+pm2 start server.ts --name fluxion-app -i max
+
+# View status
+pm2 status
+
+# View logs
+pm2 logs fluxion-app
+
+# Restart
+pm2 restart fluxion-app
+```
+
+### Development: install `tsx` for TypeScript hot-reload
 
 ```bash
 pnpm add -D tsx
@@ -482,19 +504,9 @@ interface FluxionOptions {
   exclude?: string[];              // Exclude patterns (overrides defaults)
   apiMapper?: string | function;  // Transform API file paths to routes. Default: 'remove-ext'
 
-  // Meta API (primary process)
-  metaPort?: number;               // Default: port + 1
-  metaSecret?: string;             // Must be ≥20 chars, letters+digits, no whitespace
-
-  // Worker management
-  workerOptions?: {
-    maxWorkerCount?: number;       // Default: 4
-    restartWhen?: {
-      memoryUsageGreaterThan?: number;  // MB, default: Infinity (disabled)
-      healthzTimeout?: number;          // ms, default: 30000
-      uptimeGreaterThan?: number;       // ms, default: Infinity (disabled)
-    };
-  };
+  // Meta API
+  metaApis?: ('healthz' | 'version' | 'routes')[];  // Default: ['healthz', 'version', 'routes']
+  metaSecret?: string;             // Required for routes endpoint: ≥20 chars, letters+digits, no whitespace
 
   // Request limits
   maxRequestBytes?: number;        // Default: 8_000_000 (8MB). 413 if exceeded.
@@ -728,23 +740,50 @@ dynamic/assets/app.js   → GET /assets/app.js
 
 When a file changes, the module is reloaded. Any module-level variables (caches, counters, connections) are reset. Design handlers to be stateless.
 
-### Worker processes
+### Process management
 
-Fluxion runs in cluster mode. Each handler invocation may run in a different worker. Don't rely on shared in-memory state between requests.
+Fluxion runs as a single process. For production deployments, use process managers like pm2, docker, or kubernetes for clustering and load balancing.
 
 ### Meta API endpoints
 
-The primary process serves meta APIs on `metaPort` (default: `port + 1`):
+Meta APIs are integrated into the main server at `/_fluxion/*` endpoints (configurable via `metaApis` option):
 
 ```http
-GET /_fluxion/healthz                   # Health check
-GET /_fluxion/workers                   # Worker status
+GET /_fluxion/healthz                   # Health check (default: enabled)
+GET /_fluxion/version                   # Version information (default: enabled)
 GET /_fluxion/routes?secret=<secret>    # Route table snapshot (requires metaSecret)
+```
+
+Example:
+```bash
+curl http://127.0.0.1:3000/_fluxion/healthz
+curl http://127.0.0.1:3000/_fluxion/version
+curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
 ```
 
 ## Recent Updates
 
-### v0.16.5 (Current)
+### v1.0.0 (Current Major Release)
+
+**Architecture Simplification**
+- 🔄 Removed cluster mode - now single-process for simplicity
+- ✨ Meta APIs integrated into main server at `/_fluxion/*` endpoints
+- ✨ Configurable meta API endpoints via `metaApis` option
+- ✨ Use pm2/docker/kubernetes for process management and clustering
+- 🔄 Removed `workerOptions`, `metaPort` options
+
+**Benefits**
+- Simpler architecture and maintenance
+- Better integration with standard deployment tools
+- Flexible process management
+- Reduced framework complexity
+
+**Migration Guide**
+- Remove `workerOptions` and `metaPort` from configuration
+- Update meta API calls from `metaPort` to main port with `/_fluxion/*` prefix
+- Use pm2/docker/kubernetes for clustering instead of built-in cluster mode
+
+### v0.16.5
 
 **API Path Mapping**
 - ✨ Added `apiMapper` option to control how API file paths are transformed into URL routes
@@ -753,7 +792,7 @@ GET /_fluxion/routes?secret=<secret>    # Route table snapshot (requires metaSec
 - 🔄 Changed default behavior to remove file extensions from API routes
 
 **Logging Enhancements**
-- ✨ Core-level logging for framework internals (router, watcher, cluster, etc.)
+- ✨ Core-level logging for framework internals (router, watcher, etc.)
 - ✨ Timestamp format changed to ISO 8601 standard
 - ✨ Version information now displayed on startup
 

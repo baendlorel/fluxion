@@ -5,7 +5,7 @@ import path from 'node:path';
 import { FluxionRouter } from '../src/router/index.js';
 import { defineFluxionOptions } from '../src/defines/options.js';
 import { createLogger } from '../src/common/logger.js';
-import { createWorkerServer } from '../src/cluster/server.js';
+import { createServer } from '../src/http/server.js';
 import { createPrimaryMetaApiServer } from '../src/cluster/meta-api.js';
 import { FluxionModuleType } from '../src/common/consts.js';
 import type { FluxionContext, FluxionRouteMeta } from '../src/types.js';
@@ -63,7 +63,7 @@ const makeContext = (dir: string, port = nextPort(), metaPort = nextPort(), meta
 };
 
 const startWorkerServer = async (cx: FluxionContext) => {
-  const server = await createWorkerServer(cx);
+  const server = await createServer(cx);
   servers.push(server);
   return server;
 };

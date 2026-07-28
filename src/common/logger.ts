@@ -2,7 +2,6 @@ import type { FluxionContext } from '@/types.js';
 import type { otherstring } from '@/global.js';
 import stringify from 'fast-json-stable-stringify';
 
-import { dtm } from './dtm.js';
 import { cctl } from './color.js';
 
 type LogLevel = 'CORE' | 'INFO' | 'WARN' | 'ERROR' | 'SUCC' | 'DEBUG' | 'VERBOSE' | otherstring;

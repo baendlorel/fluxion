@@ -13,18 +13,18 @@ import {
 import { PromiseTry } from '@/common/promise-try.js';
 import { getErrorMessage } from '@/common/logger.js';
 
-import { getRealIp } from '../http/headers.js';
-import { toURL } from '../http/request.js';
-import { safeSendJson } from '../http/respond.js';
-import { parseBody, type BodyPreview } from '../http/body.js';
-import { parseQuery } from '../http/query.js';
-import { parseCookie } from '../http/cookie.js';
-import { HttpException } from '@/http/exceptions.js';
+import { getRealIp } from './headers.js';
+import { toURL } from './request.js';
+import { safeSendJson } from './respond.js';
+import { parseBody, type BodyPreview } from './body.js';
+import { parseQuery } from './query.js';
+import { parseCookie } from './cookie.js';
+import { HttpException } from './exceptions.js';
 
 const waiter = (mainPromise: Promise<any>, timeoutMs: number, flag: symbol) =>
   Promise.race([mainPromise, new Promise((r) => setTimeout(() => r(flag), timeoutMs))]);
 
-export function createWorkerServer(cx: FluxionContext): Promise<http.Server | https.Server> {
+export function createServer(cx: FluxionContext): Promise<http.Server | https.Server> {
   const moduleCx: FluxionModuleContext = Object.freeze({ logger: cx.logger });
 
   const requestHandler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -58,7 +58,6 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
     const start = performance.now();
     res.once('finish', () => {
       const o: Record<string, unknown> = {
-        workerId: process.env.WORKER_ID ?? '[primary]',
         message: 'response',
         method,
         ip,
@@ -82,8 +81,9 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
 
     // * Start request handling
     try {
+      // Handle meta API requests
       if (normalized.url.pathname.startsWith(META_PREFIX + '/')) {
-        safeSendJson(res, { message: `Not Found` }, HttpCode.NotFound);
+        await handleMetaApi(cx, url, method, res);
         return;
       }
 
@@ -202,7 +202,8 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
     server.once('listening', () => {
       listening = true;
       cx.logger.core({
-        message: 'ServerStarted',
+        message: 'FluxionStarted',
+        version: '__VERSION__',
         pid: process.pid,
         protocol: cx.options.https ? 'https' : 'http',
         host: cx.options.host,
@@ -228,4 +229,55 @@ export function createWorkerServer(cx: FluxionContext): Promise<http.Server | ht
 
     server.listen(cx.options.port, cx.options.host);
   });
+}
+
+/**
+ * Handle meta API requests
+ */
+async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: http.ServerResponse): Promise<void> {
+  const pathname = url.pathname;
+
+  if (method !== 'GET') {
+    safeSendJson(res, { message: 'Method Not Allowed' }, HttpCode.MethodNotAllowed);
+    return;
+  }
+
+  // Health check endpoint
+  if (pathname === META_PREFIX + '/healthz' && cx.options.metaApis.includes('healthz')) {
+    safeSendJson(res, {
+      ok: true,
+      pid: process.pid,
+      now: Date.now(),
+      uptimeSeconds: Number(process.uptime().toFixed(3)),
+    });
+    return;
+  }
+
+  // Version endpoint
+  if (pathname === META_PREFIX + '/version' && cx.options.metaApis.includes('version')) {
+    safeSendJson(res, {
+      ok: true,
+      version: '__VERSION__',
+    });
+    return;
+  }
+
+  // Routes endpoint
+  if (pathname === META_PREFIX + '/routes' && cx.options.metaApis.includes('routes')) {
+    if (!cx.options.metaSecret) {
+      safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
+      return;
+    }
+
+    if (url.searchParams.get('secret') !== cx.options.metaSecret) {
+      safeSendJson(res, { message: 'Forbidden' }, HttpCode.Forbidden);
+      return;
+    }
+
+    const routes = cx.router.getRoutes();
+    safeSendJson(res, { ok: true, now: Date.now(), routes });
+    return;
+  }
+
+  safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
 }
