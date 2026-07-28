@@ -1,7 +1,7 @@
 # Fluxion
 
-[![npm version](https://img.shields.io/npm/v/fluxion.svg)](https://www.npmjs.org/package/fluxion)
-[![npm downloads](https://img.shields.io/npm/dm/fluxion.svg)](https://www.npmjs.org/package/fluxion)
+[![npm version](https://img.shields.io/npm/v/fluxion-ts.svg)](https://www.npmjs.org/package/fluxion-ts)
+[![npm downloads](https://img.shields.io/npm/dm/fluxion-ts.svg)](https://www.npmjs.org/package/fluxion-ts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">
@@ -104,12 +104,12 @@ Fluxion registers files under `dir` based on glob patterns:
 
 Examples:
 
-| File                               | Route              | Type        |
-| ---------------------------------- | ------------------ | ----------- |
-| `dynamicDirectory/test.ts`         | `/test`            | API handler |
-| `dynamicDirectory/user/profile.ts` | `/user/profile`    | API handler |
-| `dynamicDirectory/index.html`      | `/index.html`      | Static file |
-| `dynamicDirectory/assets/app.js`   | `/assets/app.js`   | Static file |
+| File                               | Route            | Type        |
+| ---------------------------------- | ---------------- | ----------- |
+| `dynamicDirectory/test.ts`         | `/test`          | API handler |
+| `dynamicDirectory/user/profile.ts` | `/user/profile`  | API handler |
+| `dynamicDirectory/index.html`      | `/index.html`    | Static file |
+| `dynamicDirectory/assets/app.js`   | `/assets/app.js` | Static file |
 
 **Note:** API routes have file extensions removed by default (controlled by `removeApiFileExt` option).
 
