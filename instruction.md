@@ -231,6 +231,12 @@ type FluxionMiddleware = (
 ) => Promise<unknown> | unknown;
 ```
 
+Note: Import types from the package when needed:
+```ts
+import type { FluxionMiddleware, FluxionModuleContext } from 'fluxion-ts';
+import type http from 'node:http';
+```
+
 ### Stopping the chain
 
 To short-circuit (e.g., auth failure), write directly to `rawRes` and return:
@@ -613,7 +619,7 @@ Files like `public/api/users.ts` become API routes at `/api/users` (extension re
 
 ### API Path Mapping
 
-The `apiMapper` option controls how API file paths are transformed into URL routes:
+The `apiMapper` option controls how API file paths are transformed into URL routes. Static resources are not affected by this setting.
 
 #### Preset Options
 
@@ -698,14 +704,24 @@ await fluxion({
 - ❌ **Don't set `metaSecret`** to less than 20 characters or without both letters and digits — it will throw.
 - ❌ **Don't share cronjob files with API handlers** — they live in separate directories (`dir` vs `cronjobDir`).
 
-### File extension is part of the route
+### File extension behavior in routes
 
-This is intentional and matches PHP-style routing:
+By default, API routes have file extensions removed (controlled by `apiMapper` option).
 
 ```
+// With apiMapper: 'remove-ext' (default)
+dynamic/hello.ts        → GET /hello
+dynamic/api/users.ts    → GET /api/users
+
+// With apiMapper: 'identical'
 dynamic/hello.ts        → GET /hello.ts
 dynamic/api/users.ts    → GET /api/users.ts
+```
+
+Static files always keep their extensions:
+```
 dynamic/index.html      → GET /index.html
+dynamic/assets/app.js   → GET /assets/app.js
 ```
 
 ### Module state is ephemeral
@@ -720,8 +736,27 @@ Fluxion runs in cluster mode. Each handler invocation may run in a different wor
 
 The primary process serves meta APIs on `metaPort` (default: `port + 1`):
 
-```
+```http
 GET /_fluxion/healthz                   # Health check
 GET /_fluxion/workers                   # Worker status
 GET /_fluxion/routes?secret=<secret>    # Route table snapshot (requires metaSecret)
 ```
+
+## Recent Updates
+
+### v0.16.5 (Current)
+
+**API Path Mapping**
+- ✨ Added `apiMapper` option to control how API file paths are transformed into URL routes
+- ✨ Support for custom mapping functions
+- ✨ Preset options: `'remove-ext'` (default) and `'identical'`
+- 🔄 Changed default behavior to remove file extensions from API routes
+
+**Logging Enhancements**
+- ✨ Core-level logging for framework internals (router, watcher, cluster, etc.)
+- ✨ Timestamp format changed to ISO 8601 standard
+- ✨ Version information now displayed on startup
+
+**Type Safety**
+- ✨ Enhanced type definitions for better IDE support
+- ✨ Improved module validation with clearer error messages

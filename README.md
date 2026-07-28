@@ -19,6 +19,8 @@ Fluxion is a filesystem-routing dynamic server for Node.js.
 - Expose runtime status from the primary process through meta APIs
 - Automatically serialize handler return values as JSON
 - Built-in middleware system and HTTP exception handling
+- Hot-reloadable cronjobs for scheduled tasks
+- Flexible API path mapping with custom transformers
 
 ## Install
 
@@ -120,7 +122,7 @@ An API handler **MUST** use `defineFluxionModule()` to define the module. This p
 ### Basic Handler
 
 ```ts
-import { defineFluxionModule } from 'fluxion';
+import { defineFluxionModule } from 'fluxion-ts';
 
 export default defineFluxionModule(async (req, cx) => {
   return { ok: true };
@@ -159,6 +161,12 @@ handler(req, cx, rawReq, rawRes)
 - **`rawReq`**: Node.js `http.IncomingMessage`
 
 - **`rawRes`**: Node.js `http.ServerResponse`
+
+Note: Import types from the package when needed:
+```ts
+import type { FluxionRequest, FluxionModuleContext } from 'fluxion-ts';
+import type http from 'node:http';
+```
 
 ### Advanced Module Configuration
 
@@ -491,7 +499,87 @@ Relative paths are resolved relative to `moduleDir`. PEM content can be passed d
 
 Default exclusions in the current implementation include `node_modules`, `.git`, `dist`, `build`, `.vscode`, `.idea`, `coverage`, `.nyc_output`, `*.log`, `*.tmp`, and `*.temp`.
 
+## Cronjobs
+
+Fluxion supports hot-reloadable scheduled tasks. Enable by setting `cronjobDir` in server options.
+
+### Defining a Cronjob
+
+```ts
+// File: cronjobs/cleanup.ts
+import { defineFluxionCronJob, CronExpressions, FluxionCronJobExecutionStrategy } from 'fluxion-ts';
+
+export default defineFluxionCronJob({
+  cronExpression: CronExpressions.EveryHour,
+  jobFn: async (cx) => {
+    cx.logger.info('Running hourly cleanup');
+    // ... cleanup logic
+  },
+  strategy: FluxionCronJobExecutionStrategy.WaitForCompletion,
+});
+```
+
+### Cron Expression Shortcuts
+
+```ts
+CronExpressions.EveryMinute        // '* * * * *'
+CronExpressions.Every5Minutes      // '*/5 * * * *'
+CronExpressions.Every10Minutes     // '*/10 * * * *'
+CronExpressions.Every15Minutes     // '*/15 * * * *'
+CronExpressions.Every30Minutes     // '*/30 * * * *'
+CronExpressions.EveryHour          // '0 * * * *'
+CronExpressions.Every2Hours        // '0 */2 * * *'
+CronExpressions.Every6Hours        // '0 */6 * * *'
+CronExpressions.Every12Hours       // '0 */12 * * *'
+CronExpressions.EveryDayAtMidnight // '0 0 * * *'
+CronExpressions.EveryDayAtNoon     // '0 12 * * *'
+CronExpressions.EveryMonday        // '0 0 * * 1'
+CronExpressions.EveryWeek          // '0 0 * * 0'
+CronExpressions.EveryMonth         // '0 0 1 * *'
+CronExpressions.EveryYear          // '0 0 1 1 *'
+```
+
+### Execution Strategies
+
+| Strategy | Behavior |
+|----------|----------|
+| `FluxionCronJobExecutionStrategy.WaitForCompletion` | Skip this tick if the previous run is still running (default) |
+| `FluxionCronJobExecutionStrategy.Immediate` | Fire immediately, even if previous run hasn't finished |
+
+### Configuration
+
+```ts
+await fluxion({
+  dir: './dynamic',
+  host: 'localhost',
+  port: 3000,
+  cronjobDir: './cronjobs',          // Enable cronjobs
+  cronjobInclude: ['**/*.ts'],        // Default: ['**/*.ts']
+  cronjobExclude: ['*.test.ts'],     // Exclude test files
+});
+```
+
 ## Recent Updates
+
+### v0.16.5 (Current)
+
+**API Path Mapping**
+
+- ✨ Added `apiMapper` option to control how API file paths are transformed into URL routes
+- ✨ Support for custom mapping functions
+- ✨ Preset options: `'remove-ext'` (default) and `'identical'`
+- 🔄 Changed default behavior to remove file extensions from API routes
+
+**Logging Enhancements**
+
+- ✨ Core-level logging for framework internals (router, watcher, cluster, etc.)
+- ✨ Timestamp format changed to ISO 8601 standard
+- ✨ Version information now displayed on startup
+
+**Type Safety**
+
+- ✨ Enhanced type definitions for better IDE support
+- ✨ Improved module validation with clearer error messages
 
 ### v0.11.x
 
