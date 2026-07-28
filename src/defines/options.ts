@@ -110,8 +110,8 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiMapper = 'remove-ext',
     https,
     nativeWatcher = false,
-    metaApis = ['healthz', 'version'],
-    metaSecret,
+    metaApis = ['healthz', 'version', 'stats'],
+    metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
     cronjobDir: rawCronjobDir,
     cronjobInclude = ['**/*.ts'],
     cronjobExclude = [],
@@ -170,6 +170,15 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
 
   if (typeof maxRequestBytes !== 'number' || maxRequestBytes <= 0 || !Number.isSafeInteger(maxRequestBytes)) {
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
+  }
+
+  if (
+    !Array.isArray(metaApis) ||
+    metaApis.some((v) => !['healthz', 'version', 'stats', 'config', 'routes'].includes(v))
+  ) {
+    _throw(
+      `FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config', 'routes'`,
+    );
   }
 
   if (

@@ -168,17 +168,31 @@ export interface FluxionOptions {
 
   /**
    * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
-   * Available endpoints: 'healthz', 'version', 'routes'
-   * Defaults to ['healthz', 'version'] (all enabled but 'routes')
+   * Available endpoints: 'healthz', 'version', 'routes', 'stats', 'config'
+   * Defaults to ['healthz', 'version', 'stats']
+   *
+   * Endpoint descriptions:
+   * - healthz: Basic health check (no authentication required)
+   * - version: Version information (no authentication required)
+   * - stats: Memory, CPU, and runtime statistics (no authentication required)
+   * - routes: Route table snapshot (requires secret authentication)
+   * - config: Current configuration (requires secret authentication)
    */
-  metaApis?: ('healthz' | 'version' | 'routes')[];
+  metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];
 
   /**
-   * Secret for enabling the routes meta API.
+   * Secret for protecting sensitive meta API endpoints.
    *
-   * **Enable Condition:** Only strings with at least 20 characters, both letters and digits, and no whitespace enable `GET /_fluxion/routes?secret=...`.
+   * **Authentication:** Only 'routes' and 'config' endpoints require secret authentication via `?secret=` parameter.
+   * Basic monitoring endpoints ('healthz', 'version', 'stats') are publicly accessible.
    *
-   * Defaults to `undefined`, which disables this API even if 'routes' is in metaApis.
+   * **Priority:** Explicit `metaSecret` option > `FLUXION_META_SECRET` environment variable.
+   *
+   * **Validation:** Must be at least 20 characters, include both letters and digits, and contain no whitespace.
+   *
+   * **Defaults:** Reads from `FLUXION_META_SECRET` environment variable if not explicitly set.
+   *
+   * **Disabled:** When set to `undefined` or doesn't meet validation rules, 'routes' and 'config' endpoints are disabled.
    */
   metaSecret?: string;
 
@@ -221,7 +235,7 @@ export interface NormalizedFluxionOptions {
   exclude: string[];
   apiMapper: (relativePath: string) => string;
   nativeWatcher: boolean;
-  metaApis: ('healthz' | 'version' | 'routes')[];
+  metaApis: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];
   metaSecret?: string;
   https?: {
     key: string | Buffer;

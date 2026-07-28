@@ -87,8 +87,9 @@ await fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? './dynamicDirectory',
   host: process.env.HOST ?? '127.0.0.1',
   port: Number.parseInt(process.env.PORT ?? '3000', 10),
-  metaApis: ['healthz', 'version', 'routes'],
-  metaSecret: process.env.META_SECRET, // Optional, for routes endpoint
+  metaApis: ['healthz', 'version', 'stats'], // Enable monitoring endpoints
+  // metaSecret is read from FLUXION_META_SECRET environment variable
+  // or you can set it explicitly: metaSecret: 'your-20-char-secret1'
 });
 ```
 
@@ -350,31 +351,56 @@ This simplifies the framework while giving you flexibility in process management
 
 Meta APIs are integrated into the main server at `/_fluxion/*` endpoints.
 
+**Security:** Basic monitoring endpoints are publicly accessible. Sensitive endpoints require secret authentication.
+
 Available endpoints (configurable via `metaApis` option):
 
 ```http
-GET /_fluxion/healthz                 # Health check (default: enabled)
-GET /_fluxion/version                 # Version info (default: enabled)
-GET /_fluxion/routes?secret=<secret>  # Router snapshot (default: enabled, requires metaSecret)
+GET /_fluxion/healthz              # Health check ✅ Public (default: enabled)
+GET /_fluxion/version              # Version info ✅ Public (default: enabled)
+GET /_fluxion/stats                # Memory/CPU stats ✅ Public (default: enabled)
+GET /_fluxion/config?secret=<key>  # Current config 🔒 Requires secret (default: disabled)
+GET /_fluxion/routes?secret=<key>  # Router snapshot 🔒 Requires secret (default: disabled)
 ```
 
-Example:
+### Authentication
 
+**Basic Monitoring** (No authentication required):
 ```bash
 curl http://127.0.0.1:3000/_fluxion/healthz
 curl http://127.0.0.1:3000/_fluxion/version
-curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
+curl http://127.0.0.1:3000/_fluxion/stats
 ```
 
-### Meta API Configuration
+**Sensitive Endpoints** (Authentication required):
+```bash
+# Requires secret configuration
+export FLUXION_META_SECRET='your-20-char-secret1'
+
+curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
+curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
+```
+
+### Secret Configuration
+
+Set secret via environment variable (recommended):
+
+```bash
+export FLUXION_META_SECRET='your-20-char-secret1'
+tsx server.ts
+```
+
+Or via options (environment variable takes priority):
 
 ```ts
 await fluxion({
   // ... other options
-  metaApis: ['healthz', 'version'],  // Only enable healthz and version
-  metaSecret: 'your-20-char-secret1', // Required for routes endpoint
+  metaApis: ['healthz', 'version', 'stats', 'config', 'routes'],
+  metaSecret: 'your-20-char-secret1', // Optional: Falls back to FLUXION_META_SECRET
 });
 ```
+
+**Secret Requirements:** At least 20 characters, must include both letters and digits, no whitespace.
 
 ## Options
 
@@ -400,8 +426,8 @@ interface FluxionOptions {
   apiMapper?: string | function;  // Transform API file paths to routes (default: 'remove-ext')
 
   // Meta API
-  metaApis?: ('healthz' | 'version' | 'routes')[];  // Default: ['healthz', 'version', 'routes']
-  metaSecret?: string;             // Required for routes endpoint: >= 20 chars, letters+digits, no whitespace
+  metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
+  metaSecret?: string;             // Required for all meta APIs: >= 20 chars, letters+digits, no whitespace. Defaults to FLUXION_META_SECRET env var
 
   // Request handling
   maxRequestBytes?: number;        // Default: 8_000_000
@@ -590,7 +616,7 @@ await fluxion({
 - ✨ **Meta APIs integrated** - All meta endpoints now served from main server at `/_fluxion/*`
 - ✨ **Configurable endpoints** - Use `metaApis` option to control which endpoints are enabled
 - ✨ **Standard deployment** - Use pm2, docker, or kubernetes for clustering and scaling
-- 🔄 **Removed options** - `workerOptions`, `metaPort` no longer needed
+- 🔒 **Enhanced security** - All meta API endpoints now require secret authentication
 
 **Benefits**
 
@@ -598,6 +624,7 @@ await fluxion({
 - Better integration with modern deployment tools
 - Flexible process management
 - Reduced framework complexity
+- Improved security with unified authentication
 
 **Migration Guide**
 
@@ -614,12 +641,15 @@ await fluxion({
 });
 
 // NEW (v1.0.0)
+// Set secret via environment variable
+export FLUXION_META_SECRET='your-20-char-secret1'
+
 await fluxion({
   dir: './dynamic',
   host: 'localhost',
   port: 3000,
-  metaApis: ['healthz', 'version', 'routes'],  // ✅ Added
-  metaSecret: 'your-secret-12345',             // ✅ Required for routes endpoint
+  metaApis: ['healthz', 'version', 'stats'],  // ✅ Configure enabled endpoints
+  // metaSecret is read from FLUXION_META_SECRET automatically
 });
 
 // For clustering, use pm2:
@@ -631,13 +661,26 @@ await fluxion({
 ```bash
 # OLD: Separate meta server
 curl http://localhost:3001/_fluxion/healthz
-curl http://localhost:3001/_fluxion/workers
 
-# NEW: Integrated into main server
+# NEW: Integrated into main server with selective authentication
+# Basic monitoring - no authentication required
 curl http://localhost:3000/_fluxion/healthz
 curl http://localhost:3000/_fluxion/version
-curl 'http://localhost:3000/_fluxion/routes?secret=your-secret-12345'
+curl http://localhost:3000/_fluxion/stats
+
+# Sensitive endpoints - require secret
+export FLUXION_META_SECRET='your-20-char-secret1'
+curl "http://localhost:3000/_fluxion/routes?secret=$FLUXION_META_SECRET"
+curl "http://localhost:3000/_fluxion/config?secret=$FLUXION_META_SECRET"
 ```
+
+**Security Improvements**
+
+- ✅ Smart authentication - only sensitive endpoints require secret
+- ✅ Basic monitoring endpoints (healthz, version, stats) are publicly accessible
+- ✅ Sensitive endpoints (config, routes) require secret authentication
+- ✅ Automatic secret loading from `FLUXION_META_SECRET` environment variable
+- ✅ Better protection against unauthorized access while enabling health checks
 
 ### v0.16.5
 

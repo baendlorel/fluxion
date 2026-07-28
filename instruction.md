@@ -99,8 +99,9 @@ await fluxion({
   dir: process.env.DYNAMIC_DIRECTORY ?? './dynamic',
   host: process.env.HOST ?? 'localhost',
   port: int(process.env.PORT, 3000),
-  metaApis: ['healthz', 'version', 'routes'],
-  metaSecret: process.env.META_SECRET,
+  metaApis: ['healthz', 'version', 'stats'],  // Enable monitoring endpoints
+  // metaSecret is automatically read from FLUXION_META_SECRET environment variable
+  // or set explicitly: metaSecret: 'your-20-char-secret1'
 });
 ```
 
@@ -505,8 +506,8 @@ interface FluxionOptions {
   apiMapper?: string | function;  // Transform API file paths to routes. Default: 'remove-ext'
 
   // Meta API
-  metaApis?: ('healthz' | 'version' | 'routes')[];  // Default: ['healthz', 'version', 'routes']
-  metaSecret?: string;             // Required for routes endpoint: ≥20 chars, letters+digits, no whitespace
+  metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
+  metaSecret?: string;             // Required for all meta APIs: ≥20 chars, letters+digits, no whitespace. Defaults to FLUXION_META_SECRET env var
 
   // Request limits
   maxRequestBytes?: number;        // Default: 8_000_000 (8MB). 413 if exceeded.
@@ -746,19 +747,36 @@ Fluxion runs as a single process. For production deployments, use process manage
 
 ### Meta API endpoints
 
-Meta APIs are integrated into the main server at `/_fluxion/*` endpoints (configurable via `metaApis` option):
+Meta APIs are integrated into the main server at `/_fluxion/*` endpoints (configurable via `metaApis` option).
+
+**Security:** Basic monitoring endpoints are publicly accessible. Sensitive endpoints require secret authentication.
 
 ```http
-GET /_fluxion/healthz                   # Health check (default: enabled)
-GET /_fluxion/version                   # Version information (default: enabled)
-GET /_fluxion/routes?secret=<secret>    # Route table snapshot (requires metaSecret)
+GET /_fluxion/healthz              # Health check ✅ Public (default: enabled)
+GET /_fluxion/version              # Version information ✅ Public (default: enabled)
+GET /_fluxion/stats                # Memory/CPU/runtime stats ✅ Public (default: enabled)
+GET /_fluxion/config?secret=<key>  # Current configuration 🔒 Requires secret (default: disabled)
+GET /_fluxion/routes?secret=<key>  # Route table snapshot 🔒 Requires secret (default: disabled)
 ```
 
-Example:
+**Authentication:**
 ```bash
+# Basic monitoring - no authentication required
 curl http://127.0.0.1:3000/_fluxion/healthz
 curl http://127.0.0.1:3000/_fluxion/version
+curl http://127.0.0.1:3000/_fluxion/stats
+
+# Set secret for sensitive endpoints
+export FLUXION_META_SECRET='your-20-char-secret1'
+
+# Or configure explicitly
+await fluxion({
+  metaSecret: 'your-20-char-secret1',  // Optional: falls back to FLUXION_META_SECRET
+});
+
+# Access sensitive endpoints with secret
 curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
+curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
 ```
 
 ## Recent Updates
@@ -770,6 +788,7 @@ curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
 - ✨ Meta APIs integrated into main server at `/_fluxion/*` endpoints
 - ✨ Configurable meta API endpoints via `metaApis` option
 - ✨ Use pm2/docker/kubernetes for process management and clustering
+- 🔒 Enhanced security - all meta API endpoints require secret authentication
 - 🔄 Removed `workerOptions`, `metaPort` options
 
 **Benefits**
@@ -777,10 +796,13 @@ curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
 - Better integration with standard deployment tools
 - Flexible process management
 - Reduced framework complexity
+- Improved security with unified authentication
 
 **Migration Guide**
 - Remove `workerOptions` and `metaPort` from configuration
+- Set `FLUXION_META_SECRET` environment variable for meta API access
 - Update meta API calls from `metaPort` to main port with `/_fluxion/*` prefix
+- All meta API endpoints now require `?secret=` parameter
 - Use pm2/docker/kubernetes for clustering instead of built-in cluster mode
 
 ### v0.16.5
