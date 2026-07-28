@@ -110,7 +110,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiMapper = 'remove-ext',
     https,
     nativeWatcher = false,
-    metaApis = ['healthz', 'version', 'routes'],
+    metaApis = ['healthz', 'version'],
     metaSecret,
     cronjobDir: rawCronjobDir,
     cronjobInclude = ['**/*.ts'],

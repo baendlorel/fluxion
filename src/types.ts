@@ -169,7 +169,7 @@ export interface FluxionOptions {
   /**
    * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
    * Available endpoints: 'healthz', 'version', 'routes'
-   * Defaults to ['healthz', 'version', 'routes'] (all enabled)
+   * Defaults to ['healthz', 'version'] (all enabled but 'routes')
    */
   metaApis?: ('healthz' | 'version' | 'routes')[];
 
