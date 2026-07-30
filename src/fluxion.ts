@@ -35,16 +35,19 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
     context.cronjobManager.start();
   }
 
+  // Start HTTP server
+  const server = await createServer(context);
+
   // Register signal handlers for graceful shutdown
-  const shutdown = async (signal: NodeJS.Signals) => {
+  const shutdown = (signal: NodeJS.Signals) => {
     context.logger.warn({ message: 'ShuttingDown', pid: process.pid, signal });
 
-    // Stop watcher
+    server.close();
+
     if (context.watcher) {
       context.watcher.stop();
     }
 
-    // Stop cronjob manager
     if (context.cronjobManager) {
       context.cronjobManager.stop();
     }
@@ -54,7 +57,4 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
 
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));
-
-  // Start HTTP server
-  await createServer(context);
 }

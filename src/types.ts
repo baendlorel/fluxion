@@ -4,6 +4,7 @@ import type { FluxionRouter } from './router/index.js';
 import type { ApiWatcher } from './watcher/api-watcher.js';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
+import { FluxionCronJobManager } from './cronjob/manager.js';
 
 export interface FluxionRequest {
   /**
@@ -263,7 +264,7 @@ export interface FluxionContext {
   logger: InternalFluxionLogger;
   watcher: ApiWatcher;
   router: FluxionRouter;
-  cronjobManager?: import('./cronjob/manager.js').FluxionCronJobManager;
+  cronjobManager: FluxionCronJobManager;
 }
 
 export interface FluxionModuleContext {

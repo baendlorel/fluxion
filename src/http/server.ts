@@ -216,15 +216,16 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
       resolve(server);
     });
 
-    server.on('error', (error) => {
+    server.on('error', (e) => {
       cx.logger.error({
         message: 'ServerError',
-        error: getErrorMessage(error),
+        error: getErrorMessage(e),
       });
       if (listening) {
         process.exit(1);
       }
-      reject(error);
+      reject(e);
+      process.exit(1);
     });
 
     server.listen(cx.options.port, cx.options.host);
