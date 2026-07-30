@@ -42,8 +42,6 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   const shutdown = (signal: NodeJS.Signals) => {
     context.logger.warn({ message: 'ShuttingDown', pid: process.pid, signal });
 
-    server.close();
-
     if (context.watcher) {
       context.watcher.stop();
     }
@@ -51,8 +49,7 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
     if (context.cronjobManager) {
       context.cronjobManager.stop();
     }
-
-    process.exit(0);
+    server.close(() => process.exit(0));
   };
 
   process.once('SIGINT', () => shutdown('SIGINT'));
