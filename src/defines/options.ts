@@ -84,7 +84,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   const {
     dir: rawDir,
     host,
-    port,
+    port: userPort,
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
     staticResourceTimeoutMs = 10 * 600000,
@@ -116,6 +116,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     cronjobInclude = ['**/*.ts'],
     cronjobExclude = [],
   } = o as FluxionOptions;
+
+  // FLUXION_CLI_PORT has the highest priority（by Rust CLI）
+  const port = process.env.FLUXION_CLI_PORT ? Number.parseInt(process.env.FLUXION_CLI_PORT, 10) : userPort;
 
   const logger = o.logger ?? 'one-line';
   if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
