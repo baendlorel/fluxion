@@ -23,12 +23,20 @@ const ARCH_MAP: Record<string, string> = {
 const GITHUB_REPO = 'baendlorel/fluxion';
 const BINARY_NAME = 'fluxion-cli';
 
-function getBinaryInfo() {
-  const currentPlatform = PLATFORM_MAP[platform()] || 'linux';
-  const currentArch = ARCH_MAP[arch()] || 'x64';
+interface BinaryInfo {
+  platform: string;
+  arch: string;
+  binaryName: string;
+  extension: string;
+  platformName: string;
+}
 
-  const extension = platform() === 'win32' ? '.exe' : '';
-  const binaryName = `${BINARY_NAME}-${currentPlatform}-${currentArch}${extension}`;
+function getBinaryInfo(): BinaryInfo {
+  const currentPlatform: string = PLATFORM_MAP[platform()] || 'linux';
+  const currentArch: string = ARCH_MAP[arch()] || 'x64';
+
+  const extension: string = platform() === 'win32' ? '.exe' : '';
+  const binaryName: string = `${BINARY_NAME}-${currentPlatform}-${currentArch}${extension}`;
 
   return {
     platform: currentPlatform,
@@ -39,9 +47,9 @@ function getBinaryInfo() {
   };
 }
 
-function getInstallDir() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const installDir = join(homeDir, '.fluxion', 'bin');
+function getInstallDir(): string {
+  const homeDir: string = process.env.HOME || process.env.USERPROFILE || '';
+  const installDir: string = join(homeDir, '.fluxion', 'bin');
 
   if (!existsSync(installDir)) {
     mkdirSync(installDir, { recursive: true });
@@ -50,21 +58,21 @@ function getInstallDir() {
   return installDir;
 }
 
-function getBinaryPath() {
-  const binaryInfo = getBinaryInfo();
-  const installDir = getInstallDir();
+function getBinaryPath(): string {
+  const binaryInfo: BinaryInfo = getBinaryInfo();
+  const installDir: string = getInstallDir();
   return join(installDir, binaryInfo.binaryName);
 }
 
 async function getLatestVersion(): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
       path: `/repos/${GITHUB_REPO}/releases/latest`,
       method: 'GET',
       headers: {
         'User-Agent': 'fluxion-installer',
-        Accept: 'application/vnd.github.v3+json',
+        'Accept': 'application/vnd.github.v3+json',
       },
     };
 
@@ -98,38 +106,36 @@ async function getLatestVersion(): Promise<string> {
   });
 }
 
-async function downloadBinary(version: string, binaryInfo: { binaryName: string }) {
-  const installDir = getInstallDir();
-  const targetPath = join(installDir, binaryInfo.binaryName);
+async function downloadBinary(version: string, binaryInfo: BinaryInfo): Promise<void> {
+  const installDir: string = getInstallDir();
+  const targetPath: string = join(installDir, binaryInfo.binaryName);
 
-  const url = `https://github.com/${GITHUB_REPO}/releases/download/v${version}/${binaryInfo.binaryName}`;
+  const url: string = `https://github.com/${GITHUB_REPO}/releases/download/v${version}/${binaryInfo.binaryName}`;
 
   console.log(`📥 Downloading ${binaryInfo.binaryName} from ${url}...`);
 
   return new Promise<void>((resolve, reject) => {
     const file = createWriteStream(targetPath);
 
-    https
-      .get(url, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download: ${response.statusCode}`));
-          return;
-        }
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download: ${response.statusCode}`));
+        return;
+      }
 
-        response.pipe(file);
+      response.pipe(file);
 
-        file.on('finish', () => {
-          file.close();
-          resolve();
-        });
-      })
-      .on('error', (err) => {
-        reject(err);
+      file.on('finish', () => {
+        file.close();
+        resolve();
       });
+    }).on('error', (err) => {
+      reject(err);
+    });
   });
 }
 
-async function makeExecutable(filePath: string) {
+async function makeExecutable(filePath: string): Promise<void> {
   if (platform() !== 'win32') {
     try {
       await chmod(filePath, 0o755);
@@ -139,9 +145,9 @@ async function makeExecutable(filePath: string) {
   }
 }
 
-async function ensureBinary() {
-  const binaryInfo = getBinaryInfo();
-  const binaryPath = getBinaryPath();
+async function ensureBinary(): Promise<string> {
+  const binaryInfo: BinaryInfo = getBinaryInfo();
+  const binaryPath: string = getBinaryPath();
 
   if (existsSync(binaryPath)) {
     return binaryPath;
@@ -151,9 +157,8 @@ async function ensureBinary() {
   console.log(`📍 Platform: ${binaryInfo.platformName}`);
 
   // 首先尝试使用本地构建的二进制文件（开发模式）
-  const localBinaryPath = join(
+  const localBinaryPath: string = join(
     __dirname,
-    '..',
     '..',
     'cli',
     'target',
@@ -172,7 +177,7 @@ async function ensureBinary() {
   }
 
   try {
-    const version = await getLatestVersion();
+    const version: string = await getLatestVersion();
     console.log(`📦 Installing version ${version}...`);
 
     await downloadBinary(version, binaryInfo);
@@ -188,37 +193,37 @@ async function ensureBinary() {
   }
 }
 
-async function checkForUpdates() {
+async function checkForUpdates(): Promise<boolean> {
   try {
-    const installedVersion = process.env.FLUXION_VERSION;
+    const installedVersion: string | undefined = process.env.FLUXION_VERSION;
     if (!installedVersion) {
       return false;
     }
 
-    const latestVersion = await getLatestVersion();
+    const latestVersion: string = await getLatestVersion();
     return latestVersion !== installedVersion;
   } catch {
     return false;
   }
 }
 
-async function main() {
+async function main(): Promise<void> {
   try {
     // Check for updates in background
-    checkForUpdates().then((hasUpdate) => {
+    checkForUpdates().then((hasUpdate: boolean) => {
       if (hasUpdate) {
         console.log('🔄 A new version is available. Run with --update to upgrade.');
       }
     });
 
-    const binaryPath = await ensureBinary();
-    const args = process.argv.slice(2);
+    const binaryPath: string = await ensureBinary();
+    const args: string[] = process.argv.slice(2);
 
     // Handle update command
     if (args.includes('--update')) {
       console.log('🔄 Updating to latest version...');
-      const binaryInfo = getBinaryInfo();
-      const version = await getLatestVersion();
+      const binaryInfo: BinaryInfo = getBinaryInfo();
+      const version: string = await getLatestVersion();
 
       await downloadBinary(version, binaryInfo);
       await makeExecutable(getBinaryPath());
@@ -235,12 +240,12 @@ async function main() {
       },
     });
 
-    child.on('error', (error) => {
+    child.on('error', (error: Error) => {
       console.error(`Failed to start fluxion-cli: ${error.message}`);
       process.exit(1);
     });
 
-    child.on('exit', (code) => {
+    child.on('exit', (code: number | null) => {
       process.exit(code || 0);
     });
   } catch (error) {

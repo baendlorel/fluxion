@@ -20,7 +20,7 @@ const plugins = () => [
 
 export default defineConfig([
   {
-    entry: [{ index: 'src/index.ts' }], // { cli: 'src/cli/index.ts' }
+    entry: [{ index: 'src/index.ts' }],
     format: ['esm', 'cjs'],
     dts: true,
     clean: true,
@@ -32,5 +32,17 @@ export default defineConfig([
     deps: {
       onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
     },
+  },
+  {
+    entry: [{ cli: 'src/cli.ts' }],
+    format: ['cjs'],
+    dts: false,
+    clean: false,
+    sourcemap: false,
+    minify: false,
+    target: 'node24',
+    treeshake: false,
+    plugins: [],
+    deps: {},
   },
 ]);

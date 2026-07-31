@@ -12,7 +12,7 @@
   "description": "Fluxion is able to start a server that can dynamically load routers and js files. It is designed to be used to replace PHP",
   "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
   "bin": {
-    "fluxion": "./dist/installer/index.mjs"
+    "fluxion": "./dist/cli.cjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
