@@ -1,6 +1,9 @@
 import type { FluxionContext } from '@/types.js';
 import type { otherstring } from '@/global.js';
 import stringify from 'fast-json-stable-stringify';
+import { createWriteStream, existsSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
 
 import { cctl } from './color.js';
 
@@ -83,17 +86,71 @@ export const oneLineLogger: FluxionLoggerFn = (entry: LogEntry) => {
 };
 
 /**
+ * 创建文件日志写入器
+ */
+function createFileSink(logFilePath: string): (entry: LogEntry) => void {
+  // 确保日志目录存在
+  if (!existsSync(logFilePath)) {
+    const dir = dirname(logFilePath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  const fileStream = createWriteStream(logFilePath, { flags: 'a' });
+
+  return (entry: LogEntry) => {
+    try {
+      const timestamp = entry.timestamp || new Date().toISOString();
+      const level = entry.level || 'INFO';
+      const pid = entry.pid !== undefined ? ` [${entry.pid}]` : '';
+      const message = entry.message ? entry.message : safeStringify(entry);
+
+      fileStream.write(`[${timestamp}] ${level}${pid} ${message}\n`);
+    } catch {
+      // 忽略文件写入错误
+    }
+  };
+}
+
+/**
  * & Logger Options here is checked by normalizeOptions function.
  */
 function resolveLoggerSink(cx: Pick<FluxionContext, 'options'>): FluxionLoggerFn {
+  // 检查是否设置了 FLUXION_INSTANCE_LOG 环境变量
+  const instanceLogPath = process.env.FLUXION_INSTANCE_LOG;
+  const fileSink = instanceLogPath ? createFileSink(instanceLogPath) : null;
+
   const loggerOption = cx.options.logger;
   if (loggerOption === undefined || loggerOption === 'one-line') {
+    if (fileSink) {
+      // 同时输出到控制台和文件
+      return (entry: LogEntry) => {
+        oneLineLogger(entry);
+        fileSink(entry);
+      };
+    }
     return oneLineLogger;
   }
 
   if (loggerOption === 'json-line') {
     // eslint-disable-next-line @typescript-eslint/no-console
-    return (entry: LogEntry) => console.log(safeStringify(entry));
+    const jsonSink = (entry: LogEntry) => console.log(safeStringify(entry));
+    if (fileSink) {
+      return (entry: LogEntry) => {
+        jsonSink(entry);
+        fileSink(entry);
+      };
+    }
+    return jsonSink;
+  }
+
+  if (fileSink) {
+    // 自定义 logger + 文件输出
+    return (entry: LogEntry) => {
+      loggerOption(entry);
+      fileSink(entry);
+    };
   }
 
   return loggerOption;

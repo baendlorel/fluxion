@@ -70,7 +70,7 @@ async fn main() {
     signals::setup_signal_handlers(shutdown_tx, args.logfile.clone()).await;
 
     // Start the tsx process
-    let (child, mode_description) = match process::spawn_tsx(&args.entry, args.port) {
+    let (child, mode_description) = match process::spawn_tsx(&args.entry, args.port, &args.logfile) {
         Ok(c) => c,
         Err(e) => {
             logging::log(&args.logfile, &e);

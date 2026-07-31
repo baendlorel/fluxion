@@ -120,12 +120,17 @@ impl Default for TsxRunner {
     }
 }
 
-pub fn spawn_tsx(entry: &str, port: u16) -> Result<(std::process::Child, String), String> {
+pub fn spawn_tsx(entry: &str, port: u16, cli_logfile: &str) -> Result<(std::process::Child, String), String> {
     let tsx_runner = TsxRunner::new()?;
     let mut cmd = tsx_runner.command();
 
+    // 从 CLI 日志文件路径生成 instance 日志文件路径
+    // .fluxion/fluxion.log -> .fluxion/fluxion-instance.log
+    let instance_logfile = cli_logfile.replace("fluxion.log", "fluxion-instance.log");
+
     cmd.arg(entry)
         .env("FLUXION_CLI_PORT", port.to_string())
+        .env("FLUXION_INSTANCE_LOG", &instance_logfile)
         .spawn()
         .map(|child| (child, format!("using {}", tsx_runner.mode_description())))
         .map_err(|e| format!("Failed to start tsx using {}: {}", tsx_runner.mode_description(), e))
@@ -256,7 +261,7 @@ impl ProcessManager {
                             );
                             sleep(Duration::from_secs(backoff_secs)).await;
 
-                            match spawn_tsx(entry, port) {
+                            match spawn_tsx(entry, port, logfile) {
                                 Ok((c, mode)) => {
                                     let new_pid = c.id();
                                     child = c;

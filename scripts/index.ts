@@ -1,37 +1,38 @@
 import { build } from './build.js';
 import { publish } from './publish.js';
 import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 if (process.argv.includes('--build')) {
-  const buildCli = process.argv.includes('--cli');
   build();
-
-  // 如果需要构建 CLI，同时构建 wrapper
-  if (buildCli) {
-    buildWrapper();
-  }
+  buildInstaller();
 } else if (process.argv.includes('--publish')) {
   build();
+  buildInstaller();
   publish();
 }
 
-function buildWrapper() {
-  const wrapperSrc = join(process.cwd(), 'scripts', 'wrapper.ts');
-  const wrapperDest = join(process.cwd(), 'dist', 'wrapper.mjs');
+function buildInstaller() {
+  console.log('📦 Building installer...');
 
-  if (existsSync(wrapperSrc)) {
-    console.log('📦 Building CLI wrapper...');
-    execSync(`npx tsx ${wrapperSrc} --build`, {
-      stdio: 'inherit',
-      env: { ...process.env, BUILD_TARGET: wrapperDest }
-    });
+  const installerSrc = join(process.cwd(), 'scripts', 'installer.ts');
+  const installerDir = join(process.cwd(), 'dist', 'installer');
 
-    // 直接复制到 dist 目录
-    execSync(`cp ${wrapperSrc} ${wrapperDest}`, { stdio: 'inherit' });
-    console.log('✅ CLI wrapper built successfully');
-  } else {
-    console.warn('⚠️  wrapper.ts not found, skipping wrapper build');
+  if (!existsSync(installerSrc)) {
+    console.warn('⚠️  installer.ts not found, skipping installer build');
+    return;
   }
+
+  // 创建 installer 目录
+  if (!existsSync(installerDir)) {
+    mkdirSync(installerDir, { recursive: true });
+  }
+
+  // 复制安装器到 dist 目录
+  const installerDest = join(installerDir, 'index.mjs');
+  copyFileSync(installerSrc, installerDest);
+
+  console.log('✅ Installer built successfully');
+  console.log(`📁 Installer location: ${installerDest}`);
 }

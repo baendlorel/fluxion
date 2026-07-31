@@ -7,7 +7,7 @@ pub struct Args {
     #[arg(short, long, default_value = "main.ts")]
     pub entry: String,
 
-    #[arg(long, default_value = "fluxion.log")]
+    #[arg(long, default_value = ".fluxion/fluxion.log")]
     pub logfile: String,
 
     #[arg(long, default_value = ".")]

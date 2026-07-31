@@ -1,9 +1,17 @@
-use std::fs::OpenOptions;
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::{stderr, Write};
+use std::path::Path;
 
 pub fn log(logfile: &str, message: &str) {
     let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     let log_message = format!("[{}] {}", timestamp, message);
+
+    // 确保日志目录存在
+    if let Some(parent_dir) = Path::new(logfile).parent() {
+        if !parent_dir.as_os_str().is_empty() {
+            let _ = create_dir_all(parent_dir);
+        }
+    }
 
     // Try to write to log file
     match OpenOptions::new().create(true).append(true).open(logfile) {

@@ -21,7 +21,6 @@ function getBinaryPath() {
   const currentPlatform = PLATFORM_MAP[platform()] ?? 'linux';
   const currentArch = ARCH_MAP[arch()] ?? 'x64';
 
-  // 尝试找到匹配的二进制文件
   const binaryName = `fluxion-${currentPlatform}-${currentArch}${platform() === 'win32' ? '.exe' : ''}`;
   const binaryPath = join(__dirname, 'bin', binaryName);
 
@@ -29,7 +28,6 @@ function getBinaryPath() {
     return binaryPath;
   }
 
-  // 如果没有找到，尝试回退到本地构建版本
   const localBinary = join(
     __dirname,
     '..',
