@@ -44,10 +44,13 @@
     "start": "code-server --bind-addr 0.0.0.0:3000 /app/dynamic && node /app/index.js",
     "dev": "tsx ./examples/main.ts --watch",
     "build": "tsx ./scripts/index.ts --build",
+    "build:cli": "tsx ./scripts/build-cli.ts",
     "pub": "tsx ./scripts/index.ts --publish",
     "check": "tsc --noEmit -p tsconfig.build.json",
     "test": "vitest",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "fluxion": "node ./dist/cli.mjs",
+    "fluxion-cli": "node ./dist/wrapper.mjs"
   },
   "license": "MIT",
   "devDependencies": {
