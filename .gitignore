@@ -8,6 +8,8 @@ local-test
 cronjobs
 hotapis
 
+cli/target
+
 
 # Logs
 logs
