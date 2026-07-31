@@ -1,53 +1,14 @@
+mod cli;
+mod daemon;
+mod logging;
+mod process;
+mod signals;
+
 use clap::Parser;
-use std::fs::OpenOptions;
-use std::io::{stderr, Write};
-use std::process::Command;
+use cli::Args;
+use process::ProcessManager;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::signal;
 use tokio::sync::mpsc;
-use tokio::time::interval;
-
-#[derive(Parser, Debug)]
-#[command(name = "fluxion")]
-#[command(about = "Fluxion hot-reload server runner", long_about = None)]
-struct Args {
-    #[arg(short, long, default_value = "main.ts")]
-    entry: String,
-
-    #[arg(long, default_value = "fluxion.log")]
-    logfile: String,
-
-    #[arg(long, default_value = ".")]
-    cwd: String,
-
-    #[arg(long, default_value = "9335")]
-    port: u16,
-}
-
-fn log(logfile: &str, message: &str) {
-    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    let log_message = format!("[{}] {}", timestamp, message);
-
-    // Try to write to log file
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(logfile) {
-        if writeln!(file, "{}", log_message).is_err() {
-            // If file write fails, fallback to stderr
-            let _ = writeln!(stderr(), "{}", log_message);
-        }
-    } else {
-        // If cannot open file, output to stderr
-        let _ = writeln!(stderr(), "{}", log_message);
-    }
-}
-
-fn spawn_tsx(entry: &str, port: u16) -> Result<std::process::Child, String> {
-    Command::new("tsx")
-        .arg(entry)
-        .env("FLUXION_CLI_PORT", port.to_string())
-        .spawn()
-        .map_err(|e| format!("Failed to start tsx: {}", e))
-}
 
 #[tokio::main]
 async fn main() {
@@ -55,110 +16,88 @@ async fn main() {
     let args = Arc::new(args);
 
     if let Err(e) = std::env::set_current_dir(&args.cwd) {
-        log(
+        logging::log(
             &args.logfile,
             &format!("Failed to set cwd to {}: {}", args.cwd, e),
         );
+        eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 
+    // Handle daemon mode
+    if args.daemon {
+        #[cfg(unix)]
+        {
+            // Create PID file path
+            let pid_file = format!("{}.pid", args.logfile);
+
+            if let Err(e) = daemon::daemonize() {
+                eprintln!("Failed to daemonize: {}", e);
+                std::process::exit(1);
+            }
+
+            if let Err(e) = daemon::create_pid_file(&pid_file) {
+                logging::log(&args.logfile, &format!("Failed to create PID file: {}", e));
+            }
+
+            // Ensure PID file is cleaned up on exit
+            let pid_file_clone = pid_file.clone();
+            let logfile_clone = args.logfile.clone();
+            ctrlc::set_handler(move || {
+                daemon::remove_pid_file(&pid_file_clone);
+                logging::log(&logfile_clone, "Received interrupt signal, cleaning up");
+                std::process::exit(0);
+            })
+            .expect("Error setting Ctrl-C handler");
+
+            logging::log(
+                &args.logfile,
+                &format!("Running as daemon (pid: {})", std::process::id()),
+            );
+        }
+
+        #[cfg(not(unix))]
+        {
+            eprintln!("Error: Daemon mode is only supported on Unix-like systems");
+            std::process::exit(1);
+        }
+    }
+
     // Create signal handling channel
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
 
-    // Listen for signals in background task
-    let logfile_clone = args.logfile.clone();
-    tokio::spawn(async move {
-        // Listen for Ctrl+C
-        let ctrl_c = signal::ctrl_c();
-        if let Ok(_) = ctrl_c.await {
-            let _ = shutdown_tx.send(()).await;
-            log(&logfile_clone, "Received Ctrl+C signal");
-            return;
-        }
+    // Set up signal handlers
+    signals::setup_signal_handlers(shutdown_tx, args.logfile.clone()).await;
 
-        // Listen for SIGTERM
-        let mut terminate = signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to setup SIGTERM handler");
-        if let Some(_) = terminate.recv().await {
-            let _ = shutdown_tx.send(()).await;
-            log(&logfile_clone, "Received SIGTERM signal");
-        }
-    });
-
-    let mut child = match spawn_tsx(&args.entry, args.port) {
+    // Start the tsx process
+    let (child, mode_description) = match process::spawn_tsx(&args.entry, args.port) {
         Ok(c) => c,
         Err(e) => {
-            log(&args.logfile, &e);
+            logging::log(&args.logfile, &e);
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     };
 
     let pid = child.id();
-    log(
+    logging::log(
         &args.logfile,
-        &format!("Started tsx {} (pid: {})", args.entry, pid),
+        &format!("Started tsx {} {} (pid: {})", args.entry, mode_description, pid),
     );
 
-    let mut check_interval = interval(Duration::from_secs(10));
-    let mut restart_count = 0;
-    const MAX_RESTARTS: u32 = 10;
+    // Create and run process manager
+    let mut process_manager = ProcessManager::default();
 
-    loop {
-        tokio::select! {
-            // Handle shutdown signal
-            _ = shutdown_rx.recv() => {
-                log(&args.logfile, "Shutting down...");
-                let _ = child.kill();
-                let _ = child.wait();
-                log(&args.logfile, "Shutdown complete");
-                break;
-            }
-            // Periodically check process and health status
-            _ = check_interval.tick() => {
-                // Check if process is still running
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        log(&args.logfile, &format!("Process exited with status: {}", status));
-                        restart_count += 1;
+    process_manager
+        .run_monitoring_loop(child, &args.entry, args.port, &args.logfile, shutdown_rx)
+        .await;
 
-                        if restart_count >= MAX_RESTARTS {
-                            log(&args.logfile, &format!("Too many restarts ({}), giving up", MAX_RESTARTS));
-                            break;
-                        }
-
-                        log(&args.logfile, &format!("Restarting... (attempt {}/{})", restart_count, MAX_RESTARTS));
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-
-                        child = match spawn_tsx(&args.entry, args.port) {
-                            Ok(c) => c,
-                            Err(e) => {
-                                log(&args.logfile, &e);
-                                break;
-                            }
-                        };
-
-                        let new_pid = child.id();
-                        log(&args.logfile, &format!("Restarted tsx (pid: {})", new_pid));
-                    }
-                    Ok(None) => {
-                        let health_url = format!("http://localhost:{}/__fluxion__/healthz", args.port);
-                        match reqwest::get(&health_url).await {
-                            Ok(resp) if resp.status().is_success() => {
-                            }
-                            Ok(resp) => {
-                                log(&args.logfile, &format!("Health check failed: status {}", resp.status()));
-                            }
-                            Err(e) => {
-                                log(&args.logfile, &format!("Health check error: {}", e));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log(&args.logfile, &format!("Error checking process: {}", e));
-                        break;
-                    }
-                }
-            }
+    // Clean up daemon mode resources
+    if args.daemon {
+        #[cfg(unix)]
+        {
+            let pid_file = format!("{}.pid", args.logfile);
+            daemon::remove_pid_file(&pid_file);
         }
     }
 }
