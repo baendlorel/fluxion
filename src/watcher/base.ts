@@ -96,6 +96,7 @@ export abstract class FluxionWatcherBase {
    * changes arriving during async onChange are re-collected in the next
    * iteration.
    */
+  // FIXME 这里有可能冲掉pending期间的文件变更
   private async flushPending(): Promise<void> {
     while (this.filesChanged.size > 0) {
       const promises = [...this.filesChanged].map(([abs, rel]) =>
