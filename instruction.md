@@ -9,13 +9,12 @@
 - [2. Starting a Server](#2-starting-a-server)
 - [3. Writing API Handlers](#3-writing-api-handlers)
 - [4. Middleware](#4-middleware)
-- [5. Cronjobs](#5-cronjobs)
-- [6. HTTP Exceptions](#6-http-exceptions)
-- [7. Request Object](#7-request-object)
-- [8. Response Patterns](#8-response-patterns)
-- [9. Options Reference](#9-options-reference)
-- [10. Common Patterns & Recipes](#10-common-patterns--recipes)
-- [11. Rules & Gotchas](#11-rules--gotchas)
+- [5. HTTP Exceptions](#5-http-exceptions)
+- [6. Request Object](#6-request-object)
+- [7. Response Patterns](#7-response-patterns)
+- [8. Options Reference](#8-options-reference)
+- [9. Common Patterns & Recipes](#9-common-patterns--recipes)
+- [10. Rules & Gotchas](#10-rules--gotchas)
 
 ---
 
@@ -24,12 +23,11 @@
 Fluxion is a Node.js server framework with these core concepts:
 
 - **Filesystem routing**: files under a `dir` directory become HTTP routes. The file path IS the URL path.
-- **Hot reload**: files are watched via `chokidar` (or native `fs.watch`); changes are picked up automatically without restart.
+- **Lazy loading**: API handler modules are (re)loaded on demand when requests arrive, not via file watchers. There is no file watching at runtime — the server never "stops watching".
 - **Single-process architecture**: Fluxion runs as a single process. Use pm2, docker, or kubernetes for clustering and scaling.
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
 - **Static files**: files matching `staticInclude` patterns (default: `**/*`) are served as static resources (GET/HEAD only).
 - **File exclusion**: files matching `exclude` patterns (default: node_modules, .git, dist, etc.) are skipped.
-- **Cronjobs**: optional hot-reloadable scheduled tasks via `cronjobDir`.
 - **Integrated meta APIs**: monitoring endpoints at `/_fluxion/*` for health, version, and route inspection.
 
 ### Package Exports
@@ -42,9 +40,6 @@ import {
   defineFluxionMiddleware,          // Define a middleware
   defineFluxionLogger,              // Define a custom logger
   defineFluxionOptions,             // Normalize/validate options
-  defineFluxionCronJob,             // Define a cronjob
-  CronExpressions,                  // Common cron expression constants
-  FluxionCronJobExecutionStrategy,  // Cronjob execution strategy enum
 
   // HTTP Exception classes
   HttpException,

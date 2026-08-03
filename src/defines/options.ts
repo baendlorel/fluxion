@@ -90,7 +90,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     staticResourceTimeoutMs = 10 * 600000,
     moduleDir: rawModuleDir = process.cwd(),
     maxRequestBytes = 8_000_000,
-    reloadDelay = 500,
     apiInclude = ['**/*.ts'],
     staticInclude = ['**/*'],
     exclude = [
@@ -109,16 +108,11 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     ],
     apiMapper = 'remove-ext',
     https,
-    nativeWatcher = false,
     metaApis = ['healthz', 'version', 'stats'],
     metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
-    cronjobDir: rawCronjobDir,
-    cronjobInclude = ['**/*.ts'],
-    cronjobExclude = [],
   } = o as FluxionOptions;
 
-  // FLUXION_CLI_PORT has the highest priority（by Rust CLI）
-  const port = process.env.FLUXION_CLI_PORT ? Number.parseInt(process.env.FLUXION_CLI_PORT, 10) : userPort;
+  const port = userPort;
 
   const logger = o.logger ?? 'one-line';
   if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
@@ -135,14 +129,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   }
   const moduleDir = path.resolve(rawModuleDir);
 
-  let cronjobDir: string | undefined;
-  if (rawCronjobDir !== undefined) {
-    if (typeof rawCronjobDir !== 'string') {
-      _throw('FluxionOptions.cronjobDir must be a string or undefined');
-    }
-    cronjobDir = path.resolve(rawCronjobDir);
-  }
-
   if (typeof host !== 'string') {
     _throw('FluxionOptions.host must be a string');
   }
@@ -153,14 +139,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
 
   if (!Number.isSafeInteger(middlewareTimeoutMs) || middlewareTimeoutMs <= 100) {
     _throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
-  }
-
-  if (typeof reloadDelay !== 'number' || reloadDelay <= 0 || !Number.isSafeInteger(reloadDelay)) {
-    _throw('FluxionOptions.reloadDelay must be a positive integer');
-  }
-
-  if (reloadDelay < 50) {
-    _throw('FluxionOptions.reloadDelay must be greater than or equal to 50');
   }
 
   if (typeof port !== 'number' || !Number.isSafeInteger(port)) {
@@ -208,7 +186,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     handlerTimeoutMs,
     middlewareTimeoutMs,
     staticResourceTimeoutMs,
-    reloadDelay,
     moduleDir,
     maxRequestBytes,
     logger,
@@ -230,13 +207,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       }
       _throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
     })(),
-    nativeWatcher,
     metaApis,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
-    cronjobDir,
-    cronjobInclude,
-    cronjobExclude,
     // !
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };

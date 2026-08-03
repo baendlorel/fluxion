@@ -37,9 +37,4 @@ export type {
   FluxionOptions,
 } from './types.js';
 
-// Cronjob exports
-export { CronExpressions } from './cronjob/expressions.js';
-export { FluxionCronJobExecutionStrategy } from './cronjob/types.js';
-export type { FluxionCronJob, FluxionCronJobContext } from './cronjob/types.js';
-
 // TODO 增加依赖更新后对应url更新的机制

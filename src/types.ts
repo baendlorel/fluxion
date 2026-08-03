@@ -1,10 +1,8 @@
 import type http from 'node:http';
 import type { FluxionLogger, InternalFluxionLogger, LoggerOption } from '@/common/logger.js';
 import type { FluxionRouter } from './router/index.js';
-import type { ApiWatcher } from './watcher/api-watcher.js';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
-import { FluxionCronJobManager } from './cronjob/manager.js';
 
 export interface FluxionRequest {
   /**
@@ -71,13 +69,6 @@ export interface FluxionOptions {
    * Default to 10 minutes 10*60*1000ms.
    */
   staticResourceTimeoutMs?: number;
-
-  /**
-   * Delay in milliseconds for reloading handlers after file changes are detected.
-   *
-   * Defaults to 500ms.
-   */
-  reloadDelay?: number;
 
   /**
    * Inject Path that will be used like `path.join(moduleDir,modulepath)`
@@ -161,13 +152,6 @@ export interface FluxionOptions {
   };
 
   /**
-   * Use native file watcher (fs.watch) instead of chokidar.
-   * When set to true, uses the native Node.js fs.watch() for file watching.
-   * Defaults to false (uses chokidar for better cross-platform compatibility).
-   */
-  nativeWatcher?: boolean;
-
-  /**
    * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
    * Available endpoints: 'healthz', 'version', 'routes', 'stats', 'config'
    * Defaults to ['healthz', 'version', 'stats']
@@ -196,25 +180,6 @@ export interface FluxionOptions {
    * **Disabled:** When set to `undefined` or doesn't meet validation rules, 'routes' and 'config' endpoints are disabled.
    */
   metaSecret?: string;
-
-  /**
-   * Directory containing cronjob files. When set, cronjobs will be loaded from this directory.
-   * Set to undefined to disable cronjob support.
-   * @default undefined
-   */
-  cronjobDir?: string;
-
-  /**
-   * Glob patterns for cronjob files that should be registered.
-   * @default ['**\/*.ts']
-   */
-  cronjobInclude?: string[];
-
-  /**
-   * Glob patterns for cronjob files that should be excluded.
-   * @default []
-   */
-  cronjobExclude?: string[];
 }
 
 export interface NormalizedFluxionOptions {
@@ -227,7 +192,6 @@ export interface NormalizedFluxionOptions {
   handlerTimeoutMs: number;
   middlewareTimeoutMs: number;
   staticResourceTimeoutMs: number;
-  reloadDelay: number;
   moduleDir: string;
   maxRequestBytes: number;
   logger: LoggerOption;
@@ -235,7 +199,6 @@ export interface NormalizedFluxionOptions {
   staticInclude: string[];
   exclude: string[];
   apiMapper: (relativePath: string) => string;
-  nativeWatcher: boolean;
   metaApis: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];
   metaSecret?: string;
   https?: {
@@ -243,11 +206,6 @@ export interface NormalizedFluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
-
-  /** Absolute path to cronjob directory, or undefined if cronjob is disabled. */
-  cronjobDir?: string;
-  cronjobInclude: string[];
-  cronjobExclude: string[];
 
   // !security check
   normalizedFlag: symbol;
@@ -262,9 +220,7 @@ export interface FluxionRouteMeta {
 export interface FluxionContext {
   options: NormalizedFluxionOptions;
   logger: InternalFluxionLogger;
-  watcher: ApiWatcher;
   router: FluxionRouter;
-  cronjobManager: FluxionCronJobManager;
 }
 
 export interface FluxionModuleContext {

@@ -14,7 +14,7 @@ const plugins = () => [
     // global _throw
     "_throw('": `throw new Error('[fluxion error] `,
     '_throw(`': 'throw new Error(`[fluxion error] ',
-    '_throw("': `throw new Error("[fluxion error] `,
+    '_throw("': 'throw new Error("[fluxion error] ',
   }),
 ];
 
@@ -32,17 +32,5 @@ export default defineConfig([
     deps: {
       onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
     },
-  },
-  {
-    entry: [{ cli: 'src/cli.ts' }],
-    format: ['cjs'],
-    dts: false,
-    clean: false,
-    sourcemap: false,
-    minify: false,
-    target: 'node24',
-    treeshake: false,
-    plugins: [],
-    deps: {},
   },
 ]);

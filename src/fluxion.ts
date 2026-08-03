@@ -1,14 +1,31 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { FluxionContext, FluxionOptions, NormalizedFluxionOptions } from './types.js';
 
 import { createLogger } from './common/logger.js';
 import { OPTIONS_NORMALIZED_FLAG } from './common/consts.js';
 import { defineFluxionOptions } from './defines/options.js';
 import { createServer } from './http/server.js';
-import { ApiWatcher } from './watcher/api-watcher.js';
-import { FluxionChokidarCore, FluxionNativeCore } from './watcher/core.js';
 import { FluxionRouter } from './router/index.js';
-import { FluxionCronJobManager } from './cronjob/manager.js';
-import { CronJobWatcher } from './watcher/cronjob-watcher.js';
+
+/**
+ * Scan the dynamic directory once and register all matching files.
+ * This is the one-time eager registration at startup. Hot reload after
+ * startup is handled by the lazy-load mechanism (per-request), not by
+ * file watchers.
+ */
+async function scanAndRegister(cx: FluxionContext, dir: string, base: string): Promise<void> {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const absolutePath = path.join(dir, entry.name);
+    const relativePath = path.relative(base, absolutePath);
+    if (entry.isDirectory()) {
+      await scanAndRegister(cx, absolutePath, base);
+    } else if (entry.isFile()) {
+      await cx.router.register(absolutePath, relativePath);
+    }
+  }
+}
 
 export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions) {
   const alreadyNormalized = (options as NormalizedFluxionOptions).normalizedFlag === OPTIONS_NORMALIZED_FLAG;
@@ -17,23 +34,8 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   context.logger = createLogger(context as Pick<FluxionContext, 'options'>);
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
 
-  // Start API watcher for hot reload
-  const CoreType = context.options.nativeWatcher ? FluxionNativeCore : FluxionChokidarCore;
-  context.watcher = await new ApiWatcher(
-    context as Pick<FluxionContext, 'options' | 'logger' | 'router'>,
-    CoreType,
-  ).start();
-
-  // Start cronjob manager if enabled
-  if (context.options.cronjobDir) {
-    context.cronjobManager = new FluxionCronJobManager(context);
-    const cronjobWatcher = new CronJobWatcher(
-      { options: context.options, logger: context.logger, cronJobManager: context.cronjobManager },
-      CoreType,
-    );
-    await cronjobWatcher.start();
-    context.cronjobManager.start();
-  }
+  // One-time eager registration of existing files.
+  await scanAndRegister(context, context.options.dir, context.options.dir);
 
   // Start HTTP server
   const server = await createServer(context);
@@ -41,14 +43,6 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   // Register signal handlers for graceful shutdown
   const shutdown = (signal: NodeJS.Signals) => {
     context.logger.warn({ message: 'ShuttingDown', pid: process.pid, signal });
-
-    if (context.watcher) {
-      context.watcher.stop();
-    }
-
-    if (context.cronjobManager) {
-      context.cronjobManager.stop();
-    }
     server.close(() => process.exit(0));
   };
 

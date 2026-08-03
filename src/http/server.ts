@@ -353,20 +353,15 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
       handlerTimeoutMs: cx.options.handlerTimeoutMs,
       middlewareTimeoutMs: cx.options.middlewareTimeoutMs,
       staticResourceTimeoutMs: cx.options.staticResourceTimeoutMs,
-      reloadDelay: cx.options.reloadDelay,
       moduleDir: cx.options.moduleDir,
       maxRequestBytes: cx.options.maxRequestBytes,
       apiInclude: cx.options.apiInclude,
       staticInclude: cx.options.staticInclude,
       exclude: cx.options.exclude,
       apiMapper: typeof cx.options.apiMapper === 'function' ? '(custom function)' : cx.options.apiMapper,
-      nativeWatcher: cx.options.nativeWatcher,
       metaApis: cx.options.metaApis,
       metaSecretSet: cx.options.metaSecret !== undefined,
       httpsEnabled: cx.options.https !== undefined,
-      cronjobDir: cx.options.cronjobDir,
-      cronjobInclude: cx.options.cronjobInclude,
-      cronjobExclude: cx.options.cronjobExclude,
     };
 
     safeSendJson(res, {
