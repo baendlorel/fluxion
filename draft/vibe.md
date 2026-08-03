@@ -131,3 +131,24 @@ options添加“接口加载方式”：
 3、staticInclude其余的会被注册为静态资源，默认不提供则为所有
 
 再重构之前，你需要理清楚：有一种ts文件，它作为内部模块，比如数据库链接，要是更新，我希望能热重载用到它的api.ts，能做到吗？
+
+
+---
+
+
+我将分支切换回了带有watch的版本，生产环境代码是：
+~/projects/framework/fluxion-czei。已知这个生产环境已经多次出现，
+修改文件链接没有重新注册，但这时候watcher疑似并失效，而是有的还会更新，
+有的不会。比如说我在admin/assets下的文件和admin/index.html。
+这两个咋改都不更新，但admin/api下的倒是会正常响应更新。
+（不更新的情况下没有任何日志输出到控制台）
+
+测试了chokidar和fs.watch，两者都会产生相同的bug；
+
+我在example文件夹下也创建了pub.ts，并已经取得一些进展：
+1、对于examples的例子，我成功复现了bug
+2、如果是我手动在vscode里操作删除examples/hotapis/assets,再创建examples/hotapis/assets/aaa.ts，
+watcher是生效的；
+3、如果我用examples/pub.ts脚本进行操作，则没有任何效果，不会触发watcher。
+
+疑似的结论是：rmSync和下面的mkdirsync、writefile都没有触发fs.watch ————请你帮我分析bug成因

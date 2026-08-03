@@ -2,14 +2,14 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 function main() {
-  const p = join(__dirname, 'assets');
+  const p = join(__dirname, 'hotapis', 'assets');
   console.log('rmSync', p);
   rmSync(p, { recursive: true, force: true });
 
   setTimeout(() => {
     mkdirSync(p);
     writeFileSync(
-      join(__dirname, 'assets', 'aaa.ts'),
+      join(__dirname, 'hotapis', 'assets', 'aaa.ts'),
       `import { defineFluxionModule } from '../../../src/index.js';
       
       export default defineFluxionModule({
