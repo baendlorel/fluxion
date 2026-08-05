@@ -295,4 +295,7 @@ export interface FluxionModule {
   middlewares?: FluxionMiddleware[];
 }
 
-export type FluxionModuleWithType = FluxionModule & { type: FluxionModuleType };
+export type NormalizedModule = FluxionModule & {
+  path: string;
+  type: FluxionModuleType;
+};

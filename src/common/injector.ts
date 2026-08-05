@@ -1,13 +1,13 @@
-import type { FluxionContext, FluxionModuleWithType } from '@/types.js';
+import type { FluxionContext, NormalizedModule } from '@/types.js';
 import { static_cast } from 'type-narrow';
 import { FluxionModuleType } from './consts';
 
-function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is FluxionModuleWithType {
+function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is NormalizedModule {
   if (typeof o !== 'object' || o === null) {
     return false;
   }
 
-  static_cast<FluxionModuleWithType>(o);
+  static_cast<NormalizedModule>(o);
 
   if (typeof o.handler !== 'function') {
     cx.logger.error(`handler must be a function`);
@@ -33,10 +33,7 @@ function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unkn
   return true;
 }
 
-export function loadFluxionModule(
-  cx: Pick<FluxionContext, 'options' | 'logger'>,
-  fullpath: string,
-): FluxionModuleWithType {
+export function loadFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, fullpath: string): NormalizedModule {
   delete require.cache[fullpath];
   let m = require(fullpath);
   if (isFluxionModule(cx, m.default)) {
