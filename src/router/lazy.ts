@@ -1,5 +1,5 @@
 import type { NormalizedModule, FluxionRouteMeta } from '../types.js';
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { FluxionModuleType } from '@/common/consts.js';
@@ -20,13 +20,6 @@ export class FluxionRouter extends FluxionRouterBase {
     const disposer = this.handlers.get(handlerPath)?.disposer;
     if (disposer) {
       await PromiseTry(disposer);
-    }
-
-    // # Delete
-    if (!fs.existsSync(absolutePath)) {
-      this.handlers.delete(handlerPath);
-      this.cx.logger.core({ action: 'Delete', url: handlerPath });
-      return;
     }
 
     // Step 2: Check if file matches exclude patterns
@@ -63,8 +56,11 @@ export class FluxionRouter extends FluxionRouterBase {
     this.cx.logger.core({ action: 'Skip', url: handlerPath });
   }
 
-  getModule(url: URL): NormalizedModule | undefined {
+  async getModule(url: URL): Promise<NormalizedModule | undefined> {
     const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
+    // TODO 根据路径去探测path是否存在
+    const stat = await fs.stat(path.join(this.cx.options.dir, relativePath));
+    stat.mtimeMs;
     return this.handlers.get(relativePath);
   }
 

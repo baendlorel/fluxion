@@ -1,6 +1,7 @@
 import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import type { FluxionContext, NormalizedModule, FluxionRouteMeta } from '../types.js';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export abstract class FluxionRouterBase {
@@ -11,11 +12,12 @@ export abstract class FluxionRouterBase {
     this.cx = cx;
   }
 
-  protected makeStaticResource(absolutePath: string): NormalizedModule {
+  protected async makeStaticResource(absolutePath: string): Promise<NormalizedModule> {
     return {
       type: FluxionModuleType.StaticResource,
+      mtime: NaN,
       absolutePath: absolutePath,
-      handler: async (normalized, _cx, req, res) => {
+      handler: async (normalized, cx, req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
           res.statusCode = 405;
           res.setHeader('Allow', 'GET, HEAD');
@@ -23,13 +25,14 @@ export abstract class FluxionRouterBase {
           return;
         }
 
-        if (!existsSync(absolutePath)) {
+        const stat = await fs.stat(absolutePath).catch((e: Error) => e);
+        if (stat instanceof Error) {
           res.statusCode = 404;
-          res.end('Not Found');
-          return;
+          res.end('Not Accessible');
+          cx.logger.error({ action: 'StaticResourceError', url: normalized.url, error: stat.message });
+          return null;
         }
 
-        const stat = statSync(absolutePath);
         if (!stat.isFile()) {
           res.statusCode = 404;
           res.end('Not Found');
@@ -87,7 +90,7 @@ export abstract class FluxionRouterBase {
 
   abstract register(absolutePath: string, relativePath: string): Promise<void>;
 
-  abstract getModule(url: URL): NormalizedModule | undefined;
+  abstract getModule(url: URL): NormalizedModule | undefined | Promise<NormalizedModule | undefined>;
 
   abstract getRoutes(): FluxionRouteMeta[];
 }

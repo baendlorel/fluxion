@@ -297,5 +297,11 @@ export interface FluxionModule {
 
 export type NormalizedModule = FluxionModule & {
   absolutePath: string;
+
+  /**
+   * mtime from `fs.stat`
+   */
+  mtime: number;
+
   type: FluxionModuleType;
 };
