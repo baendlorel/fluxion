@@ -301,7 +301,7 @@ export type NormalizedModule = FluxionModule & {
   /**
    * mtime from `fs.stat`
    */
-  mtime: number;
+  mtimeMs: number;
 
   type: FluxionModuleType;
 };

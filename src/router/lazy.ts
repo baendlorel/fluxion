@@ -1,8 +1,7 @@
-import type { NormalizedModule, FluxionRouteMeta } from '../types.js';
+import type { NormalizedModule } from '../types.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
-import { FluxionModuleType } from '@/common/consts.js';
 import { loadFluxionModule } from '@/common/injector.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
@@ -10,7 +9,7 @@ import { FluxionRouterBase } from './base.js';
 
 // # Used by lazy mode
 export class FluxionRouter extends FluxionRouterBase {
-  async register(absolutePath: string, relativePath: string) {
+  async register(absolutePath: string, relativePath: string): Promise<NormalizedModule | undefined> {
     // Determine the path to use for handler lookup/deletion
     // For API files, this might be transformed by apiMapper
     const isApiFile = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
@@ -39,40 +38,38 @@ export class FluxionRouter extends FluxionRouterBase {
       const apiPath = this.cx.options.apiMapper(relativePath);
       this.handlers.set(apiPath, m);
       this.cx.logger.core({ action: 'RegisterApi', url: apiPath });
-      return;
+      return m;
     }
 
     // Step 4: Check if file matches staticInclude patterns
     // If matching, register as static resource
     const matchesStaticInclude = this.cx.options.staticInclude.some((p) => minimatch(relativePath, p));
     if (matchesStaticInclude) {
-      this.handlers.set(relativePath, this.makeStaticResource(absolutePath));
+      const staticModule = await this.makeStaticResource(absolutePath);
+      this.handlers.set(relativePath, staticModule);
       this.cx.logger.core({ action: 'RegisterStatic', url: relativePath });
-      return;
+      return staticModule;
     }
 
     // Step 5: File doesn't match any pattern, skip registration
     this.handlers.delete(handlerPath);
     this.cx.logger.core({ action: 'Skip', url: handlerPath });
+    return undefined;
   }
 
   async getModule(url: URL): Promise<NormalizedModule | undefined> {
     const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
-    // TODO 根据路径去探测path是否存在
-    const stat = await fs.stat(path.join(this.cx.options.dir, relativePath));
-    stat.mtimeMs;
-    return this.handlers.get(relativePath);
-  }
+    const stat = await fs.stat(path.join(this.cx.options.dir, relativePath)).catch(() => undefined);
+    if (!stat || !stat.isFile()) {
+      return undefined;
+    }
 
-  getRoutes(): FluxionRouteMeta[] {
-    return [...this.handlers.entries()]
-      .map(
-        ([relativePath, m]): FluxionRouteMeta => ({
-          path: '/' + relativePath,
-          type: m.type === FluxionModuleType.Api ? 'api' : 'static',
-          methods: m.methods ? [...m.methods] : null,
-        }),
-      )
-      .sort((a, b) => a.path.localeCompare(b.path));
+    const m = this.handlers.get(relativePath);
+    // When not registered or outdated, re-register the module
+    if (!m || m.mtimeMs < stat.mtimeMs) {
+      return this.register(path.join(this.cx.options.dir, relativePath), relativePath);
+    }
+
+    return m;
   }
 }

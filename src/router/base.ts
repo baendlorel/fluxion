@@ -1,6 +1,6 @@
-import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
 import type { FluxionContext, NormalizedModule, FluxionRouteMeta } from '../types.js';
-import { createReadStream, existsSync } from 'node:fs';
+import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
+import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -15,7 +15,7 @@ export abstract class FluxionRouterBase {
   protected async makeStaticResource(absolutePath: string): Promise<NormalizedModule> {
     return {
       type: FluxionModuleType.StaticResource,
-      mtime: NaN,
+      mtimeMs: NaN,
       absolutePath: absolutePath,
       handler: async (normalized, cx, req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
@@ -88,9 +88,19 @@ export abstract class FluxionRouterBase {
     };
   }
 
-  abstract register(absolutePath: string, relativePath: string): Promise<void>;
+  abstract register(absolutePath: string, relativePath: string): Promise<NormalizedModule | undefined>;
 
   abstract getModule(url: URL): NormalizedModule | undefined | Promise<NormalizedModule | undefined>;
 
-  abstract getRoutes(): FluxionRouteMeta[];
+  getRoutes(): FluxionRouteMeta[] {
+    return [...this.handlers.entries()]
+      .map(
+        ([relativePath, m]): FluxionRouteMeta => ({
+          path: '/' + relativePath,
+          type: m.type === FluxionModuleType.Api ? 'api' : 'static',
+          methods: m.methods ? [...m.methods] : null,
+        }),
+      )
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
 }
