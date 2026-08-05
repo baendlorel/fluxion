@@ -33,15 +33,20 @@ function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unkn
   return true;
 }
 
-export function loadFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, fullpath: string): NormalizedModule {
-  delete require.cache[fullpath];
-  let m = require(fullpath);
+export function loadFluxionModule(
+  cx: Pick<FluxionContext, 'options' | 'logger'>,
+  absolutePath: string,
+): NormalizedModule {
+  delete require.cache[absolutePath];
+  let m = require(absolutePath);
   if (isFluxionModule(cx, m.default)) {
     m = m.default;
   } else if (isFluxionModule(cx, m)) {
   } else {
-    _throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
+    _throw(`Invalid handler module '${absolutePath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
+
+  m.absolutePath = absolutePath;
 
   return m;
 }

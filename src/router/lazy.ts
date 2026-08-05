@@ -31,7 +31,7 @@ export class FluxionRouter extends FluxionRouterBase {
 
     // Step 2: Check if file matches exclude patterns
     // If matching, skip registration
-    const matchesExclude = this.cx.options.exclude.some((pattern) => minimatch(relativePath, pattern));
+    const matchesExclude = this.cx.options.exclude.some((p) => minimatch(relativePath, p));
     if (matchesExclude) {
       this.handlers.delete(relativePath);
       this.cx.logger.core({ action: 'Exclude', url: relativePath });
@@ -40,7 +40,7 @@ export class FluxionRouter extends FluxionRouterBase {
 
     // Step 3: Check if file matches apiInclude patterns
     // If matching, register as API handler
-    const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
+    const matchesApiInclude = this.cx.options.apiInclude.some((p) => minimatch(relativePath, p));
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
       const apiPath = this.cx.options.apiMapper(relativePath);
@@ -51,7 +51,7 @@ export class FluxionRouter extends FluxionRouterBase {
 
     // Step 4: Check if file matches staticInclude patterns
     // If matching, register as static resource
-    const matchesStaticInclude = this.cx.options.staticInclude.some((pattern) => minimatch(relativePath, pattern));
+    const matchesStaticInclude = this.cx.options.staticInclude.some((p) => minimatch(relativePath, p));
     if (matchesStaticInclude) {
       this.handlers.set(relativePath, this.makeStaticResource(absolutePath));
       this.cx.logger.core({ action: 'RegisterStatic', url: relativePath });

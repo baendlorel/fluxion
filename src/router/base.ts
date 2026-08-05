@@ -14,7 +14,7 @@ export abstract class FluxionRouterBase {
   protected makeStaticResource(absolutePath: string): NormalizedModule {
     return {
       type: FluxionModuleType.StaticResource,
-      path: absolutePath,
+      absolutePath: absolutePath,
       handler: async (normalized, _cx, req, res) => {
         if (normalized.method !== 'GET' && normalized.method !== 'HEAD') {
           res.statusCode = 405;

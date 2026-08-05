@@ -296,6 +296,6 @@ export interface FluxionModule {
 }
 
 export type NormalizedModule = FluxionModule & {
-  path: string;
+  absolutePath: string;
   type: FluxionModuleType;
 };
