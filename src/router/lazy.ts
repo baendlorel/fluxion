@@ -10,17 +10,6 @@ import { FluxionRouterBase } from './base.js';
 // # Used by lazy mode
 export class FluxionRouter extends FluxionRouterBase {
   async register(absolutePath: string, relativePath: string): Promise<NormalizedModule | undefined> {
-    // Determine the path to use for handler lookup/deletion
-    // For API files, this might be transformed by apiMapper
-    const isApiFile = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
-    const handlerPath = isApiFile ? this.cx.options.apiMapper(relativePath) : relativePath;
-
-    // Get the disposer and delete
-    const disposer = this.handlers.get(handlerPath)?.disposer;
-    if (disposer) {
-      await PromiseTry(disposer);
-    }
-
     // Step 2: Check if file matches exclude patterns
     // If matching, skip registration
     const matchesExclude = this.cx.options.exclude.some((p) => minimatch(relativePath, p));
@@ -52,8 +41,8 @@ export class FluxionRouter extends FluxionRouterBase {
     }
 
     // Step 5: File doesn't match any pattern, skip registration
-    this.handlers.delete(handlerPath);
-    this.cx.logger.core({ action: 'Skip', url: handlerPath });
+    this.handlers.delete(relativePath);
+    this.cx.logger.core({ action: 'Skip', url: relativePath });
     return undefined;
   }
 
@@ -61,6 +50,11 @@ export class FluxionRouter extends FluxionRouterBase {
     const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
     const stat = await fs.stat(path.join(this.cx.options.dir, relativePath)).catch(() => undefined);
     if (!stat || !stat.isFile()) {
+      const disposer = this.handlers.get(relativePath)?.disposer;
+      if (disposer) {
+        await PromiseTry(disposer);
+      }
+      this.handlers.delete(relativePath);
       return undefined;
     }
 
