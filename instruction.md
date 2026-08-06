@@ -22,46 +22,37 @@
 
 Fluxion is a Node.js server framework with these core concepts:
 
+- **Lazy loading**: API handler modules are loaded on demand when requests arrive. No file watcher runs at runtime — zero overhead when files are stable.
 - **Filesystem routing**: files under a `dir` directory become HTTP routes. The file path IS the URL path.
-- **Lazy loading**: API handler modules are (re)loaded on demand when requests arrive, not via file watchers. There is no file watching at runtime — the server never "stops watching".
-- **Single-process architecture**: Fluxion runs as a single process. Use pm2, docker, or kubernetes for clustering and scaling.
+- **Single-process architecture**: Fluxion runs as a single process. Use pm2, docker, or kubernetes for clustering.
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
 - **Static files**: files matching `staticInclude` patterns (default: `**/*`) are served as static resources (GET/HEAD only).
-- **File exclusion**: files matching `exclude` patterns (default: node_modules, .git, dist, etc.) are skipped.
-- **Integrated meta APIs**: monitoring endpoints at `/_fluxion/*` for health, version, and route inspection.
+- **File exclusion**: files matching `exclude` patterns are skipped.
+- **Integrated meta APIs**: monitoring endpoints at `/_fluxion/*` for health, version, stats, and config.
 
 ### Package Exports
 
 ```ts
-import {
-  fluxion,                          // Start the server
-  HttpCode,                         // HTTP status code enum
-  defineFluxionModule,              // Define an API handler
-  defineFluxionMiddleware,          // Define a middleware
-  defineFluxionLogger,              // Define a custom logger
-  defineFluxionOptions,             // Normalize/validate options
+import { fluxion } from 'fluxion-ts';                    // Start the server
+import { HttpCode } from 'fluxion-ts';                   // HTTP status code enum
+import { defineFluxionModule } from 'fluxion-ts';        // Define an API handler
+import { defineFluxionMiddleware } from 'fluxion-ts';    // Define a middleware
+import { defineFluxionLogger } from 'fluxion-ts';        // Define a custom logger
+import { defineFluxionOptions } from 'fluxion-ts';       // Normalize/validate options
 
-  // HTTP Exception classes
-  HttpException,
-  BadRequestException,
-  UnauthorizedException,
-  ForbiddenException,
-  NotFoundException,
-  MethodNotAllowedException,
-  NotAcceptableException,
-  RequestTimeoutException,
-  ConflictException,
-  GoneException,
-  PayloadTooLargeException,
-  UnsupportedMediaTypeException,
-  UnprocessableEntityException,
-  TooManyRequestsException,
-  InternalServerErrorException,
-  NotImplementedException,
-  BadGatewayException,
-  ServiceUnavailableException,
-  GatewayTimeoutException,
+// HTTP Exception classes
+import {
+  HttpException, BadRequestException, UnauthorizedException,
+  ForbiddenException, NotFoundException, MethodNotAllowedException,
+  NotAcceptableException, RequestTimeoutException, ConflictException,
+  GoneException, PayloadTooLargeException, UnsupportedMediaTypeException,
+  UnprocessableEntityException, TooManyRequestsException,
+  InternalServerErrorException, NotImplementedException, BadGatewayException,
+  ServiceUnavailableException, GatewayTimeoutException,
 } from 'fluxion-ts';
+
+// Type imports
+import type { FluxionRequest, FluxionModuleContext, FluxionOptions } from 'fluxion-ts';
 ```
 
 ---
@@ -80,37 +71,6 @@ await fluxion({
 });
 ```
 
-### With environment variables
-
-```ts
-import { fluxion } from 'fluxion-ts';
-
-const int = (s: string | undefined, d: number) => {
-  const n = Number.parseInt(s ?? '', 10);
-  return Number.isNaN(n) ? d : n;
-};
-
-await fluxion({
-  dir: process.env.DYNAMIC_DIRECTORY ?? './dynamic',
-  host: process.env.HOST ?? 'localhost',
-  port: int(process.env.PORT, 3000),
-  metaApis: ['healthz', 'version', 'stats'],  // Enable monitoring endpoints
-  // metaSecret is automatically read from FLUXION_META_SECRET environment variable
-  // or set explicitly: metaSecret: 'your-20-char-secret1'
-});
-```
-
-### With cronjobs enabled
-
-```ts
-await fluxion({
-  dir: './dynamic',
-  host: 'localhost',
-  port: 3000,
-  cronjobDir: './cronjobs',
-});
-```
-
 ### With HTTPS
 
 ```ts
@@ -126,34 +86,29 @@ await fluxion({
 });
 ```
 
-### Production deployment with pm2
+Relative paths are resolved relative to `moduleDir` (default: `process.cwd()`). PEM content can be passed as strings directly.
 
-```bash
-# Install pm2
-npm install -g pm2
+### Custom Logger
 
-# Start with multiple processes
-pm2 start server.ts --name fluxion-app -i max
+```ts
+import { fluxion, defineFluxionLogger } from 'fluxion-ts';
 
-# View status
-pm2 status
+const myLogger = defineFluxionLogger((entry) => {
+  console.log(JSON.stringify(entry));
+});
 
-# View logs
-pm2 logs fluxion-app
-
-# Restart
-pm2 restart fluxion-app
+await fluxion({
+  dir: './dynamic',
+  host: 'localhost',
+  port: 3000,
+  logger: myLogger,
+});
 ```
 
 ### Development: install `tsx` for TypeScript hot-reload
 
 ```bash
 pnpm add -D tsx
-```
-
-Then run:
-
-```bash
 tsx server.ts
 ```
 
@@ -164,8 +119,6 @@ tsx server.ts
 Every API handler **must** use `defineFluxionModule()`. Place handler files under the configured `dir`.
 
 ### Simple handler (shorthand)
-
-The file path relative to `dir` becomes the URL path. File extension is part of the route.
 
 ```ts
 // File: dynamic/hello.ts  →  URL: /hello.ts
@@ -249,15 +202,9 @@ type FluxionMiddleware = (
 ) => Promise<unknown> | unknown;
 ```
 
-Note: Import types from the package when needed:
-```ts
-import type { FluxionMiddleware, FluxionModuleContext } from 'fluxion-ts';
-import type http from 'node:http';
-```
+### Short-circuiting the chain
 
-### Stopping the chain
-
-To short-circuit (e.g., auth failure), write directly to `rawRes` and return:
+To stop execution (e.g., auth failure), write to `rawRes` and return. The handler will NOT be called.
 
 ```ts
 const authGuard = defineFluxionMiddleware(async (req, cx, rawReq, rawRes) => {
@@ -275,77 +222,7 @@ Default middleware timeout is `3000ms`. Configure via `middlewareTimeoutMs` in s
 
 ---
 
-## 5. Cronjobs
-
-Cronjobs are hot-reloadable scheduled tasks. Enable by setting `cronjobDir` in server options.
-
-### Defining a cronjob
-
-```ts
-// File: cronjobs/cleanup.ts
-import { defineFluxionCronJob, CronExpressions, FluxionCronJobExecutionStrategy } from 'fluxion-ts';
-
-export default defineFluxionCronJob({
-  cronExpression: CronExpressions.EveryHour,
-  jobFn: async (cx) => {
-    cx.logger.info('Running hourly cleanup');
-    // ... cleanup logic
-  },
-  strategy: FluxionCronJobExecutionStrategy.WaitForCompletion,
-});
-```
-
-### Cron expression shortcuts
-
-```ts
-CronExpressions.EveryMinute        // '* * * * *'
-CronExpressions.Every5Minutes      // '*/5 * * * *'
-CronExpressions.Every10Minutes     // '*/10 * * * *'
-CronExpressions.Every15Minutes     // '*/15 * * * *'
-CronExpressions.Every30Minutes     // '*/30 * * * *'
-CronExpressions.EveryHour          // '0 * * * *'
-CronExpressions.Every2Hours        // '0 */2 * * *'
-CronExpressions.Every6Hours        // '0 */6 * * *'
-CronExpressions.Every12Hours       // '0 */12 * * *'
-CronExpressions.EveryDayAtMidnight // '0 0 * * *'
-CronExpressions.EveryDayAtNoon     // '0 12 * * *'
-CronExpressions.EveryMonday        // '0 0 * * 1'
-CronExpressions.EveryWeek          // '0 0 * * 0'
-CronExpressions.EveryMonth         // '0 0 1 * *'
-CronExpressions.EveryYear          // '0 0 1 1 *'
-```
-
-Or use a custom cron string:
-
-```ts
-defineFluxionCronJob({
-  cronExpression: '15 2 * * *',  // Every day at 2:15 AM
-  jobFn: async (cx) => { /* ... */ },
-});
-```
-
-### Execution strategies
-
-| Strategy | Behavior |
-|----------|----------|
-| `FluxionCronJobExecutionStrategy.WaitForCompletion` | Skip this tick if the previous run is still running (default) |
-| `FluxionCronJobExecutionStrategy.Immediate` | Fire immediately, even if previous run hasn't finished |
-
-### Lifecycle hooks
-
-```ts
-defineFluxionCronJob({
-  cronExpression: CronExpressions.EveryHour,
-  jobFn: async (cx) => { /* ... */ },
-  active: true,                         // Set false to disable without removing
-  onRegister: () => { /* file loaded */ },
-  onUnregister: () => { /* file removed/changed */ },
-});
-```
-
----
-
-## 6. HTTP Exceptions
+## 5. HTTP Exceptions
 
 Throw these in handlers or middleware to produce an error response:
 
@@ -392,7 +269,7 @@ export default defineFluxionModule(async (req) => {
 
 ---
 
-## 7. Request Object
+## 6. Request Object
 
 Every handler and middleware receives a `NormalizedRequest`:
 
@@ -404,7 +281,7 @@ interface NormalizedRequest {
   query: Record<string, string | string[]>;// Query parameters
   body: Record<string, any>;              // Parsed request body
   headers: http.IncomingHttpHeaders;       // Raw headers
-  cookie: Record<string, string>;          // Parsed cookies
+  cookie: Record<string, string>;          // Parsed cookies (max 100)
   meta: Record<any, any>;                 // Custom metadata (mutable, shared across middleware)
 }
 ```
@@ -412,18 +289,10 @@ interface NormalizedRequest {
 ### Body parsing rules
 
 - **GET / HEAD**: body is NOT parsed.
-- **JSON** (`Content-Type: application/json`): objects assigned directly; primitives become `{ value: ... }`; invalid JSON becomes `{ raw: '...' }`.
+- **JSON** (`application/json`): objects assigned directly; primitives become `{ value }`; invalid JSON becomes `{ raw }`.
 - **Form data** (`multipart/form-data`, `application/x-www-form-urlencoded`): parsed into key/value fields.
-- **Text** (`text/*`): stored as `{ raw: '...' }`.
+- **Text** (`text/*`): stored as `{ raw }`.
 - **Binary**: read for size check; body remains `{}`.
-
-### Query parameters
-
-```ts
-// URL: /api.ts?name=foo&tag=a&tag=b
-req.query.name  // 'foo'
-req.query.tag   // ['a', 'b']
-```
 
 ### Using `meta` for middleware communication
 
@@ -442,7 +311,7 @@ export default defineFluxionModule({
 
 ---
 
-## 8. Response Patterns
+## 7. Response Patterns
 
 ### Return value → JSON response
 
@@ -470,13 +339,13 @@ export default defineFluxionModule(async (_req, _cx, _rawReq, res) => {
 
 ### Rules
 
-- If `rawRes` has already ended (`res.writableEnded`), Fluxion will NOT send another response.
+- If `rawRes.writableEnded` is true, Fluxion will NOT send another response.
 - If the handler returns `undefined` and the response hasn't been ended, Fluxion sends the default JSON.
-- If `rawRes.headersSent` is true, Fluxion just calls `res.end()` to flush.
+- Security headers are automatically added to all responses: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Content-Security-Policy`.
 
 ---
 
-## 9. Options Reference
+## 8. Options Reference
 
 ```ts
 interface FluxionOptions {
@@ -488,11 +357,7 @@ interface FluxionOptions {
   // Timeouts
   handlerTimeoutMs?: number;       // Default: 5000
   middlewareTimeoutMs?: number;    // Default: 3000
-  staticResourceTimeoutMs?: number; // Default: 600000 (10 min)
-
-  // File watching
-  reloadDelay?: number;            // Debounce delay, default: 500ms
-  nativeWatcher?: boolean;         // Use fs.watch instead of chokidar
+  staticResourceTimeoutMs?: number; // Default: 180000 (3 min)
 
   // File patterns
   apiInclude?: string[];           // API handler patterns. Default: ['**/*.ts']
@@ -500,8 +365,10 @@ interface FluxionOptions {
   exclude?: string[];              // Exclude patterns (overrides defaults)
 
   // Meta API
-  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
-  metaSecret?: string;             // Required for all meta APIs: ≥20 chars, letters+digits, no whitespace. Defaults to FLUXION_META_SECRET env var
+  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];
+                                   // Default: ['healthz', 'version', 'stats']
+  metaSecret?: string;             // ≥20 chars, letters+digits, no whitespace.
+                                   // Reads from FLUXION_META_SECRET env var if not set.
 
   // Request limits
   maxRequestBytes?: number;        // Default: 8_000_000 (8MB). 413 if exceeded.
@@ -518,17 +385,12 @@ interface FluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
-
-  // Cronjobs
-  cronjobDir?: string;             // Cronjob directory (undefined = disabled)
-  cronjobInclude?: string[];       // Default: ['**/*.ts']
-  cronjobExclude?: string[];       // Default: []
 }
 ```
 
 ---
 
-## 10. Common Patterns & Recipes
+## 9. Common Patterns & Recipes
 
 ### REST-style API with method routing
 
@@ -589,24 +451,6 @@ export default defineFluxionModule({
 });
 ```
 
-### Custom logger
-
-```ts
-import { fluxion, defineFluxionLogger } from 'fluxion-ts';
-
-const myLogger = defineFluxionLogger((entry) => {
-  // entry: { timestamp, level, ...fields }
-  console.log(JSON.stringify(entry));
-});
-
-await fluxion({
-  dir: './dynamic',
-  host: 'localhost',
-  port: 3000,
-  logger: myLogger,
-});
-```
-
 ### Static files alongside APIs
 
 ```ts
@@ -620,19 +464,22 @@ await fluxion({
 });
 ```
 
-Files like `public/index.html` become static routes at `/index.html`.
-Files like `public/api/users.ts` become API routes at `/api/users` (extension removed).
+### Lazy loading behavior
 
-> API file extensions are automatically removed from routes. For example, `user/profile.ts` maps to `/user/profile`. This behavior is hardcoded and cannot be changed.
-  },
-  // admin/users.ts → /admin/api/users
-  // public/products.ts → /public/api/products
+Fluxion's lazy router caches modules on first request. Subsequent requests use the cached version:
+
+```ts
+// File: dynamic/counter.ts
+export default defineFluxionModule(async () => {
+  return { value: Math.random() };
 });
+// Multiple requests to /counter.ts return the SAME value
+// until the file is modified (mtime change triggers reload)
 ```
 
 ---
 
-## 11. Rules & Gotchas
+## 10. Rules & Gotchas
 
 ### DO
 
@@ -657,36 +504,36 @@ Files like `public/api/users.ts` become API routes at `/api/users` (extension re
 - ❌ **Don't use `GET`/`HEAD` for body-dependent logic** — body is not parsed for these methods.
 - ❌ **Don't forget file extension in URL** — `/hello.ts` not `/hello`. The extension IS part of the route.
 - ❌ **Don't set `metaSecret`** to less than 20 characters or without both letters and digits — it will throw.
-- ❌ **Don't share cronjob files with API handlers** — they live in separate directories (`dir` vs `cronjobDir`).
-
-### File extension behavior in routes
-
-API routes always have file extensions removed. This is hardcoded behavior.
-
-```
-dynamic/hello.ts        → GET /hello
-dynamic/api/users.ts    → GET /api/users
-```
-
-Static files always keep their extensions:
-```
-dynamic/index.html      → GET /index.html
-dynamic/assets/app.js   → GET /assets/app.js
-```
+- ❌ **Don't use the `include` option** — it has been renamed to `apiInclude`/`staticInclude`. Passing `include` will throw an error.
 
 ### Module state is ephemeral
 
 When a file changes, the module is reloaded. Any module-level variables (caches, counters, connections) are reset. Design handlers to be stateless.
 
+### Lazy loading lifecycle
+
+Fluxion uses a lazy loading strategy:
+
+1. **First request**: Module is loaded from disk, parsed, and cached in memory.
+2. **Subsequent requests**: Cached module is returned if `mtime` is unchanged.
+3. **File modification**: Changed `mtime` triggers a reload on the next request.
+4. **File deletion**: Module is disposed (calling `disposer` if set) and removed from cache. Subsequent requests return `404`.
+5. **File re-creation**: After deletion, if the file is recreated, it will be re-registered on the next request.
+
+### Security features
+
+- **Path traversal protection**: The router validates that the resolved path stays within the configured directory.
+- **Security headers**: All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and `Content-Security-Policy: default-src 'self'`.
+- **Error message sanitization**: Internal error details are never leaked to clients. Uncaught exceptions return a generic `500 Internal Server Error` message.
+- **Cookie limits**: Maximum 100 cookies per request.
+
 ### Process management
 
-Fluxion runs as a single process. For production deployments, use process managers like pm2, docker, or kubernetes for clustering and load balancing.
+Fluxion runs as a single process. For production deployments, use process managers like pm2, docker, or kubernetes.
 
 ### Meta API endpoints
 
-Meta APIs are integrated into the main server at `/_fluxion/*` endpoints (configurable via `metaApis` option).
-
-**Security:** Basic monitoring endpoints are publicly accessible. Sensitive endpoints require secret authentication.
+Meta APIs are integrated into the main server at `/_fluxion/*` endpoints.
 
 ```http
 GET /_fluxion/healthz              # Health check ✅ Public (default: enabled)
@@ -697,56 +544,12 @@ GET /_fluxion/config?secret=<key>  # Current configuration 🔒 Requires secret 
 
 **Authentication:**
 ```bash
-# Basic monitoring - no authentication required
+# Public endpoints — no authentication required
 curl http://127.0.0.1:3000/_fluxion/healthz
 curl http://127.0.0.1:3000/_fluxion/version
 curl http://127.0.0.1:3000/_fluxion/stats
 
-# Set secret for sensitive endpoints
+# Protected endpoints — requires secret
 export FLUXION_META_SECRET='your-20-char-secret1'
-
-# Or configure explicitly
-await fluxion({
-  metaSecret: 'your-20-char-secret1',  // Optional: falls back to FLUXION_META_SECRET
-});
-
-# Access sensitive endpoints with secret
 curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
 ```
-
-## Recent Updates
-
-### v1.0.0 (Current Major Release)
-
-**Architecture Simplification**
-- 🔄 Removed cluster mode - now single-process for simplicity
-- ✨ Meta APIs integrated into main server at `/_fluxion/*` endpoints
-- ✨ Configurable meta API endpoints via `metaApis` option
-- ✨ Use pm2/docker/kubernetes for process management and clustering
-- 🔒 Enhanced security - all meta API endpoints require secret authentication
-- 🔄 Removed `workerOptions`, `metaPort` options
-
-**Benefits**
-- Simpler architecture and maintenance
-- Better integration with standard deployment tools
-- Flexible process management
-- Reduced framework complexity
-- Improved security with unified authentication
-
-**Migration Guide**
-- Remove `workerOptions` and `metaPort` from configuration
-- Set `FLUXION_META_SECRET` environment variable for meta API access
-- Update meta API calls from `metaPort` to main port with `/_fluxion/*` prefix
-- All meta API endpoints now require `?secret=` parameter
-- Use pm2/docker/kubernetes for clustering instead of built-in cluster mode
-
-### v0.16.5
-
-**Logging Enhancements**
-- ✨ Core-level logging for framework internals (router, watcher, etc.)
-- ✨ Timestamp format changed to ISO 8601 standard
-- ✨ Version information now displayed on startup
-
-**Type Safety**
-- ✨ Enhanced type definitions for better IDE support
-- ✨ Improved module validation with clearer error messages

@@ -220,7 +220,6 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
         message: 'ServerError',
         error: getErrorMessage(e),
       });
-      // ?? 这里疑似有问题，明明已经出错，为什么不退出，这个肯定已经resolve过了啊
       if (listening) {
         // Server encountered an error after binding — log and let the
         // caller (PM2 / user code) decide how to recover instead of
