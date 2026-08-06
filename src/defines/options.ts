@@ -38,11 +38,11 @@ function normalizeHttpsOptions(
   if (typeof https !== 'object' || https === null || Array.isArray(https)) {
     _throw('FluxionOptions.https must be an object');
   }
-  if (typeof https.key !== 'string') {
-    _throw('FluxionOptions.https.key must be a string');
+  if (typeof https.key !== 'string' && !Buffer.isBuffer(https.key)) {
+    _throw('FluxionOptions.https.key must be a string or Buffer');
   }
-  if (typeof https.cert !== 'string') {
-    _throw('FluxionOptions.https.cert must be a string');
+  if (typeof https.cert !== 'string' && !Buffer.isBuffer(https.cert)) {
+    _throw('FluxionOptions.https.cert must be a string or Buffer');
   }
 
   const result: NormalizedFluxionOptions['https'] = {
@@ -87,7 +87,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     port: userPort,
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
-    staticResourceTimeoutMs = 10 * 600000,
+    staticResourceTimeoutMs = 3 * 60 * 1000,
     moduleDir: rawModuleDir = process.cwd(),
     maxRequestBytes = 8_000_000,
     apiInclude = ['**/*.ts'],

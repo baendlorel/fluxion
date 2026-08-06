@@ -47,6 +47,13 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
       meta: {},
     };
 
+    // Security headers for all responses
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Restrict resource loading to same-origin by default
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
+
     let bodyPreview: BodyPreview = {
       exists: false,
       bytes: 0,
@@ -153,26 +160,18 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
     } catch (e) {
       if (e instanceof HttpException) {
         cx.logger.error({
+          ...normalized,
           message: 'RequestFailed',
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
           error: e.message,
         });
         safeSendJson(res, { message: e.message }, e.errno);
       } else {
         cx.logger.error({
+          ...normalized,
           message: 'RequestFailed',
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
           error: getErrorMessage(e),
         });
-        safeSendJson(
-          res,
-          { message: getErrorMessage(e) },
-          (e as NodeJS.ErrnoException).errno ?? HttpCode.InternalServerError,
-        );
+        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       }
     }
   };
@@ -221,11 +220,14 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
         message: 'ServerError',
         error: getErrorMessage(e),
       });
+      // ?? 这里疑似有问题，明明已经出错，为什么不退出，这个肯定已经resolve过了啊
       if (listening) {
-        process.exit(1);
+        // Server encountered an error after binding — log and let the
+        // caller (PM2 / user code) decide how to recover instead of
+        // forcing process.exit(1) here.
+        return;
       }
       reject(e);
-      process.exit(1);
     });
 
     server.listen(cx.options.port, cx.options.host);

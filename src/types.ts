@@ -66,7 +66,7 @@ export interface FluxionOptions {
   middlewareTimeoutMs?: number;
 
   /**
-   * Default to 10 minutes 10*60*1000ms.
+   * Default to 3 minutes 3*60*1000ms.
    */
   staticResourceTimeoutMs?: number;
 

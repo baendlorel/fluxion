@@ -39,6 +39,12 @@ staticResourceTimeoutMs = 10 * 600000,  // 6,000,000ms = 100 分钟
 
 将 `staticResourceTimeoutMs = 10 * 600000` 改为 `staticResourceTimeoutMs = 10 * 60 * 1000`（或者直接写 `600000` 并加注释说明是 10 分钟）。
 
+我：改为3分钟
+
+### 修复结果
+
+`staticResourceTimeoutMs = 10 * 600000` → `3 * 60 * 1000`（3 分钟）。
+
 ---
 
 ## P3: HTTPS 类型定义与运行时校验矛盾
@@ -92,6 +98,12 @@ function readCertificateContent(content: string | Buffer, moduleDir: string): Bu
 
 方案 2 更合理。既然 `readCertificateContent` 已经支持 Buffer，校验应该匹配。而且用户从文件读证书内容得到 Buffer 是常见场景。
 
+我：是的，允许buffer
+
+### 修复结果
+
+校验改为 `typeof https.key !== 'string' && !Buffer.isBuffer(https.key)`，错误信息也对应更新为 `'must be a string or Buffer'`。
+
 ---
 
 ## P4: 错误信息泄露到客户端
@@ -134,6 +146,13 @@ catch (e) {
 2. 保留具体错误信息到日志，不返回给客户端
 3. 对于 `HttpException` 可以保留消息（因为这类异常是开发者主动抛出的，消息是设计好的）
 
+我：是的，日志肯定是保留的，返回的参数就不要那么详细了
+
+### 修复结果
+
+- `HttpException`（开发者主动抛出的异常）：保留消息，返回给客户端
+- 非 `HttpException`（意外错误）：日志保留完整错误信息，客户端只收到 `{ message: 'Internal Server Error' }`，不再返回 `getErrorMessage(e)` 的原始内容
+
 ---
 
 ## P5: 安全响应头缺失及其他小问题
@@ -151,6 +170,26 @@ catch (e) {
 **影响评估：** 对于 API 服务器（非 HTML 页面），`X-Content-Type-Options` 和 `CSP` 的价值较低，因为响应通常是 JSON。但如果 fluxion 同时服务静态资源（HTML/CSS/JS），这些头就很重要了。
 
 **建议：** 在 `src/http/server.ts` 中增加一个中间件/钩子，为所有响应设置 `X-Content-Type-Options: nosniff`。更完整的方案可以提供一个选项让用户配置自定义响应头。
+
+我：再看看这三个是否也可以加上
+```
+X-Frame-Options: DENY
+
+X-XSS-Protection: 1; mode=block
+
+Content-Security-Policy
+```
+
+### 修复结果
+
+在 `src/http/server.ts` 的请求处理入口处（`requestHandler` 函数开头）为所有响应设置了以下安全头：
+
+```ts
+res.setHeader('X-Content-Type-Options', 'nosniff');
+res.setHeader('X-Frame-Options', 'DENY');
+res.setHeader('X-XSS-Protection', '1; mode=block');
+res.setHeader('Content-Security-Policy', "default-src 'self'");
+```
 
 ### 5.2 Cookie 解析无大小限制
 
@@ -172,6 +211,12 @@ export function parseCookie(cookieHeader: string | undefined): Record<string, st
 
 **建议：** 不修复也可以，但可以在循环中加一个简单的 key 数量上限（如 100 个）作为防御纵深。
 
+我：那就加 key 数量上限
+
+### 修复结果
+
+在 `parseCookie` 中增加了 `MAX_COOKIE_KEYS = 100` 上限，超过上限的 key 被忽略。
+
 ### 5.3 `process.exit(1)` 阻止了上层优雅恢复
 
 **代码** (`src/http/server.ts:225-228`)：
@@ -191,6 +236,12 @@ server.on('error', (e) => {
 - 两个分支都 `exit(1)`，`reject(e)` 是死代码
 
 **建议：** 让 `listening` 后的错误只记录日志，不 `exit(1)`。让上层（PM2/用户代码）决定如何处理。或者至少移除 `reject(e)` 后面的 `exit(1)`，让 Promise 正常 reject。
+我：好的
+
+### 修复结果
+
+- `listening` 后的错误：记录日志后 `return`，不再 `process.exit(1)`，让上层调用者决定如何处理
+- 启动过程中的错误：`reject(e)` 后不再 `process.exit(1)`，Promise 正常 reject
 
 ### 5.4 Logger 文件流提前创建
 
@@ -203,6 +254,7 @@ const fileStream = createWriteStream(logFilePath, { flags: 'a' });
 只要设置了 `FLUXION_INSTANCE_LOG` 环境变量，就会立即创建一个文件写入流并持有文件描述符，即使没有日志写入。对于大规模部署（数百个实例），每个实例即使没有日志也会占用一个文件描述符。
 
 **建议：** 延迟创建文件流，只在第一次写入时创建。或者使用 `open` 选项 `'wx'` 并加上缓存。
+我：先不改
 
 ---
 
@@ -219,6 +271,13 @@ if (!absolutePath.startsWith(this.cx.options.dir + path.sep)) {
 ```
 
 `get()` 中的检查是防御纵深（在 `fs.stat` 前快速失败），`register()` 中的检查是兜底保障（确保任何注册路径都不会逃逸）。
+我：回答是否一定要" + path.sep"
+
+**答：** 是的，必须加 `path.sep`。原因是防止目录前缀碰撞。例如：
+- `dir` = `/home/user/app`
+- 攻击者请求 `/app-other/secret.ts`
+- 无 `path.sep`：`/home/user/app-other/secret.ts`.startsWith(`/home/user/app`) → ⚠️ 误判为通过
+- 有 `path.sep`：实际检查前缀 `/home/user/app/` → ✅ 正确拒绝
 
 ### P1: ✅ 已理解，不处理
 
