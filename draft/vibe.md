@@ -24,7 +24,6 @@ dynamicDirectory
 
 3. dynamicDirectory是核心。服务器fs.watch这个目录.当这个目录下的文件变化，会触发diff。对于新增的somemodule，会将web下的内容注册为
    router `/somemodule/...`,而server的路由注册为`/somemodule/api`。 不见了的文件夹，则删除这两个路由。你暂时不需要处理web静态资源问题，先把路由注册和删除做好。
-
 4. 在开始的时候，服务器会扫描dynamicDirectory下的所有somemodule，并注册路由。
 5. 增加一个输出jsonline日志的机制。不过，路由的注册可以用oneline那种日志，比如
 
@@ -50,6 +49,7 @@ worker优化：
 现在，请你把db config的interface保留下来。我已经删除了pg和mysql2依赖，因为它们不应该这样写，它们应该在用户npm install fluxion后由用户自行安装引入，fluxion只做配置传递。为不失一般性，mjs返回的不再是db:{key:value}，而是modules:[{module:'mysql2',injectKey:"mydb",factory:(...)=>{ 这里返回最终注入context的对象}}]。而这个modules数组将会传输到worker，其中，factory因为是函数，所以会tostring后传输，传输到worker内部后再new Function的形式绕回来,而最终这个数据库链接实例会出现在context.mydb。
 
 ---
+
 优化router.ts的register函数：
 1、目前`// register as api`这里是定死的，但我希望FluxionOptions以及后续的其他类型里，
 增加一个字段叫apiExts，类型为string[]，也就是要能够做到，如果后缀名在这个数组里，
@@ -57,13 +57,16 @@ worker优化：
 2、再增加routerExclude，也是string[]，表示满足这个东西的后缀名将不会被注册。首先，register将会尝试检查是否存在它，如果存在就删除，但走到注册的这一步就立刻返回，它表示排除这个
 
 ---
+
 使用fast-glob包，加强将apiExts，改为apiInclude（默认为*.ts）,采用fast-glob来处理。
 增加设置叫include，只有满足这个才会被注册，routerExclude改为exclude（默认是.gitignore\node_modules等等常见排除项），满足这个就不注册。
 都采用fast-glob处理这些匹配。
 顺序是：
+
 1. if !include return
 2. if exclude return
 3. if apiinclude -> 注册为api else 注册为静态文件资源
+
 ---
 
 现在希望做到：
@@ -73,17 +76,20 @@ worker优化：
 请你设计实现方案
 
 ---
+
 我们换一个思路解决问题。pm2重启fluxion的问题主要在于进程残留，端口重复。因此我的想法是静态文件标记法：1、primary进程创建后，在homedir/.fluxion文件夹内部创建一个文件叫instance.json，里面记录一个数组，每个对象是：启动时间、pid、fluxion.config.ts文件的hash值。2、假如通过其他途径再次以相同配置启动的时候（通过hash值对比），那么将会根据pid kill它后再启动。 把这个代码写入src/cluster/launcher.ts
 
-
 ---
+
 我安装了cron-parser包，`CronExpression`等积极使用
 增加cronjob功能：
+
 - 在src/cronjob文件夹写核心逻辑；
 - 在src/defines中增加函数defineFluxionCronJob
 - FluxionOptions里增加一个叫做cronjobDir的字段，被指定的文件夹将会被watch，热重载job
 - 以文件名为键来存储FluxionCronJob元数据
 - 新增一个interface叫FluxionCronJob：
+
 ```ts
 拥有字段：
 active：可选boolean型，可以做到仅仅是关闭后续运行，不注销，方便开关。默认是开的
@@ -93,17 +99,20 @@ strategy：执行策略有两种，不管上次结束没有，到了时间就立
 onRegister: 可选，任务被注册的时候执行的函数
 onUnregister：可选，任务被注销的时候执行的函数
 ```
+
 - 遵从类似于接口热重载的注册、消除方式。
 
 最后完善src/cronjob/expressions.ts的常用表达式
 
 ---
+
 plan的修正意见
 1、cronjob应该运行在独立于primary的一个worker里，而不是primary里。
 
-
 ---
+
 options添加“接口加载方式”：
+
 1. 现在的策略是“文件侦听”，也就是“watch”
 2. 我们新增一个方式叫“ lazy”，这个模式的工作方式是，每次都拆分url，再用require去加载绝对路径，且忽略cache。这个做法不需要watch，不需要map，但每次都搜索其实开销还挺大的。
 
@@ -119,12 +128,13 @@ options添加“接口加载方式”：
 1、一个url请求来了，直接加载module并缓存到map，不需要记录时间，直接缓存module内容
 2、轻量watch，当任何文件发生变化，就从map中删除它。这样下次一定会重新读取
 
-
 ---
+
 还可以侦听只用来看有没有变
 然后每隔10秒钟全部load一次？
 
 ---
+
 现在重构api注册的options逻辑，改成：
 1、exclude：[] 满足这个的会被忽略；
 2、apiInclude:[] 满足这个glob的会注册成api
@@ -132,9 +142,7 @@ options添加“接口加载方式”：
 
 再重构之前，你需要理清楚：有一种ts文件，它作为内部模块，比如数据库链接，要是更新，我希望能热重载用到它的api.ts，能做到吗？
 
-
 ---
-
 
 我将分支切换回了带有watch的版本，生产环境代码是：
 ~/projects/framework/fluxion-czei。已知这个生产环境已经多次出现，
@@ -152,3 +160,6 @@ watcher是生效的；
 3、如果我用examples/pub.ts脚本进行操作，则没有任何效果，不会触发watcher。
 
 疑似的结论是：rmSync和下面的mkdirsync、writefile都没有触发fs.watch ————请你帮我分析bug成因
+
+
+---

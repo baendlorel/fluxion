@@ -136,6 +136,14 @@ export interface FluxionOptions {
   };
 
   /**
+   * Content-Security-Policy header value.
+   * Defaults to "default-src 'self'".
+   * Set to `false` to disable the CSP header entirely.
+   * @example "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' https:"
+   */
+  csp?: string | false;
+
+  /**
    * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
    * Available endpoints: 'healthz', 'version', 'stats', 'config'
    * Defaults to ['healthz', 'version', 'stats']
@@ -188,6 +196,11 @@ export interface NormalizedFluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  /**
+   * Content-Security-Policy header value.
+   */
+  csp: string | false;
 
   // !security check
   normalizedFlag: symbol;

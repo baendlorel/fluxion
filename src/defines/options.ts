@@ -109,6 +109,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     https,
     metaApis = ['healthz', 'version', 'stats'],
     metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
+    csp = "default-src 'self'",
   } = o as FluxionOptions;
 
   const port = userPort;
@@ -188,6 +189,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     exclude,
     metaApis,
     metaSecret,
+    csp,
     https: normalizeHttpsOptions(https, moduleDir),
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
