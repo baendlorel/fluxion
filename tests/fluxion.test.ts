@@ -102,8 +102,8 @@ describe('flexible router registration', () => {
     await register(cx, 'asset.txt');
 
     // API files should be registered without extension when removeApiFileExt is true (default)
-    expect((await cx.router.getModule(new URL('http://local/hello')))?.type).toBe(FluxionModuleType.Api);
-    expect((await cx.router.getModule(new URL('http://local/asset.txt')))?.type).toBe(FluxionModuleType.StaticResource);
+    expect((await cx.router.get(new URL('http://local/hello')))?.type).toBe(FluxionModuleType.Api);
+    expect((await cx.router.get(new URL('http://local/asset.txt')))?.type).toBe(FluxionModuleType.StaticResource);
     expect(cx.router.getRoutes()).toEqual([
       { path: '/asset.txt', type: 'static', methods: null },
       { path: '/hello', type: 'api', methods: null },
@@ -129,7 +129,7 @@ describe('flexible router registration', () => {
 
     fs.rmSync(path.join(dir, 'hello.ts'));
     await register(cx, 'hello.ts');
-    expect(await cx.router.getModule(new URL('http://local/hello'))).toBeUndefined();
+    expect(await cx.router.get(new URL('http://local/hello'))).toBeUndefined();
     expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).status).toBe(404);
   });
 
@@ -141,7 +141,7 @@ describe('flexible router registration', () => {
     await register(cx, 'user.ts');
 
     // API should be accessible without extension (remove-ext is hardcoded behavior)
-    expect((await cx.router.getModule(new URL('http://local/user')))?.type).toBe(FluxionModuleType.Api);
+    expect((await cx.router.get(new URL('http://local/user')))?.type).toBe(FluxionModuleType.Api);
     expect(cx.router.getRoutes()).toEqual([{ path: '/user', type: 'api', methods: null }]);
   });
 
@@ -267,9 +267,7 @@ describe('meta api', () => {
     const cx = makeContext(dir, nextPort(), undefined);
     await startWorkerServer(cx);
 
-    expect(
-      (await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=anything`)).status,
-    ).toBe(401);
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=anything`)).status).toBe(401);
   });
 
   test('protects and returns router snapshot when metaSecret is valid', async () => {
@@ -284,9 +282,7 @@ describe('meta api', () => {
 
     await startWorkerServer(cx);
 
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=wrong`)).status).toBe(
-      401,
-    );
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=wrong`)).status).toBe(401);
     expect(await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=${secret}`)).toEqual({
       status: 200,
       body: {
@@ -308,17 +304,17 @@ describe('meta api', () => {
 
     expect(defineFluxionOptions({ ...base, metaSecret: undefined }).metaSecret).toBeUndefined();
     expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '' })).toThrow(message);
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abcdefghijklmnopqrst' }),
-    ).toThrow(message);
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '12345678901234567890' }),
-    ).toThrow(message);
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc123 4567890123456' }),
-    ).toThrow(message);
-    expect(
-      defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc12345678901234567' }).metaSecret,
-    ).toBe('abc12345678901234567');
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abcdefghijklmnopqrst' })).toThrow(
+      message,
+    );
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '12345678901234567890' })).toThrow(
+      message,
+    );
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc123 4567890123456' })).toThrow(
+      message,
+    );
+    expect(defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc12345678901234567' }).metaSecret).toBe(
+      'abc12345678901234567',
+    );
   });
 });

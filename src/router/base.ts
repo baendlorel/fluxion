@@ -90,7 +90,7 @@ export abstract class FluxionRouterBase {
 
   abstract register(absolutePath: string, relativePath: string, stat: Stats): Promise<NormalizedModule | undefined>;
 
-  abstract getModule(url: URL): NormalizedModule | undefined | Promise<NormalizedModule | undefined>;
+  abstract get(url: URL): NormalizedModule | undefined | Promise<NormalizedModule | undefined>;
 
   getRoutes(): FluxionRouteMeta[] {
     return [...this.handlers.entries()]

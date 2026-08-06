@@ -91,7 +91,7 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      const m = await cx.router.getModule(url);
+      const m = await cx.router.get(url);
       if (!m) {
         safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
         return;

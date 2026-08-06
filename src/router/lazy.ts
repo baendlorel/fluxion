@@ -43,32 +43,26 @@ export class FluxionRouter extends FluxionRouterBase {
     return undefined;
   }
 
-  async getModule(url: URL): Promise<NormalizedModule | undefined> {
+  async get(url: URL): Promise<NormalizedModule | undefined> {
     const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
-    const m = this.handlers.get(relativePath);
+    const absolutePath = path.join(this.cx.options.dir, relativePath);
 
-    // Not in cache at all
-    if (!m) {
-      return undefined;
-    }
+    const cached = this.handlers.get(relativePath);
+    const stat = await fs.stat(absolutePath).catch(() => undefined);
 
-    // Use the handler's absolutePath to stat the actual file
-    const stat = await fs.stat(m.absolutePath).catch(() => undefined);
+    // File does not exist or is not a file, returns undefined.
     if (!stat || !stat.isFile()) {
-      const disposer = m.disposer;
-      if (disposer) {
-        await PromiseTry(disposer);
+      if (cached?.disposer) {
+        this.handlers.delete(relativePath);
+        await PromiseTry(cached.disposer);
       }
-      this.handlers.delete(relativePath);
       return undefined;
     }
 
-    // When outdated, re-register the module
-    if (m.mtimeMs < stat.mtimeMs) {
-      const fileRelativePath = path.relative(this.cx.options.dir, m.absolutePath);
-      return this.register(m.absolutePath, fileRelativePath, stat);
+    if (cached?.mtimeMs === stat.mtimeMs) {
+      return cached;
     }
 
-    return m;
+    return this.register(absolutePath, relativePath, stat);
   }
 }
