@@ -1,6 +1,7 @@
 import type { FluxionContext, NormalizedModule } from '@/types.js';
 import { static_cast } from 'type-narrow';
 import { FluxionModuleType } from './consts';
+import { Stats } from 'node:fs';
 
 function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is NormalizedModule {
   if (typeof o !== 'object' || o === null) {
@@ -36,6 +37,7 @@ function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unkn
 export function loadFluxionModule(
   cx: Pick<FluxionContext, 'options' | 'logger'>,
   absolutePath: string,
+  stat: Stats,
 ): NormalizedModule {
   delete require.cache[absolutePath];
   let m = require(absolutePath);
@@ -47,6 +49,7 @@ export function loadFluxionModule(
   }
 
   m.absolutePath = absolutePath;
+  m.mtimeMs = stat.mtimeMs;
 
   return m;
 }

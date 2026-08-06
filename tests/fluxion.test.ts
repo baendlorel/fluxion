@@ -49,6 +49,7 @@ const makeContext = (dir: string, port = nextPort(), metaSecret?: string) => {
     host: '127.0.0.1',
     port,
     metaSecret,
+    metaApis: ['healthz', 'version', 'stats', 'routes', 'config'],
     apiInclude: ['**/*.ts'],
     logger: () => {},
   });

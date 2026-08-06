@@ -1,6 +1,6 @@
 import type { FluxionContext, NormalizedModule, FluxionRouteMeta } from '../types.js';
 import { FluxionModuleType, STATIC_CONTENT_TYPES, STATIC_HANDLED_FLAG } from '@/common/consts.js';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -88,7 +88,7 @@ export abstract class FluxionRouterBase {
     };
   }
 
-  abstract register(absolutePath: string, relativePath: string): Promise<NormalizedModule | undefined>;
+  abstract register(absolutePath: string, relativePath: string, stat: Stats): Promise<NormalizedModule | undefined>;
 
   abstract getModule(url: URL): NormalizedModule | undefined | Promise<NormalizedModule | undefined>;
 
