@@ -106,7 +106,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       '**/*.tmp',
       '**/*.temp',
     ],
-    apiMapper = 'remove-ext',
     https,
     metaApis = ['healthz', 'version', 'stats'],
     metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
@@ -192,25 +191,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiInclude,
     staticInclude,
     exclude,
-    apiMapper: (() => {
-      if (typeof apiMapper === 'function') {
-        return apiMapper;
-      }
-      if (apiMapper === 'identical') {
-        return (v) => v;
-      }
-      if (apiMapper === 'remove-ext') {
-        return (filepath: string) => {
-          const ext = path.extname(filepath);
-          return ext ? filepath.slice(0, -ext.length) : filepath;
-        };
-      }
-      _throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
-    })(),
     metaApis,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
-    // !
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
 }

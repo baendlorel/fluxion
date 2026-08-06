@@ -498,7 +498,6 @@ interface FluxionOptions {
   apiInclude?: string[];           // API handler patterns. Default: ['**/*.ts']
   staticInclude?: string[];        // Static resource patterns. Default: ['**/*']
   exclude?: string[];              // Exclude patterns (overrides defaults)
-  apiMapper?: string | function;  // Transform API file paths to routes. Default: 'remove-ext'
 
   // Meta API
   metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
@@ -618,65 +617,13 @@ await fluxion({
   apiInclude: ['**/*.ts'],       // .ts files are API handlers
   staticInclude: ['**/*'],      // All files are static resources
   exclude: ['**/*.test.ts'],     // Exclude test files
-  apiMapper: 'remove-ext',      // Remove extensions from API routes (default)
 });
 ```
 
 Files like `public/index.html` become static routes at `/index.html`.
-Files like `public/api/users.ts` become API routes at `/api/users` (extension removed by default).
+Files like `public/api/users.ts` become API routes at `/api/users` (extension removed).
 
-### API Path Mapping
-
-The `apiMapper` option controls how API file paths are transformed into URL routes. Static resources are not affected by this setting.
-
-#### Preset Options
-
-```ts
-// Remove file extensions (default)
-apiMapper: 'remove-ext'
-// user/profile.ts → /user/profile
-
-// Keep paths unchanged
-apiMapper: 'identical'
-// user/profile.ts → /user/profile.ts
-```
-
-#### Custom Mapping Function
-
-Provide your own transformation function for complete control:
-
-```ts
-apiMapper: (path) => {
-  // Custom transformation logic
-  return path
-    .replace(/\.ts$/, '')              // Remove extension
-    .replace(/^api\//, '/api/v1/')     // Add version prefix
-    .replace(/\/index$/, '/');          // Clean up /index/ paths
-}
-// api/users/index.ts → /api/v1/users
-// api/posts.ts → /api/v1/posts
-```
-
-#### Examples
-
-```ts
-// RESTful API with version prefix
-await fluxion({
-  apiMapper: (path) => `/api/v1/${path.replace(/\.ts$/, '')}`,
-  // routes/users.ts → /api/v1/routes/users
-});
-
-// Clean URLs without nested paths
-await fluxion({
-  apiMapper: (path) => path.replace(/\//g, '-').replace(/\.ts$/, ''),
-  // user/profile.ts → user-profile
-});
-
-// Domain-based routing
-await fluxion({
-  apiMapper: (path) => {
-    const [domain, ...rest] = path.split('/');
-    return `/${domain}/api/${rest.join('/').replace(/\.ts$/, '')}`;
+> API file extensions are automatically removed from routes. For example, `user/profile.ts` maps to `/user/profile`. This behavior is hardcoded and cannot be changed.
   },
   // admin/users.ts → /admin/api/users
   // public/products.ts → /public/api/products
@@ -714,16 +661,11 @@ await fluxion({
 
 ### File extension behavior in routes
 
-By default, API routes have file extensions removed (controlled by `apiMapper` option).
+API routes always have file extensions removed. This is hardcoded behavior.
 
 ```
-// With apiMapper: 'remove-ext' (default)
 dynamic/hello.ts        → GET /hello
 dynamic/api/users.ts    → GET /api/users
-
-// With apiMapper: 'identical'
-dynamic/hello.ts        → GET /hello.ts
-dynamic/api/users.ts    → GET /api/users.ts
 ```
 
 Static files always keep their extensions:
@@ -801,12 +743,6 @@ curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
 - Use pm2/docker/kubernetes for clustering instead of built-in cluster mode
 
 ### v0.16.5
-
-**API Path Mapping**
-- ✨ Added `apiMapper` option to control how API file paths are transformed into URL routes
-- ✨ Support for custom mapping functions
-- ✨ Preset options: `'remove-ext'` (default) and `'identical'`
-- 🔄 Changed default behavior to remove file extensions from API routes
 
 **Logging Enhancements**
 - ✨ Core-level logging for framework internals (router, watcher, etc.)

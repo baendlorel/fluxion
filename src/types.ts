@@ -116,22 +116,6 @@ export interface FluxionOptions {
   exclude?: string[];
 
   /**
-   * Function or preset to map API file paths to URL routes.
-   *
-   * Controls how API file paths are transformed into URL routes. Static resources are not affected.
-   *
-   * - `"remove-ext"` (default): Remove file extensions from API routes.
-   *   Example: `user/profile.ts` → `/user/profile`
-   * - `"identical"`: Keep file paths unchanged.
-   *   Example: `user/profile.ts` → `/user/profile.ts`
-   * - Custom function: Provide your own mapping function.
-   *   Example: `(path) => path.replace(/\.ts$/, '').replace(/^api\//, '/api/v1/')`
-   *
-   * @default "remove-ext"
-   */
-  apiMapper?: 'remove-ext' | 'identical' | ((relativePath: string) => string);
-
-  /**
    * HTTPS server configuration. If provided, the server will use HTTPS instead of HTTP.
    * Both `key` and `cert` are required for HTTPS. `ca` is optional for certificate chains.
    */
@@ -198,7 +182,6 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   staticInclude: string[];
   exclude: string[];
-  apiMapper: (relativePath: string) => string;
   metaApis: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];
   metaSecret?: string;
   https?: {

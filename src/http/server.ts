@@ -358,7 +358,6 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
       apiInclude: cx.options.apiInclude,
       staticInclude: cx.options.staticInclude,
       exclude: cx.options.exclude,
-      apiMapper: typeof cx.options.apiMapper === 'function' ? '(custom function)' : cx.options.apiMapper,
       metaApis: cx.options.metaApis,
       metaSecretSet: cx.options.metaSecret !== undefined,
       httpsEnabled: cx.options.https !== undefined,

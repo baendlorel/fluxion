@@ -423,7 +423,6 @@ interface FluxionOptions {
   apiInclude?: string[];          // Default: ['**/*.ts']
   staticInclude?: string[];       // Default: ['**/*']
   exclude?: string[];             // Overrides the built-in ignore list
-  apiMapper?: string | function;  // Transform API file paths to routes (default: 'remove-ext')
 
   // Meta API
   metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
@@ -470,31 +469,10 @@ fluxion({
   apiInclude: ['*.ts', '*.api.js'],     // Register as API handlers
   staticInclude: ['*.html', '*.css'],   // Register as static resources
   exclude: ['*.test.ts', '*.spec.ts'],  // Exclude from registration
-  apiMapper: 'remove-ext',              // Remove .ts/.js extensions from API routes (default)
 });
 ```
 
-### API Path Mapping
-
-Control how API file paths are transformed into URL routes using the `apiMapper` option:
-
-```ts
-// Preset: Remove file extensions (default)
-fluxion({ apiMapper: 'remove-ext' });
-// user/profile.ts → /user/profile
-
-// Preset: Keep paths unchanged
-fluxion({ apiMapper: 'identical' });
-// user/profile.ts → /user/profile.ts
-
-// Custom mapper function
-fluxion({
-  apiMapper: (path) => path
-    .replace(/\.ts$/, '')
-    .replace(/^api\//, '/api/v1/')
-});
-// api/users.ts → /api/v1/users
-```
+> API file extensions are automatically removed from routes. For example, `user/profile.ts` maps to `/user/profile`.
 
 ### Process Management with pm2
 
@@ -683,13 +661,6 @@ curl "http://localhost:3000/_fluxion/config?secret=$FLUXION_META_SECRET"
 - ✅ Better protection against unauthorized access while enabling health checks
 
 ### v0.16.5
-
-**API Path Mapping**
-
-- ✨ Added `apiMapper` option to control how API file paths are transformed into URL routes
-- ✨ Support for custom mapping functions
-- ✨ Preset options: `'remove-ext'` (default) and `'identical'`
-- 🔄 Changed default behavior to remove file extensions from API routes
 
 **Logging Enhancements**
 

@@ -13,6 +13,7 @@ import { FluxionRouter } from './router/index.js';
  * This is the one-time eager registration at startup. Hot reload after
  * startup is handled by the lazy-load mechanism (per-request), not by
  * file watchers.
+ * @deprecated Lazy route does not need it.
  */
 async function scanAndRegister(cx: FluxionContext, dir: string, base: string): Promise<void> {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -35,7 +36,7 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   context.router = new FluxionRouter(context as Pick<FluxionContext, 'options' | 'logger'>);
 
   // One-time eager registration of existing files.
-  await scanAndRegister(context, context.options.dir, context.options.dir);
+  // await scanAndRegister(context, context.options.dir, context.options.dir);
 
   // Start HTTP server
   const server = await createServer(context);

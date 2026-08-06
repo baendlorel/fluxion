@@ -1,5 +1,6 @@
 import type { NormalizedModule } from '../types.js';
 import fs from 'node:fs';
+import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { loadFluxionModule } from '@/common/injector.js';
 import { PromiseTry } from '@/common/promise-try.js';
@@ -7,12 +8,20 @@ import { PromiseTry } from '@/common/promise-try.js';
 import { FluxionRouterBase } from './base.js';
 
 // # Used by watcher mode
+/**
+ * @deprecated
+ */
 export class FluxionRouter extends FluxionRouterBase {
   async register(absolutePath: string, relativePath: string): Promise<NormalizedModule | undefined> {
     // Determine the path to use for handler lookup/deletion
-    // For API files, this might be transformed by apiMapper
+    // For API files, remove the file extension from the route
     const isApiFile = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
-    const handlerPath = isApiFile ? this.cx.options.apiMapper(relativePath) : relativePath;
+    const handlerPath = isApiFile
+      ? (() => {
+          const ext = path.extname(relativePath);
+          return ext ? relativePath.slice(0, -ext.length) : relativePath;
+        })()
+      : relativePath;
 
     // Get the disposer and delete
     const disposer = this.handlers.get(handlerPath)?.disposer;
@@ -41,7 +50,8 @@ export class FluxionRouter extends FluxionRouterBase {
     const matchesApiInclude = this.cx.options.apiInclude.some((pattern) => minimatch(relativePath, pattern));
     if (matchesApiInclude) {
       const m = loadFluxionModule(this.cx, absolutePath);
-      const apiPath = this.cx.options.apiMapper(relativePath);
+      const ext = path.extname(relativePath);
+      const apiPath = ext ? relativePath.slice(0, -ext.length) : relativePath;
       this.handlers.set(apiPath, m);
       this.cx.logger.core({ action: 'RegisterApi', url: apiPath });
       return m;
