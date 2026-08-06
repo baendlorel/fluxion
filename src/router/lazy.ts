@@ -48,7 +48,7 @@ export class FluxionRouter extends FluxionRouterBase {
     const absolutePath = path.join(this.cx.options.dir, relativePath);
 
     // ! Fail if the resolved path escapes the configured directory
-    if (!absolutePath.startsWith(this.cx.options.dir)) {
+    if (!absolutePath.startsWith(this.cx.options.dir + path.sep)) {
       return undefined;
     }
 
