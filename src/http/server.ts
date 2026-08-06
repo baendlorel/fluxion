@@ -247,7 +247,7 @@ function validateMetaSecret(url: URL, metaSecret: string | undefined): boolean {
  * Check if endpoint requires authentication
  */
 function requiresAuth(endpoint: string): boolean {
-  const protectedEndpoints = ['routes', 'config'];
+  const protectedEndpoints = ['config'];
   return protectedEndpoints.includes(endpoint);
 }
 
@@ -368,12 +368,6 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
       now: Date.now(),
       config: safeConfig,
     });
-    return;
-  }
-
-  if (pathname === META_PREFIX + '/routes' && cx.options.metaApis.includes('routes')) {
-    const routes = cx.router.getRoutes();
-    safeSendJson(res, { ok: true, now: Date.now(), routes });
     return;
   }
 

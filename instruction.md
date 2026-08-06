@@ -500,7 +500,7 @@ interface FluxionOptions {
   exclude?: string[];              // Exclude patterns (overrides defaults)
 
   // Meta API
-  metaApis?: ('healthz' | 'version' | 'routes' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
+  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];  // Default: ['healthz', 'version', 'stats']
   metaSecret?: string;             // Required for all meta APIs: ≥20 chars, letters+digits, no whitespace. Defaults to FLUXION_META_SECRET env var
 
   // Request limits
@@ -693,7 +693,6 @@ GET /_fluxion/healthz              # Health check ✅ Public (default: enabled)
 GET /_fluxion/version              # Version information ✅ Public (default: enabled)
 GET /_fluxion/stats                # Memory/CPU/runtime stats ✅ Public (default: enabled)
 GET /_fluxion/config?secret=<key>  # Current configuration 🔒 Requires secret (default: disabled)
-GET /_fluxion/routes?secret=<key>  # Route table snapshot 🔒 Requires secret (default: disabled)
 ```
 
 **Authentication:**
@@ -712,7 +711,6 @@ await fluxion({
 });
 
 # Access sensitive endpoints with secret
-curl 'http://127.0.0.1:3000/_fluxion/routes?secret=your-20-char-secret1'
 curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
 ```
 

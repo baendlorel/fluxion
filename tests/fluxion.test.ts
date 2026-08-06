@@ -49,7 +49,7 @@ const makeContext = (dir: string, port = nextPort(), metaSecret?: string) => {
     host: '127.0.0.1',
     port,
     metaSecret,
-    metaApis: ['healthz', 'version', 'stats', 'routes', 'config'],
+    metaApis: ['healthz', 'version', 'stats', 'config'],
     apiInclude: ['**/*.ts'],
     logger: () => {},
   });
@@ -258,14 +258,6 @@ describe('meta api', () => {
     const stats = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/stats`);
     expect(stats.status).toBe(200);
     expect(stats.body.ok).toBe(true);
-  });
-
-  test('keeps routes endpoint unauthorized without a valid metaSecret', async () => {
-    const dir = makeTempDir();
-    const cx = makeContext(dir, nextPort(), undefined);
-    await startWorkerServer(cx);
-
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/routes?secret=anything`)).status).toBe(401);
   });
 
   test('validates metaSecret requirements', () => {

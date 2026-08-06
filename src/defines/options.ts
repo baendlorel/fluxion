@@ -154,10 +154,10 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
 
   if (
     !Array.isArray(metaApis) ||
-    metaApis.some((v) => !['healthz', 'version', 'stats', 'config', 'routes'].includes(v))
+    metaApis.some((v) => !['healthz', 'version', 'stats', 'config'].includes(v))
   ) {
     _throw(
-      `FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config', 'routes'`,
+      `FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config'`,
     );
   }
 
