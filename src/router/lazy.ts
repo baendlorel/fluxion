@@ -47,6 +47,11 @@ export class FluxionRouter extends FluxionRouterBase {
     const relativePath = url.pathname.replace(/^[/]+/, '').replace(/[/]+$/, '');
     const absolutePath = path.join(this.cx.options.dir, relativePath);
 
+    // ! Fail if the resolved path escapes the configured directory
+    if (!absolutePath.startsWith(this.cx.options.dir)) {
+      return undefined;
+    }
+
     const cached = this.handlers.get(relativePath);
     const stat = await fs.stat(absolutePath).catch(() => undefined);
 

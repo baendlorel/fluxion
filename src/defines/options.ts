@@ -121,7 +121,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   if (typeof rawDir !== 'string') {
     _throw('FluxionOptions.dir must be a string');
   }
-  const dir = path.resolve(rawDir);
+  const dir = path.resolve(process.cwd(), rawDir);
 
   if (typeof rawModuleDir !== 'string') {
     _throw('FluxionOptions.moduleDir must be a string');
@@ -152,13 +152,8 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
-  if (
-    !Array.isArray(metaApis) ||
-    metaApis.some((v) => !['healthz', 'version', 'stats', 'config'].includes(v))
-  ) {
-    _throw(
-      `FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config'`,
-    );
+  if (!Array.isArray(metaApis) || metaApis.some((v) => !['healthz', 'version', 'stats', 'config'].includes(v))) {
+    _throw(`FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config'`);
   }
 
   if (
