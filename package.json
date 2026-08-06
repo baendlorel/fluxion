@@ -1,6 +1,6 @@
 {
   "name": "fluxion-ts",
-  "version": "0.18.1",
+  "version": "0.19.1",
   "author": {
     "name": "Kasukabe Tsumugi",
     "email": "futami16237@gmail.com"
@@ -11,9 +11,6 @@
   "purpose": "npm",
   "description": "Fluxion is able to start a server that can dynamically load routers and js files. It is designed to be used to replace PHP",
   "description_zh": "Fluxion可以启动一个能够动态加载路由和js文件的服务器，旨在替代PHP",
-  "bin": {
-    "fluxion": "./dist/cli.cjs"
-  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
@@ -45,13 +42,10 @@
     "start": "code-server --bind-addr 0.0.0.0:3000 /app/dynamic && node /app/index.js",
     "dev": "tsx ./examples/main.ts --watch",
     "build": "tsx ./scripts/index.ts --build",
-    "build:cli": "tsx ./scripts/build-cli.ts",
     "pub": "tsx ./scripts/index.ts --publish",
     "check": "tsc --noEmit -p tsconfig.build.json",
     "test": "vitest",
-    "lint": "oxlint .",
-    "fluxion": "node ./dist/cli.mjs",
-    "fluxion-cli": "node ./dist/wrapper.mjs"
+    "lint": "oxlint ."
   },
   "license": "MIT",
   "devDependencies": {
@@ -68,8 +62,6 @@
     "vitest": "^4.1.7"
   },
   "dependencies": {
-    "chokidar": "4.0.3",
-    "cron-parser": "^5.6.1",
     "fast-json-stable-stringify": "^2.1.0",
     "minimatch": "^10.2.5",
     "tsx": "^4.22.4"

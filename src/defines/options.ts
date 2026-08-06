@@ -38,11 +38,11 @@ function normalizeHttpsOptions(
   if (typeof https !== 'object' || https === null || Array.isArray(https)) {
     _throw('FluxionOptions.https must be an object');
   }
-  if (typeof https.key !== 'string') {
-    _throw('FluxionOptions.https.key must be a string');
+  if (typeof https.key !== 'string' && !Buffer.isBuffer(https.key)) {
+    _throw('FluxionOptions.https.key must be a string or Buffer');
   }
-  if (typeof https.cert !== 'string') {
-    _throw('FluxionOptions.https.cert must be a string');
+  if (typeof https.cert !== 'string' && !Buffer.isBuffer(https.cert)) {
+    _throw('FluxionOptions.https.cert must be a string or Buffer');
   }
 
   const result: NormalizedFluxionOptions['https'] = {
@@ -87,10 +87,9 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     port: userPort,
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
-    staticResourceTimeoutMs = 10 * 600000,
+    staticResourceTimeoutMs = 3 * 60 * 1000,
     moduleDir: rawModuleDir = process.cwd(),
     maxRequestBytes = 8_000_000,
-    reloadDelay = 500,
     apiInclude = ['**/*.ts'],
     staticInclude = ['**/*'],
     exclude = [
@@ -107,18 +106,12 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       '**/*.tmp',
       '**/*.temp',
     ],
-    apiMapper = 'remove-ext',
     https,
-    nativeWatcher = false,
     metaApis = ['healthz', 'version', 'stats'],
     metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
-    cronjobDir: rawCronjobDir,
-    cronjobInclude = ['**/*.ts'],
-    cronjobExclude = [],
   } = o as FluxionOptions;
 
-  // FLUXION_CLI_PORT has the highest priority（by Rust CLI）
-  const port = process.env.FLUXION_CLI_PORT ? Number.parseInt(process.env.FLUXION_CLI_PORT, 10) : userPort;
+  const port = userPort;
 
   const logger = o.logger ?? 'one-line';
   if (logger !== 'one-line' && logger !== 'json-line' && typeof logger !== 'function') {
@@ -128,20 +121,12 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
   if (typeof rawDir !== 'string') {
     _throw('FluxionOptions.dir must be a string');
   }
-  const dir = path.resolve(rawDir);
+  const dir = path.resolve(process.cwd(), rawDir);
 
   if (typeof rawModuleDir !== 'string') {
     _throw('FluxionOptions.moduleDir must be a string');
   }
   const moduleDir = path.resolve(rawModuleDir);
-
-  let cronjobDir: string | undefined;
-  if (rawCronjobDir !== undefined) {
-    if (typeof rawCronjobDir !== 'string') {
-      _throw('FluxionOptions.cronjobDir must be a string or undefined');
-    }
-    cronjobDir = path.resolve(rawCronjobDir);
-  }
 
   if (typeof host !== 'string') {
     _throw('FluxionOptions.host must be a string');
@@ -153,14 +138,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
 
   if (!Number.isSafeInteger(middlewareTimeoutMs) || middlewareTimeoutMs <= 100) {
     _throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
-  }
-
-  if (typeof reloadDelay !== 'number' || reloadDelay <= 0 || !Number.isSafeInteger(reloadDelay)) {
-    _throw('FluxionOptions.reloadDelay must be a positive integer');
-  }
-
-  if (reloadDelay < 50) {
-    _throw('FluxionOptions.reloadDelay must be greater than or equal to 50');
   }
 
   if (typeof port !== 'number' || !Number.isSafeInteger(port)) {
@@ -175,13 +152,8 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
-  if (
-    !Array.isArray(metaApis) ||
-    metaApis.some((v) => !['healthz', 'version', 'stats', 'config', 'routes'].includes(v))
-  ) {
-    _throw(
-      `FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config', 'routes'`,
-    );
+  if (!Array.isArray(metaApis) || metaApis.some((v) => !['healthz', 'version', 'stats', 'config'].includes(v))) {
+    _throw(`FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config'`);
   }
 
   if (
@@ -208,36 +180,15 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     handlerTimeoutMs,
     middlewareTimeoutMs,
     staticResourceTimeoutMs,
-    reloadDelay,
     moduleDir,
     maxRequestBytes,
     logger,
     apiInclude,
     staticInclude,
     exclude,
-    apiMapper: (() => {
-      if (typeof apiMapper === 'function') {
-        return apiMapper;
-      }
-      if (apiMapper === 'identical') {
-        return (v) => v;
-      }
-      if (apiMapper === 'remove-ext') {
-        return (filepath: string) => {
-          const ext = path.extname(filepath);
-          return ext ? filepath.slice(0, -ext.length) : filepath;
-        };
-      }
-      _throw('FluxionOptions.apiMapper must be "identical", "remove-ext", or a function');
-    })(),
-    nativeWatcher,
     metaApis,
     metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
-    cronjobDir,
-    cronjobInclude,
-    cronjobExclude,
-    // !
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
 }

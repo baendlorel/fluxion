@@ -38,14 +38,14 @@ export interface FluxionLogger {
 }
 
 /**
- * Internal-only logger used by fluxion's own subsystems (router, watcher,
- * cluster, cronjob manager, ...). It extends the public {@link FluxionLogger}
- * with a `core` level that records framework-originated logs — e.g. path
- * watching, route changes, worker lifecycle — so they are visually distinct
+ * Internal-only logger used by fluxion's own subsystems (router, injector,
+ * ...). It extends the public {@link FluxionLogger}
+ * with a `core` level that records framework-originated logs — e.g. route
+ * registration, module lifecycle — so they are visually distinct
  * from logs emitted by user handlers.
  *
  * ! This type is NOT exported to application code: {@link FluxionModuleContext}
- * and {@link FluxionCronJobContext} expose only {@link FluxionLogger}, keeping
+ * exposes only {@link FluxionLogger}, keeping
  * `core` off-limits to user handlers.
  */
 export interface InternalFluxionLogger extends FluxionLogger {

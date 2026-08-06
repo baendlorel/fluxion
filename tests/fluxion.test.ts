@@ -1,14 +1,13 @@
-import { afterAll, beforeEach, describe, expect, test } from 'vitest';
-import fs from 'node:fs';
+import { afterAll, describe, expect, test } from 'vitest';
+import fs, { Stats } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FluxionRouter } from '../src/router/index.js';
 import { defineFluxionOptions } from '../src/defines/options.js';
 import { createLogger } from '../src/common/logger.js';
 import { createServer } from '../src/http/server.js';
-import { createPrimaryMetaApiServer } from '../src/cluster/meta-api.js';
 import { FluxionModuleType } from '../src/common/consts.js';
-import type { FluxionContext, FluxionRouteMeta } from '../src/types.js';
+import type { FluxionContext } from '../src/types.js';
 import type http from 'node:http';
 import type https from 'node:https';
 
@@ -44,17 +43,15 @@ const writeApi = (dir: string, relativePath: string, body: string) => {
   fs.writeFileSync(file, body);
 };
 
-const makeContext = (dir: string, port = nextPort(), metaPort = nextPort(), metaSecret?: string) => {
+const makeContext = (dir: string, port = nextPort(), metaSecret?: string) => {
   const options = defineFluxionOptions({
     dir,
     host: '127.0.0.1',
     port,
-    metaPort,
     metaSecret,
-    reloadDelay: 50,
+    metaApis: ['healthz', 'version', 'stats', 'config'],
     apiInclude: ['**/*.ts'],
     logger: () => {},
-    workerOptions: { maxWorkerCount: 1 },
   });
   const cx = { options } as FluxionContext;
   cx.logger = createLogger(cx);
@@ -68,12 +65,8 @@ const startWorkerServer = async (cx: FluxionContext) => {
   return server;
 };
 
-const register = (cx: FluxionContext, relativePath: string) =>
-  cx.router.register(path.join(cx.options.dir, relativePath), relativePath);
-
-beforeEach(() => {
-  delete process.env.WORKER_ID;
-});
+const register = (cx: FluxionContext, relativePath: string, stat: Stats) =>
+  cx.router.register(path.join(cx.options.dir, relativePath), relativePath, stat);
 
 afterAll(async () => {
   await Promise.all(servers.splice(0).map((server) => closeServer(server)));
@@ -90,7 +83,6 @@ describe('flexible router registration', () => {
         dir,
         host: '127.0.0.1',
         port: nextPort(),
-        metaPort: nextPort(),
         // @ts-expect-error
         include: ['**/*.ts'], // This should throw an error
         apiInclude: ['**/*.ts'],
@@ -106,19 +98,19 @@ describe('flexible router registration', () => {
     writeApi(dir, 'hello.ts', "exports.default = { type: 0, handler: () => ({ message: 'hello-v1' }) };\n");
     fs.writeFileSync(path.join(dir, 'asset.txt'), 'asset-v1');
 
-    await register(cx, 'hello.ts');
-    await register(cx, 'asset.txt');
+    await register(cx, 'hello.ts', fs.statSync(path.join(dir, 'hello.ts')));
+    await register(cx, 'asset.txt', fs.statSync(path.join(dir, 'asset.txt')));
 
     // API files should be registered without extension when removeApiFileExt is true (default)
-    expect(cx.router.getModule(new URL('http://local/hello'))?.type).toBe(FluxionModuleType.Api);
-    expect(cx.router.getModule(new URL('http://local/asset.txt'))?.type).toBe(FluxionModuleType.StaticResource);
+    expect((await cx.router.get(new URL('http://local/hello.ts')))?.type).toBe(FluxionModuleType.Api);
+    expect((await cx.router.get(new URL('http://local/asset.txt')))?.type).toBe(FluxionModuleType.StaticResource);
     expect(cx.router.getRoutes()).toEqual([
       { path: '/asset.txt', type: 'static', methods: null },
-      { path: '/hello', type: 'api', methods: null },
+      { path: '/hello.ts', type: 'api', methods: null },
     ]);
 
     let server = await startWorkerServer(cx);
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).toEqual({
       status: 200,
       body: { message: 'hello-v1' },
     });
@@ -127,86 +119,28 @@ describe('flexible router registration', () => {
     servers.splice(servers.indexOf(server), 1);
 
     writeApi(dir, 'hello.ts', "exports.default = { type: 0, handler: () => ({ message: 'hello-v2' }) };\n");
-    await register(cx, 'hello.ts');
+    await register(cx, 'hello.ts', fs.statSync(path.join(dir, 'hello.ts')));
     server = await startWorkerServer(cx);
 
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).toEqual({
       status: 200,
       body: { message: 'hello-v2' },
     });
 
     fs.rmSync(path.join(dir, 'hello.ts'));
-    await register(cx, 'hello.ts');
-    expect(cx.router.getModule(new URL('http://local/hello'))).toBeUndefined();
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello`)).status).toBe(404);
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/hello.ts`)).status).toBe(404);
   });
 
-  test('apiMapper controls API file path transformation', async () => {
+  test('API file path has extension removed by default', async () => {
     const dir = makeTempDir();
-
-    // Test with apiMapper = 'remove-ext' (default)
-    let cxWithRemove = defineFluxionOptions({
-      dir,
-      host: '127.0.0.1',
-      port: nextPort(),
-      metaPort: nextPort(),
-      apiInclude: ['**/*.ts'],
-      staticInclude: ['**/*.html'],
-      apiMapper: 'remove-ext',
-      logger: () => {},
-    });
-    let contextWithRemove = { options: cxWithRemove } as FluxionContext;
-    contextWithRemove.logger = createLogger(contextWithRemove);
-    contextWithRemove.router = new FluxionRouter(contextWithRemove);
+    const cx = makeContext(dir);
 
     writeApi(dir, 'user.ts', "exports.default = { type: 0, handler: () => ({ name: 'user' }) };\n");
-    await register(contextWithRemove, 'user.ts');
+    await register(cx, 'user.ts', fs.statSync(path.join(dir, 'user.ts')));
 
-    // With apiMapper = 'remove-ext', API should be accessible without extension
-    expect(contextWithRemove.router.getModule(new URL('http://local/user'))?.type).toBe(FluxionModuleType.Api);
-    expect(contextWithRemove.router.getRoutes()).toEqual([{ path: '/user', type: 'api', methods: null }]);
-
-    // Test with apiMapper = 'identical'
-    let cxIdentical = defineFluxionOptions({
-      dir,
-      host: '127.0.0.1',
-      port: nextPort(),
-      metaPort: nextPort(),
-      apiInclude: ['**/*.ts'],
-      staticInclude: ['**/*.html'],
-      apiMapper: 'identical',
-      logger: () => {},
-    });
-    let contextIdentical = { options: cxIdentical } as FluxionContext;
-    contextIdentical.logger = createLogger(contextIdentical);
-    contextIdentical.router = new FluxionRouter(contextIdentical);
-
-    await register(contextIdentical, 'user.ts');
-
-    // With apiMapper = 'identical', API should be accessible with extension
-    expect(contextIdentical.router.getModule(new URL('http://local/user.ts'))?.type).toBe(FluxionModuleType.Api);
-    expect(contextIdentical.router.getRoutes()).toEqual([{ path: '/user.ts', type: 'api', methods: null }]);
-
-    // Test with custom apiMapper function
-    let cxCustom = defineFluxionOptions({
-      dir,
-      host: '127.0.0.1',
-      port: nextPort(),
-      metaPort: nextPort(),
-      apiInclude: ['**/*.ts'],
-      staticInclude: ['**/*.html'],
-      apiMapper: (path) => `api/v1/${path.replace(/\.ts$/, '')}`,
-      logger: () => {},
-    });
-    let contextCustom = { options: cxCustom } as FluxionContext;
-    contextCustom.logger = createLogger(contextCustom);
-    contextCustom.router = new FluxionRouter(contextCustom);
-
-    await register(contextCustom, 'user.ts');
-
-    // With custom apiMapper, API should be accessible with custom path
-    expect(contextCustom.router.getModule(new URL('http://local/api/v1/user'))?.type).toBe(FluxionModuleType.Api);
-    expect(contextCustom.router.getRoutes()).toEqual([{ path: '/api/v1/user', type: 'api', methods: null }]);
+    // API should be accessible without extension (remove-ext is hardcoded behavior)
+    expect((await cx.router.get(new URL('http://local/user.ts')))?.type).toBe(FluxionModuleType.Api);
+    expect(cx.router.getRoutes()).toEqual([{ path: '/user.ts', type: 'api', methods: null }]);
   });
 
   test('honors staticInclude, exclude, apiInclude, and method declarations', async () => {
@@ -225,7 +159,6 @@ describe('flexible router registration', () => {
       dir,
       host: '127.0.0.1',
       port: nextPort(),
-      metaPort: nextPort(),
       staticInclude: ['**/*.api.ts', '**/*.html'],
       exclude: ['private/**'],
       apiInclude: ['**/*.api.ts'],
@@ -235,20 +168,20 @@ describe('flexible router registration', () => {
     cx.logger = createLogger(cx);
     cx.router = new FluxionRouter(cx);
 
-    await register(cx, 'post.api.ts');
-    await register(cx, 'page.html');
-    await register(cx, 'ignore.txt');
-    await register(cx, path.join('private', 'hidden.ts'));
+    await register(cx, 'post.api.ts', fs.statSync(path.join(dir, 'post.api.ts')));
+    await register(cx, 'page.html', fs.statSync(path.join(dir, 'page.html')));
+    await register(cx, 'ignore.txt', fs.statSync(path.join(dir, 'ignore.txt')));
+    await register(cx, path.join('private', 'hidden.ts'), fs.statSync(path.join(dir, 'private', 'hidden.ts')));
 
     expect(cx.router.getRoutes()).toEqual([
       { path: '/page.html', type: 'static', methods: null },
-      { path: '/post.api', type: 'api', methods: ['POST'] },
+      { path: '/post.api.ts', type: 'api', methods: ['POST'] },
     ]);
 
     await startWorkerServer(cx);
-    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/post.api`)).status).toBe(405);
+    expect((await requestJson(`http://127.0.0.1:${cx.options.port}/post.api.ts`)).status).toBe(405);
     expect(
-      await requestJson(`http://127.0.0.1:${cx.options.port}/post.api`, {
+      await requestJson(`http://127.0.0.1:${cx.options.port}/post.api.ts`, {
         method: 'POST',
         body: '{}',
         headers: { 'content-type': 'application/json' },
@@ -272,11 +205,11 @@ describe('middleware', () => {
         handler: (req) => ({ steps: req.meta.steps, fromMiddleware: req.query.fromMiddleware, body: req.body })
       };\n`,
     );
-    await register(cx, 'middleware.ts');
+    await register(cx, 'middleware.ts', fs.statSync(path.join(dir, 'middleware.ts')));
     await startWorkerServer(cx);
 
     expect(
-      await requestJson(`http://127.0.0.1:${cx.options.port}/middleware`, {
+      await requestJson(`http://127.0.0.1:${cx.options.port}/middleware.ts`, {
         method: 'POST',
         body: JSON.stringify({ input: 1 }),
         headers: { 'content-type': 'application/json' },
@@ -298,10 +231,10 @@ describe('middleware', () => {
         handler: () => ({ reached: true })
       };\n`,
     );
-    await register(cx, 'guard.ts');
+    await register(cx, 'guard.ts', fs.statSync(path.join(dir, 'guard.ts')));
     await startWorkerServer(cx);
 
-    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/guard`)).toEqual({
+    expect(await requestJson(`http://127.0.0.1:${cx.options.port}/guard.ts`)).toEqual({
       status: 401,
       body: { blocked: true },
     });
@@ -309,88 +242,43 @@ describe('middleware', () => {
 });
 
 describe('meta api', () => {
-  test('serves healthz and workers endpoints through node fetch', async () => {
+  test('serves healthz, version, and stats endpoints', async () => {
     const dir = makeTempDir();
     const cx = makeContext(dir);
-    const server = createPrimaryMetaApiServer(
-      cx,
-      () => ({ workers: [{ slot: 1, state: 'ready' }] }),
-      async () => [],
-    );
-    servers.push(server);
+    await startWorkerServer(cx);
 
-    const healthz = await requestJson(`http://127.0.0.1:${cx.options.metaPort}/_fluxion/healthz`);
+    const healthz = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/healthz`);
     expect(healthz.status).toBe(200);
     expect(healthz.body.ok).toBe(true);
-    expect(healthz.body.role).toBe('primary');
 
-    expect(await requestJson(`http://127.0.0.1:${cx.options.metaPort}/_fluxion/workers`)).toEqual({
-      status: 200,
-      body: { ok: true, now: expect.any(Number), workers: { workers: [{ slot: 1, state: 'ready' }] } },
-    });
-  });
+    const version = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/version`);
+    expect(version.status).toBe(200);
+    expect(version.body.ok).toBe(true);
 
-  test('keeps routes endpoint disabled without a valid metaSecret', async () => {
-    const dir = makeTempDir();
-    const cx = makeContext(dir, nextPort(), nextPort(), undefined);
-    const server = createPrimaryMetaApiServer(
-      cx,
-      () => ({}),
-      async () => [{ path: '/hidden.ts', type: 'api', methods: null }],
-    );
-    servers.push(server);
-
-    expect((await requestJson(`http://127.0.0.1:${cx.options.metaPort}/_fluxion/routes?secret=anything`)).status).toBe(
-      404,
-    );
-  });
-
-  test('protects and returns router snapshot when metaSecret is valid', async () => {
-    const dir = makeTempDir();
-    const secret = 'abc12345678901234567';
-    const routes: FluxionRouteMeta[] = [
-      { path: '/api.ts', type: 'api', methods: ['GET'] },
-      { path: '/index.html', type: 'static', methods: null },
-    ];
-    const cx = makeContext(dir, nextPort(), nextPort(), secret);
-    const server = createPrimaryMetaApiServer(
-      cx,
-      () => ({}),
-      async () => routes,
-    );
-    servers.push(server);
-
-    expect((await requestJson(`http://127.0.0.1:${cx.options.metaPort}/_fluxion/routes?secret=wrong`)).status).toBe(
-      403,
-    );
-    expect(await requestJson(`http://127.0.0.1:${cx.options.metaPort}/_fluxion/routes?secret=${secret}`)).toEqual({
-      status: 200,
-      body: { ok: true, now: expect.any(Number), routes },
-    });
+    const stats = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/stats`);
+    expect(stats.status).toBe(200);
+    expect(stats.body.ok).toBe(true);
   });
 
   test('validates metaSecret requirements', () => {
     const dir = makeTempDir();
-    const base = { dir, host: '127.0.0.1', port: nextPort(), metaPort: nextPort(), logger: () => {} };
+    const base = { dir, host: '127.0.0.1', port: nextPort(), logger: () => {} };
     const message =
       'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace';
 
     expect(defineFluxionOptions({ ...base, metaSecret: undefined }).metaSecret).toBeUndefined();
-    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '' })).toThrow(
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '' })).toThrow(message);
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abcdefghijklmnopqrst' })).toThrow(
       message,
     );
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abcdefghijklmnopqrst' }),
-    ).toThrow(message);
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: '12345678901234567890' }),
-    ).toThrow(message);
-    expect(() =>
-      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc123 4567890123456' }),
-    ).toThrow(message);
-    expect(
-      defineFluxionOptions({ ...base, port: nextPort(), metaPort: nextPort(), metaSecret: 'abc12345678901234567' })
-        .metaSecret,
-    ).toBe('abc12345678901234567');
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '12345678901234567890' })).toThrow(
+      message,
+    );
+    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc123 4567890123456' })).toThrow(
+      message,
+    );
+    expect(defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc12345678901234567' }).metaSecret).toBe(
+      'abc12345678901234567',
+    );
   });
 });

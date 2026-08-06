@@ -47,6 +47,13 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
       meta: {},
     };
 
+    // Security headers for all responses
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Restrict resource loading to same-origin by default
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
+
     let bodyPreview: BodyPreview = {
       exists: false,
       bytes: 0,
@@ -91,7 +98,7 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
 
-      const m = await cx.router.getModule(url);
+      const m = await cx.router.get(url);
       if (!m) {
         safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
         return;
@@ -153,26 +160,18 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
     } catch (e) {
       if (e instanceof HttpException) {
         cx.logger.error({
+          ...normalized,
           message: 'RequestFailed',
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
           error: e.message,
         });
         safeSendJson(res, { message: e.message }, e.errno);
       } else {
         cx.logger.error({
+          ...normalized,
           message: 'RequestFailed',
-          method: normalized.method,
-          ip: normalized.ip,
-          path: normalized.url.pathname,
           error: getErrorMessage(e),
         });
-        safeSendJson(
-          res,
-          { message: getErrorMessage(e) },
-          (e as NodeJS.ErrnoException).errno ?? HttpCode.InternalServerError,
-        );
+        safeSendJson(res, { message: 'Internal Server Error' }, HttpCode.InternalServerError);
       }
     }
   };
@@ -222,10 +221,12 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
         error: getErrorMessage(e),
       });
       if (listening) {
-        process.exit(1);
+        // Server encountered an error after binding — log and let the
+        // caller (PM2 / user code) decide how to recover instead of
+        // forcing process.exit(1) here.
+        return;
       }
       reject(e);
-      process.exit(1);
     });
 
     server.listen(cx.options.port, cx.options.host);
@@ -247,7 +248,7 @@ function validateMetaSecret(url: URL, metaSecret: string | undefined): boolean {
  * Check if endpoint requires authentication
  */
 function requiresAuth(endpoint: string): boolean {
-  const protectedEndpoints = ['routes', 'config'];
+  const protectedEndpoints = ['config'];
   return protectedEndpoints.includes(endpoint);
 }
 
@@ -353,20 +354,14 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
       handlerTimeoutMs: cx.options.handlerTimeoutMs,
       middlewareTimeoutMs: cx.options.middlewareTimeoutMs,
       staticResourceTimeoutMs: cx.options.staticResourceTimeoutMs,
-      reloadDelay: cx.options.reloadDelay,
       moduleDir: cx.options.moduleDir,
       maxRequestBytes: cx.options.maxRequestBytes,
       apiInclude: cx.options.apiInclude,
       staticInclude: cx.options.staticInclude,
       exclude: cx.options.exclude,
-      apiMapper: typeof cx.options.apiMapper === 'function' ? '(custom function)' : cx.options.apiMapper,
-      nativeWatcher: cx.options.nativeWatcher,
       metaApis: cx.options.metaApis,
       metaSecretSet: cx.options.metaSecret !== undefined,
       httpsEnabled: cx.options.https !== undefined,
-      cronjobDir: cx.options.cronjobDir,
-      cronjobInclude: cx.options.cronjobInclude,
-      cronjobExclude: cx.options.cronjobExclude,
     };
 
     safeSendJson(res, {
@@ -374,12 +369,6 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
       now: Date.now(),
       config: safeConfig,
     });
-    return;
-  }
-
-  if (pathname === META_PREFIX + '/routes' && cx.options.metaApis.includes('routes')) {
-    const routes = cx.router.getRoutes();
-    safeSendJson(res, { ok: true, now: Date.now(), routes });
     return;
   }
 

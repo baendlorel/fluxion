@@ -1,30 +1,20 @@
-import type {
-  FluxionHandler,
-  FluxionDisposer,
-  FluxionModuleWithType,
-  FluxionModule,
-  FluxionMiddleware,
-} from '@/types.js';
+import type { FluxionHandler, FluxionDisposer, NormalizedModule, FluxionModule, FluxionMiddleware } from '@/types.js';
 import type { FluxionLoggerFn } from '@/common/logger.js';
 import { FluxionModuleType } from '@/common/consts.js';
 
 export { defineFluxionOptions } from './options.js';
-export { defineFluxionCronJob } from './cronjob.js';
 
 /**
  * Use handler function and optional disposer function to define a Fluxion module.
  * @param handler Main function that handles request and response instances
  * @param disposer Deal with resource cleanup when the server is about to close
  */
-export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDisposer): FluxionModuleWithType;
+export function defineFluxionModule(handler: FluxionHandler, disposer?: FluxionDisposer): NormalizedModule;
 /**
  * Provides type safety for defining Fluxion modules.
  */
-export function defineFluxionModule(fluxionModule: FluxionModule): FluxionModuleWithType;
-export function defineFluxionModule(
-  a: FluxionModule | FluxionHandler,
-  disposer?: FluxionDisposer,
-): FluxionModuleWithType {
+export function defineFluxionModule(fluxionModule: FluxionModule): NormalizedModule;
+export function defineFluxionModule(a: FluxionModule | FluxionHandler, disposer?: FluxionDisposer): NormalizedModule {
   if (typeof a === 'function') {
     if (disposer !== undefined && typeof disposer !== 'function') {
       _throw(`Invalid disposer, expected a function but got ${typeof disposer}`);

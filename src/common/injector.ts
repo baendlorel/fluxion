@@ -1,13 +1,14 @@
-import type { FluxionContext, FluxionModuleWithType } from '@/types.js';
+import type { FluxionContext, NormalizedModule } from '@/types.js';
 import { static_cast } from 'type-narrow';
 import { FluxionModuleType } from './consts';
+import { Stats } from 'node:fs';
 
-function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is FluxionModuleWithType {
+function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is NormalizedModule {
   if (typeof o !== 'object' || o === null) {
     return false;
   }
 
-  static_cast<FluxionModuleWithType>(o);
+  static_cast<NormalizedModule>(o);
 
   if (typeof o.handler !== 'function') {
     cx.logger.error(`handler must be a function`);
@@ -35,16 +36,20 @@ function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unkn
 
 export function loadFluxionModule(
   cx: Pick<FluxionContext, 'options' | 'logger'>,
-  fullpath: string,
-): FluxionModuleWithType {
-  delete require.cache[fullpath];
-  let m = require(fullpath);
+  absolutePath: string,
+  stat: Stats,
+): NormalizedModule {
+  delete require.cache[absolutePath];
+  let m = require(absolutePath);
   if (isFluxionModule(cx, m.default)) {
     m = m.default;
   } else if (isFluxionModule(cx, m)) {
   } else {
-    _throw(`Invalid handler module '${fullpath}', make sure it satisfies defineFluxionModule(...) helper`);
+    _throw(`Invalid handler module '${absolutePath}', make sure it satisfies defineFluxionModule(...) helper`);
   }
+
+  m.absolutePath = absolutePath;
+  m.mtimeMs = stat.mtimeMs;
 
   return m;
 }
