@@ -60,6 +60,13 @@ export interface FluxionOptions {
   handlerTimeoutMs?: number;
 
   /**
+   * Timeout for graceful shutdown. When shutting down, the server will wait this long for
+   * active connections to close before force-exiting.
+   * Default to 3000ms.
+   */
+  shutdownTimeoutMs?: number;
+
+  /**
    * Timeout for each middleware execution.
    * Default to 3000ms.
    */
@@ -183,6 +190,7 @@ export interface NormalizedFluxionOptions {
   handlerTimeoutMs: number;
   middlewareTimeoutMs: number;
   staticResourceTimeoutMs: number;
+  shutdownTimeoutMs: number;
   moduleDir: string;
   maxRequestBytes: number;
   logger: LoggerOption;

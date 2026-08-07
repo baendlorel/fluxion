@@ -88,6 +88,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     handlerTimeoutMs = 5000,
     middlewareTimeoutMs = 3000,
     staticResourceTimeoutMs = 3 * 60 * 1000,
+    shutdownTimeoutMs = 3000,
     moduleDir: rawModuleDir = process.cwd(),
     maxRequestBytes = 8_000_000,
     apiInclude = ['**/*.ts'],
@@ -141,6 +142,10 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.middlewareTimeoutMs must be an integer greater than 100');
   }
 
+  if (!Number.isSafeInteger(shutdownTimeoutMs) || shutdownTimeoutMs <= 100) {
+    _throw('FluxionOptions.shutdownTimeoutMs must be an integer greater than 100');
+  }
+
   if (typeof port !== 'number' || !Number.isSafeInteger(port)) {
     _throw('FluxionOptions.port must be a positive integer');
   }
@@ -181,6 +186,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     handlerTimeoutMs,
     middlewareTimeoutMs,
     staticResourceTimeoutMs,
+    shutdownTimeoutMs,
     moduleDir,
     maxRequestBytes,
     logger,

@@ -20,6 +20,10 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
   const shutdown = (signal: NodeJS.Signals) => {
     context.logger.warn({ message: 'ShuttingDown', pid: process.pid, signal });
     server.close(() => process.exit(0));
+    setTimeout(() => {
+      context.logger.error({ message: 'ShutdownTimeout', pid: process.pid, signal });
+      process.exit(1);
+    }, context.options.shutdownTimeoutMs).unref();
   };
 
   process.once('SIGINT', () => shutdown('SIGINT'));
