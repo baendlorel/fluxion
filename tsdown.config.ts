@@ -33,4 +33,34 @@ export default defineConfig([
       onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
     },
   },
+  // CLI 入口 — 用于 bin 命令
+  {
+    entry: [{ 'cli/index': 'src/cli/index.ts' }],
+    format: ['esm'],
+    dts: false,
+    clean: false,
+    sourcemap: false,
+    minify: false,
+    target: 'node24',
+    treeshake: false,
+    plugins: plugins(),
+    deps: {
+      onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
+    },
+  },
+  // Daemon 入口 — 被 spawn 的常驻进程
+  {
+    entry: [{ 'cli/daemon': 'src/cli/daemon.ts' }],
+    format: ['esm'],
+    dts: false,
+    clean: false,
+    sourcemap: false,
+    minify: false,
+    target: 'node24',
+    treeshake: false,
+    plugins: plugins(),
+    deps: {
+      onlyBundle: ['type-narrow', 'fast-json-stable-stringify'],
+    },
+  },
 ]);

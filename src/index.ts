@@ -3,6 +3,9 @@ import { HttpCode } from './common/consts.js';
 
 export { fluxion, HttpCode };
 
+// Export the CLI instance config helper
+export { defineFluxionInstance } from './cli/defines/fluxion-instance.js';
+
 // Export all HTTP exceptions
 export {
   HttpException,
