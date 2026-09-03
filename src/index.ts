@@ -3,6 +3,12 @@ import { HttpCode } from './common/consts.js';
 
 export { fluxion, HttpCode };
 
+/**
+ * Export fluxion version for users' debugging.
+ * @version __VERSION__
+ */
+export const VERSION = '__VERSION__';
+
 // Export all HTTP exceptions
 export {
   HttpException,
@@ -36,5 +42,3 @@ export type {
   FluxionModule,
   FluxionOptions,
 } from './types.js';
-
-// TODO 增加依赖更新后对应url更新的机制

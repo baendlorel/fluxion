@@ -181,7 +181,7 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   staticInclude: string[];
   exclude: string[];
-  metaApis: ('healthz' | 'version' | 'stats' | 'config')[];
+  metaApis: ('healthz' | 'stats' | 'config')[];
   metaSecret?: string;
   https?: {
     key: string | Buffer;

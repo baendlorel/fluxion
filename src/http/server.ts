@@ -276,16 +276,8 @@ async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: 
   if (pathname === META_PREFIX + '/healthz' && cx.options.metaApis.includes('healthz')) {
     safeSendJson(res, {
       ok: true,
-      pid: process.pid,
       now: Date.now(),
       uptimeSeconds: Number(process.uptime().toFixed(3)),
-    });
-    return;
-  }
-
-  if (pathname === META_PREFIX + '/version' && cx.options.metaApis.includes('version')) {
-    safeSendJson(res, {
-      ok: true,
       version: '__VERSION__',
     });
     return;
