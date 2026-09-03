@@ -107,8 +107,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       '**/*.temp',
     ],
     https,
-    metaApis = ['healthz', 'version', 'stats'],
-    metaSecret = o.metaSecret ?? process.env.FLUXION_META_SECRET,
   } = o as FluxionOptions;
 
   const port = userPort;
@@ -152,23 +150,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
-  if (!Array.isArray(metaApis) || metaApis.some((v) => !['healthz', 'version', 'stats', 'config'].includes(v))) {
-    _throw(`FluxionOptions.metaApis must be an array containing only 'healthz', 'version', 'stats', 'config'`);
-  }
-
-  if (
-    metaSecret !== undefined &&
-    (typeof metaSecret !== 'string' ||
-      metaSecret.length < 20 ||
-      /\s/.test(metaSecret) ||
-      !/[A-Za-z]/.test(metaSecret) ||
-      !/\d/.test(metaSecret))
-  ) {
-    _throw(
-      'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace',
-    );
-  }
-
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -186,8 +167,6 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     apiInclude,
     staticInclude,
     exclude,
-    metaApis,
-    metaSecret,
     https: normalizeHttpsOptions(https, moduleDir),
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };

@@ -5,7 +5,6 @@ import type { FluxionContext, FluxionModuleContext, FluxionRequest } from '../ty
 import {
   HttpCode,
   HANDLER_TIMEOUT_FLAG,
-  META_PREFIX,
   STATIC_HANDLED_FLAG,
   FluxionModuleType,
   MIDDLEWARE_TIMEOUT_FLAG,
@@ -88,12 +87,6 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
 
     // * Start request handling
     try {
-      // Handle meta API requests
-      if (normalized.url.pathname.startsWith(META_PREFIX + '/')) {
-        await handleMetaApi(cx, url, method, res);
-        return;
-      }
-
       const parsed = await parseBody(req, normalized.method, cx.options.maxRequestBytes);
       normalized.body = parsed.body;
       bodyPreview = parsed.preview;
@@ -231,164 +224,4 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
 
     server.listen(cx.options.port, cx.options.host);
   });
-}
-
-/**
- * Validate meta API secret from request
- */
-function validateMetaSecret(url: URL, metaSecret: string | undefined): boolean {
-  if (!metaSecret) {
-    return false;
-  }
-  const providedSecret = url.searchParams.get('secret');
-  return providedSecret === metaSecret;
-}
-
-/**
- * Check if endpoint requires authentication
- */
-function requiresAuth(endpoint: string): boolean {
-  const protectedEndpoints = ['config'];
-  return protectedEndpoints.includes(endpoint);
-}
-
-/**
- * Handle meta API requests
- */
-async function handleMetaApi(cx: FluxionContext, url: URL, method: string, res: http.ServerResponse): Promise<void> {
-  const pathname = url.pathname;
-
-  if (method !== 'GET') {
-    safeSendJson(res, { message: 'Method Not Allowed' }, HttpCode.MethodNotAllowed);
-    return;
-  }
-
-  const endpointName = pathname.replace(META_PREFIX + '/', '');
-
-  // Check authentication for protected endpoints
-  if (requiresAuth(endpointName)) {
-    if (!validateMetaSecret(url, cx.options.metaSecret)) {
-      safeSendJson(res, { message: 'Unauthorized' }, HttpCode.Unauthorized);
-      return;
-    }
-  }
-
-  if (pathname === META_PREFIX + '/healthz' && cx.options.metaApis.includes('healthz')) {
-    safeSendJson(res, {
-      ok: true,
-      now: Date.now(),
-      uptimeSeconds: Number(process.uptime().toFixed(3)),
-      version: '__VERSION__',
-    });
-    return;
-  }
-
-  if (pathname === META_PREFIX + '/stats' && cx.options.metaApis.includes('stats')) {
-    const memoryUsage = process.memoryUsage();
-    const cpuUsage = process.cpuUsage();
-    const uptime = process.uptime();
-
-    safeSendJson(res, {
-      ok: true,
-      now: Date.now(),
-      pid: process.pid,
-      uptime: {
-        seconds: Number(uptime.toFixed(3)),
-        human: formatUptime(uptime),
-      },
-      memory: {
-        rss: {
-          value: memoryUsage.rss,
-          mb: Number((memoryUsage.rss / 1024 / 1024).toFixed(2)),
-          description: 'Resident Set Size - total memory allocated',
-        },
-        heapTotal: {
-          value: memoryUsage.heapTotal,
-          mb: Number((memoryUsage.heapTotal / 1024 / 1024).toFixed(2)),
-          description: 'Total heap memory allocated',
-        },
-        heapUsed: {
-          value: memoryUsage.heapUsed,
-          mb: Number((memoryUsage.heapUsed / 1024 / 1024).toFixed(2)),
-          description: 'Heap memory currently in use',
-        },
-        external: {
-          value: memoryUsage.external,
-          mb: Number((memoryUsage.external / 1024 / 1024).toFixed(2)),
-          description: 'External memory (C++ objects, etc.)',
-        },
-        arrayBuffers: {
-          value: memoryUsage.arrayBuffers,
-          mb: Number((memoryUsage.arrayBuffers / 1024 / 1024).toFixed(2)),
-          description: 'Memory allocated for ArrayBuffers and SharedArrayBuffers',
-        },
-      },
-      cpu: {
-        user: Math.round(cpuUsage.user / 1000), // Convert microseconds to milliseconds
-        system: Math.round(cpuUsage.system / 1000),
-        description: 'CPU time used since start (milliseconds)',
-      },
-      runtime: {
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        execPath: process.execPath,
-      },
-    });
-    return;
-  }
-
-  if (pathname === META_PREFIX + '/config' && cx.options.metaApis.includes('config')) {
-    const safeConfig = {
-      dir: cx.options.dir,
-      host: cx.options.host,
-      port: cx.options.port,
-      handlerTimeoutMs: cx.options.handlerTimeoutMs,
-      middlewareTimeoutMs: cx.options.middlewareTimeoutMs,
-      staticResourceTimeoutMs: cx.options.staticResourceTimeoutMs,
-      moduleDir: cx.options.moduleDir,
-      maxRequestBytes: cx.options.maxRequestBytes,
-      apiInclude: cx.options.apiInclude,
-      staticInclude: cx.options.staticInclude,
-      exclude: cx.options.exclude,
-      metaApis: cx.options.metaApis,
-      metaSecretSet: cx.options.metaSecret !== undefined,
-      httpsEnabled: cx.options.https !== undefined,
-    };
-
-    safeSendJson(res, {
-      ok: true,
-      now: Date.now(),
-      config: safeConfig,
-    });
-    return;
-  }
-
-  safeSendJson(res, { message: 'Not Found' }, HttpCode.NotFound);
-}
-
-/**
- * Format uptime in human-readable format
- */
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  const parts = [];
-  if (days > 0) {
-    parts.push(`${days}d`);
-  }
-  if (hours > 0) {
-    parts.push(`${hours}h`);
-  }
-  if (minutes > 0) {
-    parts.push(`${minutes}m`);
-  }
-  if (secs > 0 || parts.length === 0) {
-    parts.push(`${secs}s`);
-  }
-
-  return parts.join(' ');
 }

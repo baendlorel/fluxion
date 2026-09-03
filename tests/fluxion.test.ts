@@ -43,13 +43,11 @@ const writeApi = (dir: string, relativePath: string, body: string) => {
   fs.writeFileSync(file, body);
 };
 
-const makeContext = (dir: string, port = nextPort(), metaSecret?: string) => {
+const makeContext = (dir: string, port = nextPort()) => {
   const options = defineFluxionOptions({
     dir,
     host: '127.0.0.1',
     port,
-    metaSecret,
-    metaApis: ['healthz', 'version', 'stats', 'config'],
     apiInclude: ['**/*.ts'],
     logger: () => {},
   });
@@ -238,47 +236,5 @@ describe('middleware', () => {
       status: 401,
       body: { blocked: true },
     });
-  });
-});
-
-describe('meta api', () => {
-  test('serves healthz, version, and stats endpoints', async () => {
-    const dir = makeTempDir();
-    const cx = makeContext(dir);
-    await startWorkerServer(cx);
-
-    const healthz = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/healthz`);
-    expect(healthz.status).toBe(200);
-    expect(healthz.body.ok).toBe(true);
-
-    const version = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/version`);
-    expect(version.status).toBe(200);
-    expect(version.body.ok).toBe(true);
-
-    const stats = await requestJson(`http://127.0.0.1:${cx.options.port}/_fluxion/stats`);
-    expect(stats.status).toBe(200);
-    expect(stats.body.ok).toBe(true);
-  });
-
-  test('validates metaSecret requirements', () => {
-    const dir = makeTempDir();
-    const base = { dir, host: '127.0.0.1', port: nextPort(), logger: () => {} };
-    const message =
-      'FluxionOptions.metaSecret must be a string with at least 20 characters, include both letters and digits, and contain no whitespace';
-
-    expect(defineFluxionOptions({ ...base, metaSecret: undefined }).metaSecret).toBeUndefined();
-    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '' })).toThrow(message);
-    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abcdefghijklmnopqrst' })).toThrow(
-      message,
-    );
-    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: '12345678901234567890' })).toThrow(
-      message,
-    );
-    expect(() => defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc123 4567890123456' })).toThrow(
-      message,
-    );
-    expect(defineFluxionOptions({ ...base, port: nextPort(), metaSecret: 'abc12345678901234567' }).metaSecret).toBe(
-      'abc12345678901234567',
-    );
   });
 });

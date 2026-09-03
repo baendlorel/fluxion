@@ -17,7 +17,7 @@
 - **Static file serving**: Non-API files are served as static resources with automatic content-type detection.
 - **Built-in middleware system**: Sequential middleware execution with timeout support.
 - **HTTP exceptions**: Rich set of typed exception classes for clean error handling.
-- **Meta APIs**: Monitoring endpoints at `/_fluxion/*` for health, version, stats, and config.
+- **No built-in metadata endpoints**: health checks and monitoring are left to you — implement them as ordinary API handlers.
 - **Single-process**: Simple architecture. Use pm2, docker, or kubernetes for clustering.
 
 ## Install
@@ -293,31 +293,22 @@ of temporary files by AI Agents can **block the main process**, preventing
 interface files from being loaded correctly (i.e., the "watch failure"
 issue).
 
-## Meta APIs
+## Health checks
 
-Monitoring endpoints at `/_fluxion/*` endpoints. Public endpoints are accessible without authentication; sensitive endpoints require a secret.
+Fluxion intentionally ships **no built-in metadata endpoints** (no `/_fluxion/*` routes) — for security, nothing about the server is exposed automatically. Implement health checks yourself as ordinary API handlers, controlling the path, the auth, and exactly what gets exposed:
 
-```http
-GET /_fluxion/healthz              # Health check ✅ Public
-GET /_fluxion/version              # Version info ✅ Public
-GET /_fluxion/stats                # Memory/CPU/runtime stats ✅ Public
-GET /_fluxion/config?secret=<key>  # Current config 🔒 Requires secret
+```ts
+// healthz.ts — placed in your dynamic dir, served like any other route
+import { defineFluxionModule } from 'fluxion-ts';
+
+export default defineFluxionModule({
+  handler: () => ({
+    ok: true,
+    now: Date.now(),
+    uptimeSeconds: Number(process.uptime().toFixed(3)),
+  }),
+});
 ```
-
-### Authentication
-
-```bash
-# Public endpoints — no auth required
-curl http://127.0.0.1:3000/_fluxion/healthz
-curl http://127.0.0.1:3000/_fluxion/version
-curl http://127.0.0.1:3000/_fluxion/stats
-
-# Protected endpoints — requires secret
-export FLUXION_META_SECRET='your-20-char-secret1'
-curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
-```
-
-**Secret requirements:** At least 20 characters, must include both letters and digits, no whitespace.
 
 ## Options
 
@@ -336,11 +327,6 @@ interface FluxionOptions {
   apiInclude?: string[];           // Default: ['**/*.ts']
   staticInclude?: string[];        // Default: ['**/*']
   exclude?: string[];              // Overrides built-in ignore list
-
-  // Meta API
-  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];
-                                   // Default: ['healthz', 'version', 'stats']
-  metaSecret?: string;             // ≥20 chars, letters+digits, no whitespace
 
   // Request handling
   maxRequestBytes?: number;        // Default: 8_000_000

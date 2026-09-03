@@ -134,35 +134,6 @@ export interface FluxionOptions {
      */
     ca?: string | Buffer | Array<string | Buffer>;
   };
-
-  /**
-   * Meta API endpoints to enable. Each endpoint corresponds to a /_fluxion/<name> route.
-   * Available endpoints: 'healthz', 'version', 'stats', 'config'
-   * Defaults to ['healthz', 'version', 'stats']
-   *
-   * Endpoint descriptions:
-   * - healthz: Basic health check (no authentication required)
-   * - version: Version information (no authentication required)
-   * - stats: Memory, CPU, and runtime statistics (no authentication required)
-   * - config: Current configuration (requires secret authentication)
-   */
-  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];
-
-  /**
-   * Secret for protecting sensitive meta API endpoints.
-   *
-   * **Authentication:** Only 'config' endpoint requires secret authentication via `?secret=` parameter.
-   * Basic monitoring endpoints ('healthz', 'version', 'stats') are publicly accessible.
-   *
-   * **Priority:** Explicit `metaSecret` option > `FLUXION_META_SECRET` environment variable.
-   *
-   * **Validation:** Must be at least 20 characters, include both letters and digits, and contain no whitespace.
-   *
-   * **Defaults:** Reads from `FLUXION_META_SECRET` environment variable if not explicitly set.
-   *
-   * **Disabled:** When set to `undefined` or doesn't meet validation rules, 'routes' and 'config' endpoints are disabled.
-   */
-  metaSecret?: string;
 }
 
 export interface NormalizedFluxionOptions {
@@ -181,8 +152,6 @@ export interface NormalizedFluxionOptions {
   apiInclude: string[];
   staticInclude: string[];
   exclude: string[];
-  metaApis: ('healthz' | 'stats' | 'config')[];
-  metaSecret?: string;
   https?: {
     key: string | Buffer;
     cert: string | Buffer;

@@ -28,7 +28,7 @@ Fluxion is a Node.js server framework with these core concepts:
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
 - **Static files**: files matching `staticInclude` patterns (default: `**/*`) are served as static resources (GET/HEAD only).
 - **File exclusion**: files matching `exclude` patterns are skipped.
-- **Integrated meta APIs**: monitoring endpoints at `/_fluxion/*` for health, version, stats, and config.
+- **No built-in metadata endpoints**: health checks and other monitoring endpoints are intentionally not provided — implement them yourself as regular API handlers.
 
 ### Package Exports
 
@@ -364,12 +364,6 @@ interface FluxionOptions {
   staticInclude?: string[];        // Static resource patterns. Default: ['**/*']
   exclude?: string[];              // Exclude patterns (overrides defaults)
 
-  // Meta API
-  metaApis?: ('healthz' | 'version' | 'stats' | 'config')[];
-                                   // Default: ['healthz', 'version', 'stats']
-  metaSecret?: string;             // ≥20 chars, letters+digits, no whitespace.
-                                   // Reads from FLUXION_META_SECRET env var if not set.
-
   // Request limits
   maxRequestBytes?: number;        // Default: 8_000_000 (8MB). 413 if exceeded.
 
@@ -503,7 +497,6 @@ export default defineFluxionModule(async () => {
 - ❌ **Don't store state in handler modules** — files are hot-reloaded, so module-level state is lost on file change. Use external stores (Redis, database, etc.).
 - ❌ **Don't use `GET`/`HEAD` for body-dependent logic** — body is not parsed for these methods.
 - ❌ **Don't forget file extension in URL** — `/hello.ts` not `/hello`. The extension IS part of the route.
-- ❌ **Don't set `metaSecret`** to less than 20 characters or without both letters and digits — it will throw.
 - ❌ **Don't use the `include` option** — it has been renamed to `apiInclude`/`staticInclude`. Passing `include` will throw an error.
 
 ### Module state is ephemeral
@@ -531,25 +524,21 @@ Fluxion uses a lazy loading strategy:
 
 Fluxion runs as a single process. For production deployments, use process managers like pm2, docker, or kubernetes.
 
-### Meta API endpoints
+### Health checks / monitoring endpoints
 
-Meta APIs are integrated into the main server at `/_fluxion/*` endpoints.
+Fluxion intentionally ships **no built-in metadata endpoints** (no `/_fluxion/*` routes). For security, nothing about the server is exposed automatically — implement health checks yourself as ordinary API handlers:
 
-```http
-GET /_fluxion/healthz              # Health check ✅ Public (default: enabled)
-GET /_fluxion/version              # Version information ✅ Public (default: enabled)
-GET /_fluxion/stats                # Memory/CPU/runtime stats ✅ Public (default: enabled)
-GET /_fluxion/config?secret=<key>  # Current configuration 🔒 Requires secret (default: disabled)
+```ts
+// healthz.ts — a regular handler, registered like any other route
+import { defineFluxionModule } from 'fluxion-ts';
+
+export default defineFluxionModule({
+  handler: () => ({
+    ok: true,
+    now: Date.now(),
+    uptimeSeconds: Number(process.uptime().toFixed(3)),
+  }),
+});
 ```
 
-**Authentication:**
-```bash
-# Public endpoints — no authentication required
-curl http://127.0.0.1:3000/_fluxion/healthz
-curl http://127.0.0.1:3000/_fluxion/version
-curl http://127.0.0.1:3000/_fluxion/stats
-
-# Protected endpoints — requires secret
-export FLUXION_META_SECRET='your-20-char-secret1'
-curl 'http://127.0.0.1:3000/_fluxion/config?secret=your-20-char-secret1'
-```
+You control the path, the auth (e.g. a middleware that checks a token), and exactly what information is exposed.

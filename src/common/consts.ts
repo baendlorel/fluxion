@@ -1,5 +1,4 @@
 export const DUMMY_BASE_URL = 'http://fluxion.local';
-export const META_PREFIX = '/_fluxion';
 
 export const OPTIONS_NORMALIZED_FLAG = Symbol('fluxion.options.normalized');
 export const STATIC_HANDLED_FLAG = Symbol('fluxion.router.StaticHandled');
