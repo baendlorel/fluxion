@@ -1,6 +1,5 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { open, appendFile } from 'node:fs/promises';
-import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dt = () => new Date().toLocaleString('zh-CN');
@@ -75,19 +74,60 @@ class Daemon {
       isAlive: () => true,
       ...options,
     };
+
+    if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+      _throw('DaemonOptions must be an object');
+    }
+
+    if (typeof this.opts.cmd !== 'string' || this.opts.cmd.length === 0) {
+      _throw('DaemonOptions.cmd must be a non-empty string');
+    }
+
+    if (typeof this.opts.logsDir !== 'string' || this.opts.logsDir.length === 0) {
+      _throw('DaemonOptions.logsDir must be a non-empty string');
+    }
+
+    if (typeof this.opts.port !== 'number' || !Number.isSafeInteger(this.opts.port)) {
+      _throw('DaemonOptions.port must be a positive integer');
+    }
+
+    if (this.opts.port < 1 || this.opts.port > 65535) {
+      _throw('DaemonOptions.port must be 1 ~ 65535');
+    }
+
+    if (!Array.isArray(this.opts.cmdArgs) || this.opts.cmdArgs.some((a) => typeof a !== 'string')) {
+      _throw('DaemonOptions.cmdArgs must be an array of strings');
+    }
+
+    if (
+      typeof this.opts.spawnOptions !== 'object' ||
+      this.opts.spawnOptions === null ||
+      Array.isArray(this.opts.spawnOptions)
+    ) {
+      _throw('DaemonOptions.spawnOptions must be an object');
+    }
+
+    if (!Number.isSafeInteger(this.opts.checkInterval) || this.opts.checkInterval <= 0) {
+      _throw('DaemonOptions.checkInterval must be an integer greater than 0');
+    }
+
+    if (!Number.isSafeInteger(this.opts.terminateWait) || this.opts.terminateWait < 0) {
+      _throw('DaemonOptions.terminateWait must be a non-negative integer');
+    }
+
+    if (typeof this.opts.isAlive !== 'function') {
+      _throw('DaemonOptions.isAlive must be a function');
+    }
+
     this.daemonfile = join(this.opts.logsDir, `daemon.log`);
     this.instancefile = join(this.opts.logsDir, `instance.log`);
 
-    this.next = () => setTimeout(() => this.runner(), 1000 * this.opts.checkInterval);
+    this.next = () => setTimeout(() => this.run(), 1000 * this.opts.checkInterval);
     console.log('Fluxion daemon started.');
   }
 
   private log(message: string) {
     appendFile(this.daemonfile, `${dt()} ${message}\n`, 'utf-8').catch(console.error);
-  }
-
-  private logSync(message: string) {
-    appendFileSync(this.daemonfile, `${dt()} ${message}\n`, 'utf-8');
   }
 
   private async start() {
@@ -161,7 +201,7 @@ class Daemon {
     this.pid = undefined;
   }
 
-  async runner() {
+  async run() {
     if (!this.isPidAlive()) {
       this.log(`No instance running, starting.`);
       await this.start();
@@ -181,7 +221,8 @@ class Daemon {
   }
 }
 
-// # ON close
-process.on('SIGINT', () => console.log('SIGINT'));
-process.on('SIGTERM', () => console.log('SIGTERM'));
-process.on('SIGQUIT', () => console.log('SIGQUIT'));
+export function launchDaemon(opts: DaemonOptions) {
+  const daemon = new Daemon(opts);
+  daemon.run();
+  return daemon;
+}
