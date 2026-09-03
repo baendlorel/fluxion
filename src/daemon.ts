@@ -1,50 +1,84 @@
-import { platform } from 'node:os';
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { open, appendFile } from 'node:fs/promises';
 import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const dt = () => new Date().toLocaleString('zh-CN');
 const wait = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
 
-class Daemon {
-  readonly port: number;
-  readonly cmd: string;
-  readonly cmdArgs: string[];
+interface DaemonOptions {
+  /**
+   * Default is 9335
+   */
+  port?: number;
 
-  readonly checkInterval: number;
+  /**
+   * 1st argument of `spawn` from `node:child_process`.
+   */
+  cmd: string;
+
+  /**
+   * 2nd argument of `spawn` from `node:child_process`.
+   */
+  cmdArgs?: string[];
+
+  /**
+   * 3rd argument of `spawn` from `node:child_process`.
+   *
+   * **Note**: `stdio` is fixed to `['ignore', fileHandler.fd, fileHandler.fd]`
+   */
+  spawnOptions?: SpawnOptions;
+
+  /**
+   * Default is 30 seconds.
+   */
+  checkInterval?: number;
+
   /**
    * Wait this seconds. If the pid is still alive, kill -9.
+   *
+   * Default is 5 seconds.
    */
-  readonly terminateWait: number;
+  terminateWait?: number;
 
   /**
-   * `stdio` will be fixed to `['ignore', fileHandler.fd, fileHandler.fd]`
+   * Will append daemon logs into `<logsDir>/daemon.log`.
+   * Will append fluxion logs into `<logsDir>/instance.log`.
    */
-  readonly spawnOptions: SpawnOptions;
+  logsDir: string;
 
   /**
-   * Will append daemon logs into it.
+   * Custom checker returns whether the instance is alive.
+   * - if not provided, the daemon will only checks whether the pid is alive.
+   * @returns `true` if alive, `false` otherwise.
    */
+  isAlive?: () => boolean | Promise<boolean>;
+}
+
+class Daemon {
+  readonly opts: Required<DaemonOptions>;
+
   readonly daemonfile: string;
-
-  /**
-   * Will append fluxion logs into it.
-   */
   readonly instancefile: string;
-
-  readonly isAlive: () => boolean | Promise<boolean>;
 
   readonly next: () => NodeJS.Timeout;
 
   pid: number | undefined;
 
-  constructor() {
-    if (platform() !== 'linux') {
-      console.error('This daemon only supports Linux.');
-      process.exit(1);
-    }
+  constructor(options: DaemonOptions) {
+    this.opts = {
+      port: 9335,
+      checkInterval: 30,
+      terminateWait: 5,
+      cmdArgs: [],
+      spawnOptions: {},
+      isAlive: () => true,
+      ...options,
+    };
+    this.daemonfile = join(this.opts.logsDir, `daemon.log`);
+    this.instancefile = join(this.opts.logsDir, `instance.log`);
 
-    this.next = () => setTimeout(() => this.runner(), 1000 * this.checkInterval);
+    this.next = () => setTimeout(() => this.runner(), 1000 * this.opts.checkInterval);
     console.log('Fluxion daemon started.');
   }
 
@@ -60,14 +94,14 @@ class Daemon {
     const fileHandler = await open(this.instancefile, 'a');
 
     const opts: SpawnOptions = {
-      ...this.spawnOptions,
+      ...this.opts.spawnOptions,
       stdio: ['ignore', fileHandler.fd, fileHandler.fd],
     };
     if (opts.env) {
-      opts.env.FLUXION_PORT = this.port.toString();
+      opts.env.FLUXION_PORT = this.opts.port.toString();
     }
 
-    const child = spawn(this.cmd, this.cmdArgs, opts as SpawnOptions);
+    const child = spawn(this.opts.cmd, this.opts.cmdArgs, opts as SpawnOptions);
 
     const closer = (tag: string) => {
       fileHandler.close().catch(() => {});
@@ -118,7 +152,7 @@ class Daemon {
       this.log(`Failed to kill process ${this.pid}: ${(e as Error).message}`);
     }
 
-    await wait(this.terminateWait);
+    await wait(this.opts.terminateWait);
     if (this.isPidAlive()) {
       process.kill(this.pid, 'SIGKILL');
     }
@@ -136,7 +170,7 @@ class Daemon {
       return;
     }
 
-    const ok = await Promise.try(this.isAlive).catch(() => false);
+    const ok = await Promise.try(this.opts.isAlive).catch(() => false);
 
     if (!ok) {
       await this.kill();
