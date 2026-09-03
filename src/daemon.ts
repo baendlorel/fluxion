@@ -5,6 +5,21 @@ import { join } from 'node:path';
 const dt = () => new Date().toLocaleString('zh-CN');
 const wait = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
 
+const PromiseTry = <T>(fn: () => T | Promise<T>): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    try {
+      const result = fn();
+      if (result instanceof Promise) {
+        return result;
+      } else {
+        resolve(result);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
 interface DaemonOptions {
   /**
    * Default is 9335
@@ -24,7 +39,9 @@ interface DaemonOptions {
   /**
    * 3rd argument of `spawn` from `node:child_process`.
    *
-   * **Note**: `stdio` is fixed to `['ignore', fileHandler.fd, fileHandler.fd]`
+   * **Note**:
+   * - `stdio` is fixed to `['ignore', fileHandler.fd, fileHandler.fd]`
+   * - You should pass `PATH` to env so that the command can be properly found.
    */
   spawnOptions?: SpawnOptions;
 
@@ -210,7 +227,7 @@ class Daemon {
       return;
     }
 
-    const ok = await Promise.try(this.opts.isAlive).catch(() => false);
+    const ok = await PromiseTry(this.opts.isAlive).catch(() => false);
 
     if (!ok) {
       await this.kill();
