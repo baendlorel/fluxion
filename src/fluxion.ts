@@ -5,6 +5,7 @@ import { OPTIONS_NORMALIZED_FLAG } from './common/consts.js';
 import { defineFluxionOptions } from './defines/options.js';
 import { createServer } from './http/server.js';
 import { FluxionRouter } from './router/index.js';
+import { DependencyWatcher } from './watcher/dep-watcher.class.js';
 
 export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions) {
   const alreadyNormalized = (options as NormalizedFluxionOptions).normalizedFlag === OPTIONS_NORMALIZED_FLAG;
@@ -15,6 +16,8 @@ export async function fluxion(options: FluxionOptions | NormalizedFluxionOptions
 
   // Start HTTP server
   const server = await createServer(context);
+
+  context.depWatcher = new DependencyWatcher(context.options);
 
   // Register signal handlers for graceful shutdown
   const shutdown = (signal: NodeJS.Signals) => {

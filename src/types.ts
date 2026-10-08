@@ -3,6 +3,7 @@ import type { FluxionLogger, InternalFluxionLogger, LoggerOption } from '@/commo
 import type { FluxionRouter } from './router/index.js';
 import type { otherstring } from './global.js';
 import type { FluxionModuleType } from './common/consts.js';
+import type { DependencyWatcher } from './watcher/dep-watcher.class.js';
 
 export interface FluxionRequest {
   /**
@@ -172,6 +173,7 @@ export interface FluxionContext {
   options: NormalizedFluxionOptions;
   logger: InternalFluxionLogger;
   router: FluxionRouter;
+  depWatcher: DependencyWatcher;
 }
 
 export interface FluxionModuleContext {
