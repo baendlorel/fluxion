@@ -246,13 +246,15 @@ export interface FluxionModule {
   middlewares?: FluxionMiddleware[];
 }
 
-export type NormalizedModule = FluxionModule & {
+export interface FluxionModuleObject extends FluxionModule {
+  type: FluxionModuleType;
+}
+
+export interface NormalizedModule extends FluxionModuleObject {
   absolutePath: string;
 
   /**
    * mtime from `fs.stat`
    */
   mtimeMs: number;
-
-  type: FluxionModuleType;
-};
+}

@@ -1,7 +1,7 @@
 import type { FluxionContext, NormalizedModule } from '@/types.js';
-import { static_cast } from 'type-narrow';
-import { FluxionModuleType } from './consts';
 import { Stats } from 'node:fs';
+import { static_cast } from 'type-narrow';
+import { FluxionModuleType } from './consts.js';
 
 function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unknown): o is NormalizedModule {
   if (typeof o !== 'object' || o === null) {
@@ -34,12 +34,36 @@ function isFluxionModule(cx: Pick<FluxionContext, 'options' | 'logger'>, o: unkn
   return true;
 }
 
+/**
+ * Evict the module and every dependency recorded in `module.children` from require cache,
+ * so the whole import chain is re-evaluated on next require. Packages under node_modules are kept.
+ */
+function purgeRequireCache(absolutePath: string) {
+  const visited = new Set<string>();
+  const walk = (m: NodeJS.Module | undefined) => {
+    if (!m || visited.has(m.id)) {
+      return;
+    }
+    visited.add(m.id);
+    for (const child of m.children) {
+      if (!child.id.includes('/node_modules/') && !child.id.includes('\\node_modules\\')) {
+        walk(child);
+      }
+    }
+  };
+  walk(require.cache[absolutePath]);
+  visited.add(absolutePath);
+  for (const id of visited) {
+    delete require.cache[id];
+  }
+}
+
 export function loadFluxionModule(
   cx: Pick<FluxionContext, 'options' | 'logger'>,
   absolutePath: string,
   stat: Stats,
 ): NormalizedModule {
-  delete require.cache[absolutePath];
+  purgeRequireCache(absolutePath);
   let m = require(absolutePath);
   if (isFluxionModule(cx, m.default)) {
     m = m.default;

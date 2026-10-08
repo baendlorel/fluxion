@@ -509,7 +509,7 @@ Fluxion uses a lazy loading strategy:
 
 1. **First request**: Module is loaded from disk, parsed, and cached in memory.
 2. **Subsequent requests**: Cached module is returned if `mtime` is unchanged.
-3. **File modification**: Changed `mtime` triggers a reload on the next request.
+3. **File modification**: Changed `mtime` triggers a reload on the next request. The module and its whole import chain (every file listed in `require.cache[...].children`, recursively) are evicted from `require.cache` first, so dependencies are re-evaluated too. Packages under `node_modules` are not evicted.
 4. **File deletion**: Module is disposed (calling `disposer` if set) and removed from cache. Subsequent requests return `404`.
 5. **File re-creation**: After deletion, if the file is recreated, it will be re-registered on the next request.
 
