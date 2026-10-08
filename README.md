@@ -276,9 +276,9 @@ Fluxion uses a **lazy loading** strategy:
 
 - Files are loaded on demand when a request arrives.
 - The module is cached in memory; subsequent requests use the cached version.
-- If the file's `mtime` has changed, the module is automatically reloaded.
+- If the file's `mtime` — or that of any file it imports — has changed, the module and its import chain are automatically reloaded (the previous `disposer` is called).
 - If the file is deleted, the module is disposed and subsequent requests return `404`.
-- No file watcher runs at runtime — zero overhead when files are stable.
+- No file watcher runs at runtime — each request only `stat`s the handler's files.
 
 This means:
 

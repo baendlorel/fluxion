@@ -22,7 +22,7 @@
 
 Fluxion is a Node.js server framework with these core concepts:
 
-- **Lazy loading**: API handler modules are loaded on demand when requests arrive. No file watcher runs at runtime — zero overhead when files are stable.
+- **Lazy loading**: API handler modules are loaded on demand when requests arrive. No file watcher runs at runtime — no background cost; each request only `stat`s the handler's files.
 - **Filesystem routing**: files under a `dir` directory become HTTP routes. The file path IS the URL path.
 - **Single-process architecture**: Fluxion runs as a single process. Use pm2, docker, or kubernetes for clustering.
 - **API handlers**: TypeScript/JavaScript files matching `apiInclude` patterns (default: `**/*.ts`) are loaded as handler modules.
@@ -508,9 +508,9 @@ When a file changes, the module is reloaded. Any module-level variables (caches,
 Fluxion uses a lazy loading strategy:
 
 1. **First request**: Module is loaded from disk, parsed, and cached in memory.
-2. **Subsequent requests**: Cached module is returned if `mtime` is unchanged.
-3. **File modification**: Changed `mtime` triggers a reload on the next request. The module and its whole import chain (every file listed in `require.cache[...].children`, recursively) are evicted from `require.cache` first, so dependencies are re-evaluated too. Packages under `node_modules` are not evicted.
-4. **File deletion**: Module is disposed (calling `disposer` if set) and removed from cache. Subsequent requests return `404`.
+2. **Subsequent requests**: Cached module is returned if the handler file **and every file in its import chain** still have the `mtime` they were loaded with, and none of them was evicted from `require.cache`.
+3. **Reload** (handler or any dependency changed): the handler and its whole import chain (`require.cache[...].children`, recursively) are evicted from `require.cache`, plus every tracked module that depends on them, so the next `require` re-evaluates everything fresh and all handlers sharing a dependency end up on the same new instance. Packages under `node_modules` are never evicted. The previous module's `disposer` is called (not awaited) once the new module has loaded successfully; if loading fails, the old module stays registered and is not disposed.
+4. **File deletion**: Module is disposed (calling `disposer` if set), evicted from `require.cache` together with its dependents, and unregistered. Subsequent requests return `404`.
 5. **File re-creation**: After deletion, if the file is recreated, it will be re-registered on the next request.
 
 ### Security features

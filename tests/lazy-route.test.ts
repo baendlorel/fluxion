@@ -260,3 +260,126 @@ describe('lazy route — disposal on deletion', () => {
     });
   });
 });
+
+describe('lazy route — dependency chain', () => {
+  let tick = 0;
+  // Rewrites a file with a guaranteed distinct mtime
+  const rewrite = (dir: string, relativePath: string, body: string) => {
+    writeApi(dir, relativePath, body);
+    const t = new Date(Date.now() + 10_000 * ++tick);
+    fs.utimesSync(path.join(dir, relativePath), t, t);
+  };
+  const handlerOf = (id: string, dep: string) =>
+    `const dep = require('${dep}');\nexports.default = { type: 0, handler: () => ({ id: '${id}', dep: dep.value }) };\n`;
+  const call = async (cx: FluxionContext, name: string) => {
+    const m = await cx.router.get(new URL(`http://local/${name}`));
+    return m && (m.handler as any)();
+  };
+
+  test('reloads handler when only a dependency changes', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    writeApi(dir, 'lib/dep.ts', "exports.value = 'v1';\n");
+    writeApi(dir, 'a.ts', handlerOf('a', './lib/dep.ts'));
+    await register(cx, 'a.ts', fs.statSync(path.join(dir, 'a.ts')));
+
+    expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: 'v1' });
+    const before = await cx.router.get(new URL('http://local/a.ts'));
+    expect(await cx.router.get(new URL('http://local/a.ts'))).toBe(before);
+
+    rewrite(dir, 'lib/dep.ts', "exports.value = 'v2';\n");
+    expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: 'v2' });
+  });
+
+  test('reloads deep transitive dependency changes', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    writeApi(dir, 'lib/leaf.ts', "exports.value = 'leaf1';\n");
+    writeApi(dir, 'lib/mid.ts', "exports.value = require('./leaf.ts').value;\n");
+    writeApi(dir, 'a.ts', handlerOf('a', './lib/mid.ts'));
+    await register(cx, 'a.ts', fs.statSync(path.join(dir, 'a.ts')));
+    expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: 'leaf1' });
+
+    rewrite(dir, 'lib/leaf.ts', "exports.value = 'leaf2';\n");
+    expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: 'leaf2' });
+  });
+
+  test('handlers sharing a dependency all see the new version, with one shared instance', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    writeApi(dir, 'lib/shared.ts', 'exports.value = Math.random();\n');
+    writeApi(dir, 'a.ts', handlerOf('a', './lib/shared.ts'));
+    writeApi(dir, 'd.ts', handlerOf('d', './lib/shared.ts'));
+    await register(cx, 'a.ts', fs.statSync(path.join(dir, 'a.ts')));
+    await register(cx, 'd.ts', fs.statSync(path.join(dir, 'd.ts')));
+    const first = await call(cx, 'a.ts');
+    expect((await call(cx, 'd.ts')).dep).toBe(first.dep);
+
+    rewrite(dir, 'lib/shared.ts', 'exports.value = Math.random();\n');
+    const a = await call(cx, 'a.ts');
+    const d = await call(cx, 'd.ts');
+    expect(a.dep).not.toBe(first.dep);
+    expect(d.dep).toBe(a.dep);
+
+    // stable afterwards: no further reloads (no ping-pong between handlers)
+    const ma = await cx.router.get(new URL('http://local/a.ts'));
+    const md = await cx.router.get(new URL('http://local/d.ts'));
+    expect(await cx.router.get(new URL('http://local/a.ts'))).toBe(ma);
+    expect(await cx.router.get(new URL('http://local/d.ts'))).toBe(md);
+    expect((await call(cx, 'a.ts')).dep).toBe(a.dep);
+  });
+
+  test('reloading a handler evicts intermediate modules that depend on its dependencies', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    writeApi(dir, 'lib/shared.ts', "exports.value = 's1';\n");
+    writeApi(dir, 'lib/own.ts', "exports.value = 'own:' + require('./shared.ts').value;\n");
+    writeApi(dir, 'a.ts', handlerOf('a', './lib/shared.ts'));
+    writeApi(dir, 'd.ts', handlerOf('d', './lib/own.ts'));
+    await register(cx, 'a.ts', fs.statSync(path.join(dir, 'a.ts')));
+    await register(cx, 'd.ts', fs.statSync(path.join(dir, 'd.ts')));
+    expect(await call(cx, 'd.ts')).toEqual({ id: 'd', dep: 'own:s1' });
+
+    rewrite(dir, 'lib/shared.ts', "exports.value = 's2';\n");
+    // a is requested first; d's private intermediate must not keep the old shared instance
+    expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: 's2' });
+    // dependents are evicted eagerly, before d is requested again
+    expect(require.cache[path.join(dir, 'lib/own.ts')]).toBeUndefined();
+    expect(require.cache[path.join(dir, 'd.ts')]).toBeUndefined();
+    expect(await call(cx, 'd.ts')).toEqual({ id: 'd', dep: 'own:s2' });
+  });
+
+  test('calls the previous disposer when a module is reloaded', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    (globalThis as any).__lazy_reload_disposed = [];
+    const body = (v: string) =>
+      `exports.default = { type: 0, handler: () => ({ v: '${v}' }), disposer: () => { (globalThis as any).__lazy_reload_disposed.push('${v}'); } };\n`;
+    writeApi(dir, 'r.ts', body('1'));
+    await register(cx, 'r.ts', fs.statSync(path.join(dir, 'r.ts')));
+
+    rewrite(dir, 'r.ts', body('2'));
+    expect(await call(cx, 'r.ts')).toEqual({ v: '2' });
+    expect((globalThis as any).__lazy_reload_disposed).toEqual(['1']);
+  });
+
+  test('does not leave stale modules referenced after repeated reloads', async () => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir);
+    writeApi(dir, 'lib/dep.ts', "exports.value = 0;\n");
+    writeApi(dir, 'a.ts', handlerOf('a', './lib/dep.ts'));
+    await register(cx, 'a.ts', fs.statSync(path.join(dir, 'a.ts')));
+
+    const refs = () =>
+      Object.values(require.cache)
+        .flatMap((m) => m?.children ?? [])
+        .filter((c) => c.filename.startsWith(dir)).length;
+    await call(cx, 'a.ts');
+    const baseline = refs();
+    for (let i = 1; i <= 5; i++) {
+      rewrite(dir, 'lib/dep.ts', `exports.value = ${i};\n`);
+      expect(await call(cx, 'a.ts')).toEqual({ id: 'a', dep: i });
+    }
+    expect(refs()).toBe(baseline);
+  });
+});

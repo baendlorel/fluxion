@@ -3,13 +3,16 @@ import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
-import { loadFluxionModule } from '@/common/injector.js';
+import { isFluxionModuleStale, loadFluxionModule, unloadFluxionModule } from '@/common/injector.js';
+import { FluxionModuleType } from '@/common/consts.js';
 import { PromiseTry } from '@/common/promise-try.js';
 
 import { FluxionRouterBase } from './base.js';
 
 // # Used by lazy mode
 export class FluxionRouter extends FluxionRouterBase {
+  private readonly pending = new Map<string, Promise<NormalizedModule | undefined>>();
+
   async register(absolutePath: string, relativePath: string, stat: Stats): Promise<NormalizedModule | undefined> {
     // Step 1: Check if file matches exclude patterns
     // If matching, skip registration
@@ -24,7 +27,14 @@ export class FluxionRouter extends FluxionRouterBase {
     const apiIncluded = this.cx.options.apiInclude.some((p) => minimatch(relativePath, p));
     if (apiIncluded) {
       const apiModule = loadFluxionModule(this.cx, absolutePath, stat);
+      const replaced = this.handlers.get(relativePath);
       this.handlers.set(relativePath, apiModule);
+      if (replaced?.disposer) {
+        // Not awaited: the new module is ready to serve, a slow disposer must not block requests
+        PromiseTry(replaced.disposer).catch((error: Error) => {
+          this.cx.logger.error({ action: 'DisposeError', url: relativePath, error: error.message });
+        });
+      }
       this.cx.logger.core({ action: 'RegisterApi', url: relativePath });
       return apiModule;
     }
@@ -57,17 +67,31 @@ export class FluxionRouter extends FluxionRouterBase {
 
     // File does not exist or is not a file, returns undefined.
     if (!stat || !stat.isFile()) {
-      if (cached?.disposer) {
+      if (cached) {
         this.handlers.delete(relativePath);
-        await PromiseTry(cached.disposer);
+        if (cached.type === FluxionModuleType.Api) {
+          unloadFluxionModule(absolutePath);
+        }
+        if (cached.disposer) {
+          await PromiseTry(cached.disposer);
+        }
       }
       return undefined;
     }
 
-    if (cached?.mtimeMs === stat.mtimeMs) {
+    if (cached?.mtimeMs === stat.mtimeMs && !(await isFluxionModuleStale(absolutePath))) {
       return cached;
     }
 
-    return this.register(absolutePath, relativePath, stat);
+    // Concurrent requests share one reload, otherwise one would dispose the module the other just got
+    const inflight = this.pending.get(relativePath);
+    if (inflight) {
+      return inflight;
+    }
+    const reloading = this.register(absolutePath, relativePath, stat).finally(() => {
+      this.pending.delete(relativePath);
+    });
+    this.pending.set(relativePath, reloading);
+    return reloading;
   }
 }
