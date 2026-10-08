@@ -9,6 +9,7 @@ const DEBOUNCE_MS = 1000;
 export class DependencyWatcher {
   private opts: NormalizedFluxionOptions;
 
+  // require.cache is keyed by real path, so resolve symlinks of `dir` once
   private watcher: FSWatcher | null;
   private pending = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
@@ -63,16 +64,25 @@ export class DependencyWatcher {
     const stale = new Set<string>(this.pending);
     this.pending.clear();
 
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const id in require.cache) {
-        if (stale.has(id)) {
-          continue;
+    // Build the reverse graph (child -> importers) once, then walk it breadth-first
+    const importers = new Map<string, string[]>();
+    for (const id in require.cache) {
+      for (const c of require.cache[id]?.children ?? []) {
+        const list = importers.get(c.id);
+        if (list) {
+          list.push(id);
+        } else {
+          importers.set(c.id, [id]);
         }
-        if (require.cache[id]?.children.some((c) => stale.has(c.id))) {
-          stale.add(id);
-          grew = true;
+      }
+    }
+
+    const queue = [...stale];
+    for (const id of queue) {
+      for (const parent of importers.get(id) ?? []) {
+        if (!stale.has(parent)) {
+          stale.add(parent);
+          queue.push(parent);
         }
       }
     }
