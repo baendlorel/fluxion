@@ -50,8 +50,10 @@ export function createServer(cx: FluxionContext): Promise<http.Server | https.Se
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
-    // Restrict resource loading to same-origin by default
-    res.setHeader('Content-Security-Policy', "default-src 'self'");
+    // Content-Security-Policy (user-configurable, header omitted when set to false)
+    if (cx.options.csp !== false) {
+      res.setHeader('Content-Security-Policy', cx.options.csp);
+    }
 
     let bodyPreview: BodyPreview = {
       exists: false,

@@ -343,6 +343,9 @@ interface FluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  // Security
+  csp?: string | false;            // Default: "default-src 'self'". false omits the header.
 }
 ```
 
@@ -383,7 +386,7 @@ await fluxion({
 ## Security
 
 - **Path traversal protection**: Requests are validated to ensure the resolved path stays within the configured directory.
-- **Security headers**: All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and `Content-Security-Policy: default-src 'self'`.
+- **Security headers**: All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and `Content-Security-Policy: default-src 'self'`. Override with the `csp` option, or pass `csp: false` to omit it.
 - **Error message sanitization**: Internal error details are never leaked to clients.
 - **Cookie limits**: Maximum 100 cookies per request.
 - **Meta API authentication**: Sensitive endpoints require secret authentication.

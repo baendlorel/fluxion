@@ -379,6 +379,9 @@ interface FluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  // Security
+  csp?: string | false;            // Content-Security-Policy value. Default: "default-src 'self'". false omits the header.
 }
 ```
 
@@ -516,7 +519,7 @@ Fluxion uses a lazy loading strategy:
 ### Security features
 
 - **Path traversal protection**: The router validates that the resolved path stays within the configured directory.
-- **Security headers**: All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and `Content-Security-Policy: default-src 'self'`.
+- **Security headers**: All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and `Content-Security-Policy: default-src 'self'`. Override the CSP value with the `csp` option, or pass `csp: false` to omit the header entirely.
 - **Error message sanitization**: Internal error details are never leaked to clients. Uncaught exceptions return a generic `500 Internal Server Error` message.
 - **Cookie limits**: Maximum 100 cookies per request.
 

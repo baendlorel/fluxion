@@ -7,7 +7,7 @@ import { defineFluxionOptions } from '../src/defines/options.js';
 import { createLogger } from '../src/common/logger.js';
 import { createServer } from '../src/http/server.js';
 import { FluxionModuleType } from '../src/common/consts.js';
-import type { FluxionContext } from '../src/types.js';
+import type { FluxionContext, FluxionOptions } from '../src/types.js';
 import type http from 'node:http';
 import type https from 'node:https';
 
@@ -43,13 +43,14 @@ const writeApi = (dir: string, relativePath: string, body: string) => {
   fs.writeFileSync(file, body);
 };
 
-const makeContext = (dir: string, port = nextPort()) => {
+const makeContext = (dir: string, port = nextPort(), overrides: Partial<FluxionOptions> = {}) => {
   const options = defineFluxionOptions({
     dir,
     host: '127.0.0.1',
     port,
     apiInclude: ['**/*.ts'],
     logger: () => {},
+    ...overrides,
   });
   const cx = { options } as FluxionContext;
   cx.logger = createLogger(cx);
@@ -236,5 +237,42 @@ describe('middleware', () => {
       status: 401,
       body: { blocked: true },
     });
+  });
+});
+
+describe('content security policy', () => {
+  const serveHello = async (overrides: Partial<FluxionOptions> = {}) => {
+    const dir = makeTempDir();
+    const cx = makeContext(dir, nextPort(), overrides);
+    writeApi(dir, 'hello.ts', "exports.default = { type: 0, handler: () => ({ message: 'hello' }) };\n");
+    await register(cx, 'hello.ts', fs.statSync(path.join(dir, 'hello.ts')));
+    await startWorkerServer(cx);
+    const res = await fetch(`http://127.0.0.1:${cx.options.port}/hello.ts`);
+    return { res, options: cx.options };
+  };
+
+  test("sends the default CSP header with default-src 'self'", async () => {
+    const { res, options } = await serveHello();
+    expect(options.csp).toBe("default-src 'self'");
+    expect(res.headers.get('content-security-policy')).toBe("default-src 'self'");
+  });
+
+  test('sends a user-provided CSP value', async () => {
+    const csp = "default-src 'self'; img-src 'self' https:";
+    const { res } = await serveHello({ csp });
+    expect(res.headers.get('content-security-policy')).toBe(csp);
+  });
+
+  test('omits the CSP header when csp is false', async () => {
+    const { res } = await serveHello({ csp: false });
+    expect(res.headers.get('content-security-policy')).toBeNull();
+  });
+
+  test('rejects a non-string, non-false csp value', () => {
+    const dir = makeTempDir();
+    expect(() =>
+      // @ts-expect-error
+      defineFluxionOptions({ dir, host: '127.0.0.1', port: nextPort(), csp: 1 }),
+    ).toThrow(/csp must be a string or false/);
   });
 });

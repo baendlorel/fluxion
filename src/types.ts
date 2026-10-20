@@ -135,6 +135,14 @@ export interface FluxionOptions {
      */
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  /**
+   * Content-Security-Policy header value.
+   * Defaults to "default-src 'self'".
+   * Set to `false` to disable the CSP header entirely.
+   * @example "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' https:"
+   */
+  csp?: string | false;
 }
 
 export interface NormalizedFluxionOptions {
@@ -158,6 +166,11 @@ export interface NormalizedFluxionOptions {
     cert: string | Buffer;
     ca?: string | Buffer | Array<string | Buffer>;
   };
+
+  /**
+   * Content-Security-Policy header value, or `false` to disable the header.
+   */
+  csp: string | false;
 
   // !security check
   normalizedFlag: symbol;

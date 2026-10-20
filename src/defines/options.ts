@@ -107,6 +107,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
       '**/*.temp',
     ],
     https,
+    csp = "default-src 'self'",
   } = o as FluxionOptions;
 
   const port = userPort;
@@ -150,6 +151,10 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     _throw('FluxionOptions.maxRequestBytes must be a positive integer');
   }
 
+  if (csp !== false && typeof csp !== 'string') {
+    _throw('FluxionOptions.csp must be a string or false');
+  }
+
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -168,6 +173,7 @@ export function defineFluxionOptions(o: FluxionOptions): NormalizedFluxionOption
     staticInclude,
     exclude,
     https: normalizeHttpsOptions(https, moduleDir),
+    csp,
     normalizedFlag: OPTIONS_NORMALIZED_FLAG,
   };
 }
